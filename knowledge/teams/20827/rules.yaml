@@ -1,0 +1,17 @@
+schemaVersion: 1
+rules:
+  - id: team-20827.hardware-layer-candidate
+    topic: hardware-access
+    title: Access hardware through Hardwares
+    instruction: Access configured robot devices through the Hardwares class.
+    rationale: The 20827 repository centralizes configured devices in this class.
+    status: candidate
+    authority: team
+    applicability:
+      teams: ["20827"]
+      seasons: [2025-2026]
+    evidence:
+      - repository: xiaokai-lyk/FTC20827-2026Decode
+        commit: 118c28e137334bbbea510d77f1fa384e8b1b5779
+        file: TeamCode/src/main/java/org/firstinspires/ftc/teamcode/Hardwares.java
+        symbol: Hardwares

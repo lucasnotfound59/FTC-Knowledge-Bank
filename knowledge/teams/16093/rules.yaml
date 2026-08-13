@@ -1,0 +1,17 @@
+schemaVersion: 1
+rules:
+  - id: team-16093.fsm-candidate
+    topic: mechanism-state-management
+    title: Use explicit mechanism state machines
+    instruction: Model multi-step mechanism behavior with explicit state machines.
+    rationale: The 16093 repository contains shooter and intake state-machine implementations.
+    status: candidate
+    authority: team
+    applicability:
+      teams: ["16093"]
+      seasons: [2025-2026]
+    evidence:
+      - repository: tqdmye/FTC2026-16093National
+        commit: 3e6de8944081ef347fbb76b2f97c89b89b10b669
+        file: TeamCode/src/main/java/org/firstinspires/ftc/teamcode/Subsystems/shooter/ShooterFSM.java
+        symbol: ShooterFSM

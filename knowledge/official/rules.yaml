@@ -1,0 +1,21 @@
+schemaVersion: 1
+rules:
+  - id: official.keep-customizations-in-teamcode
+    topic: build-customization-location
+    title: Keep build customizations in TeamCode
+    instruction: Put legacy FTC SDK build customizations in TeamCode/build.gradle instead of build.common.gradle.
+    rationale: The official SDK reserves build.common.gradle for changes delivered with SDK updates.
+    status: approved
+    authority: official
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - repository: FIRST-Tech-Challenge/FtcRobotController
+        commit: 26cd1fdd2a3c4b26173d9ff33a3279c27d1c7ad1
+        file: build.common.gradle
+        symbol: build.common.gradle
+    approval:
+      approver: overall-software-lead
+      role: overall_software_lead
+      approvedAt: 2026-08-13T00:00:00Z

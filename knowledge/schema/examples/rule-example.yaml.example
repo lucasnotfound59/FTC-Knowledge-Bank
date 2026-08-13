@@ -1,0 +1,21 @@
+schemaVersion: 1
+rules:
+  - id: shared.example-rule
+    topic: example-topic
+    title: Human-readable title
+    instruction: A concise, directly enforceable instruction.
+    rationale: Why the team uses this rule.
+    status: approved
+    authority: shared
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - repository: owner/repository
+        commit: abcdef1234567890
+        file: TeamCode/src/main/java/example/Example.java
+        symbol: Example
+    approval:
+      approver: overall-software-lead
+      role: overall_software_lead
+      approvedAt: 2026-08-13T00:00:00Z
