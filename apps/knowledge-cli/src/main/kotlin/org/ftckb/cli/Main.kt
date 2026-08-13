@@ -49,6 +49,11 @@ fun runCli(args:List<String>,out:PrintStream=System.out):Int {
             out.println("empty value for ${empty[0]}")
             return 64
         }
+        val flagValue=optionPairs.firstOrNull { it[1].startsWith("--") }
+        if (flagValue!=null) {
+            out.println("invalid value for ${flagValue[0]}: ${flagValue[1]}")
+            return 64
+        }
     }
     val loaded=try {
         FileKnowledgeRepository.load(Path.of(args[1]))

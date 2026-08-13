@@ -99,6 +99,39 @@ class MainTest {
     }
 
     @Test
+    fun `resolve rejects flag as value before loading root`() {
+        val output=ByteArrayOutputStream()
+        val code=runCli(
+            listOf("resolve","does-not-exist","--team","--season","--season","2025-2026"),
+            PrintStream(output)
+        )
+        assertEquals(64,code)
+        assertEquals("invalid value for --team: --season\n",output.toString())
+    }
+
+    @Test
+    fun `resolve rejects flag as value with real root`() {
+        val output=ByteArrayOutputStream()
+        val code=runCli(
+            listOf("resolve",knowledgeRoot.toString(),"--team","--season","--season","2025-2026"),
+            PrintStream(output)
+        )
+        assertEquals(64,code)
+        assertEquals("invalid value for --team: --season\n",output.toString())
+    }
+
+    @Test
+    fun `resolve accepts reversed flag order`() {
+        val output=ByteArrayOutputStream()
+        val code=runCli(
+            listOf("resolve",knowledgeRoot.toString(),"--season","2025-2026","--team","20827"),
+            PrintStream(output)
+        )
+        assertEquals(0,code)
+        assertEquals("active official.keep-customizations-in-teamcode\n",output.toString())
+    }
+
+    @Test
     fun `resolve missing season is rejected before loading root`() {
         val output=ByteArrayOutputStream()
         val code=runCli(listOf("resolve","does-not-exist","--team","20827"),PrintStream(output))
