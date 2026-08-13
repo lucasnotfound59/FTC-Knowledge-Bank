@@ -84,6 +84,7 @@ active official.keep-customizations-in-teamcode
 
 ## 完整使用手册
 
+- [FTC 入门教程](#ftc-入门教程)
 - [知识库目录](#知识库目录)
 - [规则字段说明](#规则字段说明)
 - [创建候选规则](#创建候选规则)
@@ -93,6 +94,12 @@ active official.keep-customizations-in-teamcode
 - [CLI 退出码](#cli-退出码)
 - [常见问题](#常见问题)
 - [开发与验证](#开发与验证)
+
+### FTC 入门教程
+
+- [在 Android Studio 中配置 FTC SDK](knowledge/guides/setup/android-studio-ftc-sdk.md)
+- [安装 FTCLib](knowledge/guides/setup/ftclib.md)
+- [安装和验证 FTC Dashboard](knowledge/guides/setup/ftc-dashboard.md)
 
 ### 知识库目录
 

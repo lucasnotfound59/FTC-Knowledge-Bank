@@ -1,0 +1,38 @@
+schemaVersion: 2
+rules:
+  - id: shared.dashboard-pin-stable-dependency
+    topic: dashboard-dependency-version
+    title: Pin a stable FTC Dashboard dependency
+    instruction: Configure the official FTC Dashboard Maven repository and an exact stable dependency version for team projects.
+    rationale: Dynamic and snapshot artifacts make competition builds non-reproducible.
+    status: candidate
+    authority: shared
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - type: web
+        url: https://acmerobotics.github.io/ftc-dashboard/gettingstarted.html
+        title: FTC Dashboard Getting Started
+        publisher: FTC Dashboard
+        accessedAt: 2026-08-13
+        section: Basic Installation
+        version: "0.6.0"
+  - id: shared.dependency-verify-sync-build-run
+    topic: ftc-dependency-verification
+    title: Verify dependencies through runtime
+    instruction: Require successful Gradle Sync, local build, Robot Controller deployment, and a minimal runtime check after adding or changing an FTC library.
+    rationale: Dependency resolution alone does not prove that the deployed robot app contains and can use the library.
+    status: candidate
+    authority: shared
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - type: web
+        url: https://acmerobotics.github.io/ftc-dashboard/gettingstarted.html
+        title: FTC Dashboard Getting Started
+        publisher: FTC Dashboard
+        accessedAt: 2026-08-13
+        section: Basic Usage
+        version: "0.6.0"

@@ -1,0 +1,37 @@
+schemaVersion: 2
+rules:
+  - id: shared.ftclib-check-current-prerequisites
+    topic: ftclib-prerequisite-editing
+    title: Compare FTCLib prerequisites before editing
+    instruction: Compare FTCLib prerequisites with the pinned FTC SDK and apply only settings that are not already satisfied.
+    rationale: Blindly copying historical setup steps can overwrite FIRST-managed configuration or duplicate current defaults.
+    status: candidate
+    authority: shared
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - type: web
+        url: https://docs.ftclib.org/ftclib/installation
+        title: FTCLib Installation
+        publisher: FTCLib
+        accessedAt: 2026-08-13
+        section: Installation
+  - id: shared.ftclib-pin-module-versions
+    topic: ftclib-module-selection
+    title: Pin only required FTCLib modules
+    instruction: Declare only required FTCLib modules with exact documented versions and apply vision native-library or ABI steps only when using the vision module.
+    rationale: Core and vision have separate versions and prerequisites.
+    status: candidate
+    authority: shared
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - type: web
+        url: https://docs.ftclib.org/ftclib/installation
+        title: FTCLib Installation
+        publisher: FTCLib
+        accessedAt: 2026-08-13
+        section: Installation dependencies
+        version: core 2.1.1; vision 2.1.0
