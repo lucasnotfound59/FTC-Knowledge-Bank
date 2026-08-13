@@ -99,6 +99,34 @@ class MainTest {
     }
 
     @Test
+    fun `resolve rejects noncanonical team values before loading root`() {
+        listOf(" \t","team-20827").forEach { team ->
+            val output=ByteArrayOutputStream()
+            val code=runCli(
+                listOf("resolve","does-not-exist","--team",team,"--season","2025-2026"),
+                PrintStream(output)
+            )
+
+            assertEquals(64,code,"team=$team")
+            assertEquals("invalid value for --team: expected digits only\n",output.toString(),"team=$team")
+        }
+    }
+
+    @Test
+    fun `resolve rejects noncanonical season values before loading root`() {
+        listOf(" \t","2025-26").forEach { season ->
+            val output=ByteArrayOutputStream()
+            val code=runCli(
+                listOf("resolve","does-not-exist","--team","20827","--season",season),
+                PrintStream(output)
+            )
+
+            assertEquals(64,code,"season=$season")
+            assertEquals("invalid value for --season: expected YYYY-YYYY\n",output.toString(),"season=$season")
+        }
+    }
+
+    @Test
     fun `resolve rejects flag as value before loading root`() {
         val output=ByteArrayOutputStream()
         val code=runCli(
@@ -229,5 +257,62 @@ class MainTest {
         )
         assertEquals(2,code)
         assertEquals("conflict topic=conflicting-topic rules=shared.one,shared.two\n",output.toString())
+    }
+
+    @Test
+    fun `resolve rejects a team topic that differs from an official topic only by trailing whitespace`(@TempDir root:Path) {
+        Files.writeString(root.resolve("rules.yaml"),"""
+            schemaVersion: 1
+            rules:
+              - id: official.deploy
+                topic: deployment-safety
+                title: Official deployment safety
+                instruction: Keep deployment safe.
+                rationale: Official constraints cannot be overridden.
+                status: approved
+                authority: official
+                applicability: {}
+                evidence:
+                  - repository: owner/repository
+                    commit: abcdef1
+                    file: README.md
+                    line: 1
+                approval:
+                  approver: overall-software-lead
+                  role: overall_software_lead
+                  approvedAt: 2026-08-13T00:00:00Z
+              - id: team.deploy
+                topic: "deployment-safety "
+                title: Team deployment rule
+                instruction: Replace the official constraint.
+                rationale: This must never become a separate topic.
+                status: approved
+                authority: team
+                applicability:
+                  teams: ["20827"]
+                  seasons: [2025-2026]
+                evidence:
+                  - repository: owner/repository
+                    commit: abcdef2
+                    file: TeamCode/Deploy.java
+                    symbol: Deploy
+                approval:
+                  approver: lead-20827
+                  role: team_software_lead
+                  team: "20827"
+                  approvedAt: 2026-08-13T00:00:00Z
+        """.trimIndent())
+        val output=ByteArrayOutputStream()
+
+        val code=runCli(
+            listOf("resolve",root.toString(),"--team","20827","--season","2025-2026"),
+            PrintStream(output)
+        )
+
+        assertEquals(2,code)
+        assertEquals(
+            "error rule=team.deploy field=topic message=topic must be a canonical slug\n",
+            output.toString()
+        )
     }
 }

@@ -2,6 +2,7 @@ package org.ftckb.domain
 
 import java.time.Instant
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -84,5 +85,81 @@ class RuleResolverTest {
         val rejected=rule("shared.rejected","naming",RuleAuthority.SHARED).copy(status=RuleStatus.REJECTED,approval=null)
 
         assertTrue(RuleResolver.resolve(listOf(deprecated,rejected),RuleContext("20827","2025-2026")).activeRules.isEmpty())
+    }
+
+    @Test
+    fun `direct resolution rejects an approved rule without approval metadata`() {
+        val unapproved=rule("shared.unapproved","naming",RuleAuthority.SHARED).copy(approval=null)
+
+        val exception=assertThrows(IllegalArgumentException::class.java) {
+            RuleResolver.resolve(listOf(unapproved),RuleContext("20827","2025-2026"))
+        }
+
+        assertEquals(
+            "invalid rule set: rule=shared.unapproved field=approval message=approved rule requires approval",
+            exception.message
+        )
+    }
+
+    @Test
+    fun `direct resolution rejects an approval without authority`() {
+        val unauthorized=rule(
+            "team.unauthorized",
+            "naming",
+            RuleAuthority.TEAM,
+            setOf("20827"),
+            overall
+        )
+
+        assertThrows(IllegalArgumentException::class.java) {
+            RuleResolver.resolve(listOf(unauthorized),RuleContext("20827","2025-2026"))
+        }
+    }
+
+    @Test
+    fun `direct resolution rejects noncanonical team context`() {
+        listOf(" \t","team-20827").forEach { team ->
+            val exception=assertThrows(IllegalArgumentException::class.java) {
+                RuleResolver.resolve(emptyList(),RuleContext(team,"2025-2026"))
+            }
+            assertEquals("invalid rule context: team must contain digits only",exception.message)
+        }
+    }
+
+    @Test
+    fun `direct resolution rejects noncanonical season context but permits null context values`() {
+        listOf(" \t","2025-26").forEach { season ->
+            val exception=assertThrows(IllegalArgumentException::class.java) {
+                RuleResolver.resolve(emptyList(),RuleContext("20827",season))
+            }
+            assertEquals("invalid rule context: season must use YYYY-YYYY",exception.message)
+        }
+
+        val result=RuleResolver.resolve(emptyList(),RuleContext(null,null))
+        assertTrue(result.activeRules.isEmpty())
+        assertTrue(result.conflicts.isEmpty())
+    }
+
+    @Test
+    fun `applicability snapshots mutable teams at construction and copy`() {
+        val constructorTeams=linkedSetOf("20827")
+        val constructed=RuleApplicability(teams=constructorTeams,seasons=setOf("2025-2026"))
+        val copyTeams=linkedSetOf("20827")
+        val copied=constructed.copy(teams=copyTeams)
+        val approved=rule("team.snapshot","naming",RuleAuthority.TEAM,setOf("20827"),team).copy(
+            applicability=copied
+        )
+        assertTrue(RuleValidator.validate(approved).isEmpty())
+
+        constructorTeams.clear()
+        copyTeams.clear()
+        copyTeams.add("16093")
+
+        assertEquals(setOf("20827"),constructed.teams)
+        assertEquals(setOf("20827"),copied.teams)
+        assertEquals(
+            listOf("team.snapshot"),
+            RuleResolver.resolve(listOf(approved),RuleContext("20827","2025-2026")).activeRules.map { it.id }
+        )
     }
 }

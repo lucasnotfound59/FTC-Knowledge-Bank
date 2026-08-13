@@ -8,6 +8,19 @@ object RuleResolver {
     private val priority=mapOf(RuleAuthority.OFFICIAL to 3,RuleAuthority.TEAM to 2,RuleAuthority.SHARED to 1)
 
     fun resolve(rules:List<KnowledgeRule>,context:RuleContext):ResolutionResult {
+        require(context.team==null || RuleIdentity.isCanonicalTeam(context.team)) {
+            "invalid rule context: team must contain digits only"
+        }
+        require(context.season==null || RuleIdentity.isCanonicalSeason(context.season)) {
+            "invalid rule context: season must use YYYY-YYYY"
+        }
+        val violations=rules.flatMap(RuleValidator::validate)
+            .sortedWith(compareBy({ it.ruleId },{ it.field },{ it.message }))
+        require(violations.isEmpty()) {
+            "invalid rule set: "+violations.joinToString("; ") {
+                "rule=${it.ruleId} field=${it.field} message=${it.message}"
+            }
+        }
         val applicable=rules.filter { rule ->
             rule.status==RuleStatus.APPROVED &&
                 (rule.applicability.teams.isEmpty() || context.team in rule.applicability.teams) &&

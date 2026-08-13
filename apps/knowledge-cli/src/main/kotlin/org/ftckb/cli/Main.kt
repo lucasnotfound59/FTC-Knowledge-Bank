@@ -4,6 +4,7 @@ import java.io.PrintStream
 import java.nio.file.Path
 import kotlin.system.exitProcess
 import org.ftckb.domain.RuleContext
+import org.ftckb.domain.RuleIdentity
 import org.ftckb.domain.RuleResolver
 import org.ftckb.knowledge.FileKnowledgeRepository
 
@@ -52,6 +53,15 @@ fun runCli(args:List<String>,out:PrintStream=System.out):Int {
         val flagValue=optionPairs.firstOrNull { it[1].startsWith("--") }
         if (flagValue!=null) {
             out.println("invalid value for ${flagValue[0]}: ${flagValue[1]}")
+            return 64
+        }
+        val options=optionPairs.associate { it[0] to it[1] }
+        if (!RuleIdentity.isCanonicalTeam(options.getValue("--team"))) {
+            out.println("invalid value for --team: expected digits only")
+            return 64
+        }
+        if (!RuleIdentity.isCanonicalSeason(options.getValue("--season"))) {
+            out.println("invalid value for --season: expected YYYY-YYYY")
             return 64
         }
     }
