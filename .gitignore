@@ -1,0 +1,5 @@
+.gradle/
+.idea/
+.superpowers/
+**/build/
+out/
