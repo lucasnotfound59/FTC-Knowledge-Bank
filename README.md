@@ -36,19 +36,43 @@
 
 ## 项目架构
 
-```text
-Android Studio 插件 ─┐
-未来 VS Code 扩展 ───┼─→ FTC Agent Core
-未来独立 FTC IDE ────┘        │
-                              ├─ 队伍知识库与检索
-                              ├─ 规则审批与安全约束
-                              ├─ 代码解释、修改与审查
-                              ├─ diff 与 Git 工作流
-                              ├─ 构建诊断与验证
-                              │
-                              ├─ 现有 FTC SDK / Control Hub 适配器
-                              └─ 未来控制平台适配器
+```mermaid
+flowchart TB
+    AS["Android Studio 插件<br/>首个客户端"]
+    VS["VS Code / Systemcore 客户端<br/>后续"]
+    IDE["独立 FTC IDE<br/>长期方向"]
+
+    AS --> CORE
+    VS --> CORE
+    IDE --> CORE
+
+    subgraph CORE["IDE-independent FTC Agent Core"]
+        CONTEXT["Context Engine<br/>识别仓库、队号、赛季和相关文件"]
+        PLANNER["Planner<br/>拆分检索、修改、构建和诊断步骤"]
+        POLICY["Policy Engine<br/>执行规范、权限和安全门"]
+        ORCHESTRATOR["Tool Orchestrator<br/>受控调用工具并处理结果"]
+        CONTEXT --> PLANNER --> POLICY --> ORCHESTRATOR
+    end
+
+    KB["分层知识库<br/>官方事实 / 共享规范 / 队伍档案 / 赛季配置"] --> CONTEXT
+    APPROVAL["审批与审计<br/>候选规则 / diff / Git 分支 / 人工确认"] --> POLICY
+
+    ORCHESTRATOR --> REPO["代码与 Git 工具"]
+    ORCHESTRATOR --> LEGACY["Control Hub Adapter<br/>Android Gradle / FTC SDK / ADB / Logcat"]
+    ORCHESTRATOR --> SYSTEMCORE["Systemcore Adapter<br/>WPILib / GradleRIO / Linux Deploy / WPILog"]
 ```
+
+知识库负责提供事实、规范和经验；Agent Core 负责选择上下文、制定步骤、执行规则、调用工具和验证结果；IDE 插件只负责呈现交互。将三者分开后，知识和工作流可以在不同 IDE 与控制平台之间复用。
+
+### Agent Core 组件
+
+| 组件 | 职责 |
+| --- | --- |
+| Context Engine | 识别仓库、队号、赛季、当前任务及相关代码和知识条目 |
+| Planner | 将用户请求拆成可审查的检索、修改、构建和诊断步骤 |
+| Policy Engine | 按权威层级加载规则，执行权限控制和硬件安全限制 |
+| Tool Orchestrator | 调用代码搜索、文件编辑、Git、Gradle及平台工具，并保存结果 |
+| Verification Loop | 根据 diff、构建输出和测试结果判断任务是否完成或需要诊断 |
 
 ## 双层知识库
 
@@ -58,6 +82,22 @@ Android Studio 插件 ─┐
 - **队员层**：解释原理、使用步骤、调参经验和故障排查方法。
 
 两层内容共享来源，避免面向 Agent 的规则与面向队员的文档互相矛盾。
+
+### 知识与规则的优先级
+
+```text
+FIRST 官方约束（不可被覆盖）
+    ↓
+共享正式规范
+    ↓
+队号专属规范
+    ↓
+当前赛季配置与参数
+```
+
+当前纳入 `20827` 和 `16093` 两个队号档案。档案可以保存队伍信息、赛季、机器人硬件配置、参数、已验证代码案例、经验以及经批准的专属规范。所有硬件参数、场地坐标和调参数据必须带队号、赛季与来源，防止旧机器人数据被错误复用。
+
+共享规范由总软件负责人批准；队号专属规范由对应队伍的软件负责人批准。Agent 从仓库中提取的模式只能进入候选状态，批准后才可约束代码修改。每条正式规则或覆盖规则需要记录适用范围、来源、批准人、状态和版本。
 
 ## Agent 权限模式
 
@@ -84,6 +124,8 @@ Agent 可以辅助队员分析需求，但机器人整体软件架构、机械�
 
 MVP 暂不包含自动安装依赖和自动上传到 Control Hub，但会为这些能力保留接口。所有 Agent 修改必须在独立 Git 分支中进行。
 
+第一阶段只服务队伍内部。MVP 需要覆盖 Ask、Edit 和 Run 三种能力，但不替队员决定机器人整体软件架构、机械结构或硬件方案。
+
 ## 参考仓库
 
 - [FIRST-Tech-Challenge/FtcRobotController](https://github.com/FIRST-Tech-Challenge/FtcRobotController)：官方 FTC 工程与 SDK 基线；
@@ -92,17 +134,21 @@ MVP 暂不包含自动安装依赖和自动上传到 Control Hub，但会为这�
 
 来自队伍仓库的模式不会被直接视为正式规范：多个仓库共同采用且质量良好的模式可成为强候选规范，单个仓库特有的模式需要保留来源，重复、冲突或疑似遗留代码则进入待审查列表。
 
-## 后续方向
+## Control Hub 与 Systemcore
 
-- 开发完整的 FTC 专用开发环境；
-- 支持导入任意队伍代码库并自动提取候选编码规范；
-- 提供依赖安装、版本检查、Gradle 修改和构建诊断；
-- 增加 VS Code、独立 IDE 和未来控制平台适配器；
-- 在严格人工确认和安全检查下支持设备部署。
+当前适配器面向基于 Android 的 FTC SDK 与 Control Hub。FIRST 已宣布从 2027–2028 赛季开始引入基于 Raspberry Pi CM5 和实时 Linux 的 Systemcore；其 Alpha 软件基于 WPILib、GradleRIO 和 Linux 部署，而不是当前的 Android APK 与 ADB 流程。
+
+因此，知识检索、规则、Agent 工作流和审批机制保持平台无关，构建、依赖、日志与部署通过独立适配器实现。Systemcore 仍处于测试和演进阶段，具体兼容工作以 FIRST 与 WPILib 的正式发布为准。
+
+- [FIRST：FTC 新控制系统概览](https://community.firstinspires.org/control-system-update-first-tech-challenge-edition)
+- [Systemcore 与 Motioncore 测试仓库](https://github.com/wpilibsuite/SystemcoreTesting)
+- [WPILib 2027 变化](https://docs.wpilib.org/en/latest/docs/yearly-overview/yearly-changelog.html)
 
 ## 待决定事项
 
-- 两支参考队伍采用完全统一的规范，还是采用共享核心规范并允许各队覆盖；
 - 知识条目的文件格式、状态模型和审批记录方式；
 - Android Studio 插件与 FTC Agent Core 的具体通信接口；
+- 模型提供方式、代码隐私边界与密钥管理；
 - MVP 的目录结构、技术栈和测试策略。
+
+完整的近期任务和长期设想见 [`todolist.md`](todolist.md)。
