@@ -1,5 +1,6 @@
 package org.ftckb.knowledge
 
+import java.math.BigDecimal
 import java.time.Instant
 import org.ftckb.domain.Approval
 import org.ftckb.domain.ApproverRole
@@ -22,7 +23,7 @@ object RuleYamlCodec {
         val root=load.loadFromString(text).asMap("root")
         root.rejectUnknownFields(setOf("schemaVersion","rules"),"root")
         require(root.int("schemaVersion")==1) { "unsupported schemaVersion" }
-        return root.list("rules").mapIndexed { index,value ->
+        return root.requiredList("rules").mapIndexed { index,value ->
             val name="rules[$index]"
             decodeRule(value.asMap(name),name)
         }
@@ -49,7 +50,7 @@ object RuleYamlCodec {
             applicability=RuleApplicability(
                 teams=applicability.stringSet("teams"),seasons=applicability.stringSet("seasons")
             ),
-            evidence=map.list("evidence").mapIndexed { index,value ->
+            evidence=map.requiredList("evidence").mapIndexed { index,value ->
                 val evidenceName="$name.evidence[$index]"
                 val item=value.asMap(evidenceName)
                 item.rejectUnknownFields(setOf("repository","commit","file","symbol","line"),evidenceName)
@@ -70,13 +71,29 @@ object RuleYamlCodec {
         if (key !in this) return null
         return this[key] as? String ?: error("$key must be a string")
     }
-    private fun Map<String,Any?>.int(key:String)=(this[key] as? Number)?.toInt() ?: error("$key must be an integer")
-    private fun Map<String,Any?>.optionalInt(key:String)=(this[key] as? Number)?.toInt()
-    private fun Map<String,Any?>.list(key:String)=this[key] as? List<*> ?: emptyList<Any?>()
-    private fun Map<String,Any?>.optionalMap(key:String)=this[key]?.asMap(key)
-    private fun Map<String,Any?>.stringSet(key:String)=list(key).map {
+    private fun Map<String,Any?>.int(key:String)=this[key].strictInt(key)
+    private fun Map<String,Any?>.optionalInt(key:String):Int? {
+        if (key !in this) return null
+        return this[key].strictInt(key)
+    }
+    private fun Map<String,Any?>.requiredList(key:String)=this[key] as? List<*>
+        ?: error("$key must be a list")
+    private fun Map<String,Any?>.optionalList(key:String):List<*> {
+        if (key !in this) return emptyList<Any?>()
+        return this[key] as? List<*> ?: error("$key must be a list")
+    }
+    private fun Map<String,Any?>.optionalMap(key:String):Map<String,Any?>? {
+        if (key !in this) return null
+        return this[key].asMap(key)
+    }
+    private fun Map<String,Any?>.stringSet(key:String)=optionalList(key).map {
         it as? String ?: error("$key values must be strings")
     }.toSet()
+    private fun Any?.strictInt(key:String):Int {
+        val number=this as? Number ?: error("$key must be an integer")
+        return runCatching { BigDecimal(number.toString()).toBigIntegerExact().intValueExact() }
+            .getOrElse { error("$key must be an integer") }
+    }
     private fun Map<String,Any?>.rejectUnknownFields(allowed:Set<String>,name:String) {
         val unknown=(keys-allowed).sorted()
         if (unknown.isNotEmpty()) error("$name contains unknown fields: ${unknown.joinToString()}")

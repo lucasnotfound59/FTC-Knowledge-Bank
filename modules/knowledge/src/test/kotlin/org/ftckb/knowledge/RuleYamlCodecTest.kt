@@ -190,4 +190,83 @@ class RuleYamlCodecTest {
 
         assertEquals("positiveExample must be a string",exception.message)
     }
+
+    @Test
+    fun `distinguishes missing optional collections from invalid present collections`() {
+        val invalidDocuments=listOf(
+            "schemaVersion: 1" to "rules must be a list",
+            "schemaVersion: 1\nrules: null" to "rules must be a list",
+            "schemaVersion: 1\nrules: wrong" to "rules must be a list",
+            candidateYaml(evidence=null) to "evidence must be a list",
+            candidateYaml(evidence="null") to "evidence must be a list",
+            candidateYaml(evidence="wrong") to "evidence must be a list",
+            candidateYaml(applicability="null") to "applicability must be a map",
+            candidateYaml(applicability="wrong") to "applicability must be a map",
+            candidateYaml(applicability="{teams: null}") to "teams must be a list",
+            candidateYaml(applicability="{teams: wrong}") to "teams must be a list",
+            candidateYaml(applicability="{seasons: null}") to "seasons must be a list",
+            candidateYaml(applicability="{seasons: wrong}") to "seasons must be a list",
+            candidateYaml(extra="approval: null") to "approval must be a map"
+        )
+
+        invalidDocuments.forEach { (yaml,message) ->
+            val exception=assertThrows(IllegalStateException::class.java) { RuleYamlCodec.decode(yaml) }
+            assertEquals(message,exception.message)
+        }
+    }
+
+    @Test
+    fun `rejects non integral out of range and non numeric integers`() {
+        val invalidDocuments=listOf(
+            "schemaVersion: 1.5\nrules: []" to "schemaVersion must be an integer",
+            "schemaVersion: 4294967297\nrules: []" to "schemaVersion must be an integer",
+            candidateYamlWithLine("null") to "line must be an integer",
+            candidateYamlWithLine("1.5") to "line must be an integer",
+            candidateYamlWithLine("4294967297") to "line must be an integer",
+            candidateYamlWithLine("\"28\"",symbol="test") to "line must be an integer"
+        )
+
+        invalidDocuments.forEach { (yaml,message) ->
+            val exception=assertThrows(IllegalStateException::class.java) { RuleYamlCodec.decode(yaml) }
+            assertEquals(message,exception.message)
+        }
+    }
+
+    private fun candidateYaml(
+        applicability:String="{}",
+        evidence:String?="[]",
+        extra:String=""
+    )="""
+        schemaVersion: 1
+        rules:
+          - id: shared.test
+            topic: test
+            title: Test
+            instruction: Test instruction.
+            rationale: Test rationale.
+            status: candidate
+            authority: shared
+            applicability: $applicability
+            ${evidence?.let { "evidence: $it" } ?: ""}
+            $extra
+    """.trimIndent()
+
+    private fun candidateYamlWithLine(line:String,symbol:String?=null)="""
+        schemaVersion: 1
+        rules:
+          - id: shared.test
+            topic: test
+            title: Test
+            instruction: Test instruction.
+            rationale: Test rationale.
+            status: candidate
+            authority: shared
+            applicability: {}
+            evidence:
+              - repository: owner/repo
+                commit: abcdef1
+                file: TeamCode/build.gradle
+                ${symbol?.let { "symbol: $it" } ?: ""}
+                line: $line
+    """.trimIndent()
 }
