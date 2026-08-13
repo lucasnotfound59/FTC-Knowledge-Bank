@@ -33,23 +33,37 @@ FTC 11.2 + Pedro 2.1.2 是**本项目编译验证**的组合，不是上游 Pedr
 
 1. clone `https://github.com/Pedro-Pathing/Quickstart.git`，checkout `d3aea9ca3c5b4c09eded8580229b86996480ee89`。这是一套 coherent upstream baseline，但底层仍是 FTC 11.1.0。
 2. 不要先替换它的版本。确认根目录 `build.dependencies.gradle` 的 `repositories {}` / `dependencies {}`、`TeamCode/build.gradle` 的 module dependencies，以及 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/pedroPathing/` 都属于这个 commit。
-3. 在 Android Studio 执行 Gradle Sync，再运行项目自带的 Gradle build。
-4. 连接 Control Hub，部署未改动的工程。第一次只运行 `Tuning` 的只读/手推 Localization Test，不运行路径。
-5. 最小观察：Driver Station 能列出 OpMode；Panels 或 FTC Dashboard 能显示 pose；手推向前 x 增加、向左 y 增加。否则停在本路线排错。
+3. **构建快照**：未修改 snapshot 只做 Gradle Sync 和 build。最小观察是 Sync 无 dependency 错误、项目 build 成功；此时不要 deploy 或运行任何机器人 OpMode，因为上游 hardware names 与 localizer 配置还不是你的机器人。
+4. **配置硬件**：按本教程的 Constants/Pinpoint 流程和 Pedro 官方 localizer 文档，配置当前机器人的 hardware names、localizer、offsets 和 directions；所有数值保留测量记录。
+5. **评审**：让另一位队员逐项核对接线、硬件名、方向、offset、分辨率和测试边界，记录 reviewer approval。没有批准就停在这里。
+6. **部署与最小运行**：获得批准后才 deploy，然后只运行 `Localization Test`，不运行路径。最小观察：Driver Station 能列出该 OpMode；Panels 或 FTC Dashboard 能显示 pose；手推向前 x 增加、向左 y 增加。否则停在定位排错，不进入 Auto。
 
 ### Route B — current FIRST v11.2 team project
 
 适合已经在 FIRST v11.2 工程开发、只想引入 Pedro 2.1.2 的队伍。
 
-1. 在工程根目录 `build.dependencies.gradle` 的 `repositories {}` 中加入 Pedro 官方安装页要求的 Maven repository；在同一文件的 `dependencies {}` 中把占位 `x.y.z` 替换成精确依赖：
+1. 在工程根目录 `build.dependencies.gradle` 的 `repositories {}` 中加入 Pedro 官方安装页给出的 repository：
+
+   ```groovy
+   maven { url = "https://mymaven.bylazar.com/releases" }
+   ```
+
+   再在同一根目录 `build.dependencies.gradle` 的 `dependencies {}` 中加入核心 Pedro 依赖：
 
    ```groovy
    implementation 'com.pedropathing:ftc:2.1.2'
    ```
 
-   如果要用 telemetry/Panels，再按官方安装页在这个 `dependencies {}` 单独加入相应依赖；不要把本仓库核心示例的编译结果当成 Panels 已验证。
+   只有复制并使用 Panels/tuners 时，才在这个 `dependencies {}` 中另外加入官方安装页当前列出的两项：
+
+   ```groovy
+   implementation 'com.pedropathing:telemetry:1.0.0'
+   implementation 'com.bylazar:fullpanels:1.0.12'
+   ```
+
+   telemetry、FullPanels、复制来的 tuners are outside the core fixture scope；不要把本仓库核心示例的编译结果当成它们已验证。
 2. 从上面的 Quickstart snapshot 复制 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/pedroPathing/Constants.java` 和所需 `Tuning.java`，保留来源 commit；放入当前工程同一路径后再按本机硬件修改。
-3. 官方 manual route 还要求在 Android Studio Project Structure 中把 `FtcRobotController` 与 `TeamCode` 的 Compile SDK 改成 34；对应 Gradle 配置在根目录 `build.common.gradle` 的 `android { compileSdkVersion ... }`。这与 FIRST v11.2 默认 compile SDK 30 不同，必须在独立分支 Sync、build 并完整验证，不能从本仓库 compile SDK 30 fixture 推断它已通过。
+3. 官方 manual route 还要求在 Android Studio Project Structure 中把 `FtcRobotController` 与 `TeamCode` 设为 compile SDK 34；对应 Gradle 配置在根目录 `build.common.gradle` 的 `android { compileSdkVersion ... }`。这与 FIRST v11.2 默认 compile SDK 30 不同，必须在独立分支 Sync、build 并完整验证，不能从本仓库 compile SDK 30 fixture 推断它已通过。
 4. Gradle Sync，然后运行整个工程 build；不要只编译一个 Java 文件。
 5. 连接 Control Hub 并部署。先确认 Driver Station 能列出 `Tuning` 与 `Safe Pedro Auto`，再执行 Localization Test。
 6. 最小观察：无缺类/缺资源错误；pose 有更新；向前 x 增加、向左 y 增加；STOP 后不再输出运动命令。复制的 tuners、Dashboard/Panels 和实车仍要分别验证。
@@ -79,7 +93,7 @@ Pedro 2.1.2 的 `Constants.java` 负责构造 `Follower`。四类值必须分开
 |---|---|---|---|---|
 | Follower constants | 完整比赛状态质量、自动 tuner/PIDF/向心参数 | 称重并按官方 tuner 顺序获得 | 质量 kg；其余按对应 tuner | 重复相同测试，误差与响应满足队伍阈值 |
 | Drivetrain constants | 电机 hardware name、方向、最大功率、x/y velocity | 对照 RC Configuration，架空单轮确认方向，再运行 velocity tuners | `maxPower` `[0,1]`；velocity in/s | 低功率前进/横移方向正确，velocity 可重复 |
-| Localizer constants | localizer 类型、hardware name、offset、编码器方向/分辨率 | 实物接线、RC Configuration、卷尺、官方 localizer tuner | 见所选 localizer；Pinpoint 完整契约见下文 | 手推前进 x 增、左移 y 墤、逆时针 heading 增 |
+| Localizer constants | localizer 类型、hardware name、offset、编码器方向/分辨率 | 实物接线、RC Configuration、卷尺、官方 localizer tuner | 见所选 localizer；Pinpoint 完整契约见下文 | 手推前进 x 增、左移 y 增、逆时针 heading 增 |
 | Path constraints | t-value、velocity、平移/航向误差、timeout | 先完成定位和 follower tuning，再按任务可靠性逐项设定 | t-value `[0,1]`；velocity in/s；timeout ms；heading rad | 记录 `isBusy` 退出时由哪个 constraint 放行 |
 
 表中官方 example 值只用来展示 API。所有 `robot-specific value` 都必须来自当前机器人，对应 `shared.pedro-tune-current-robot`；定位没有先通过，就不能评价 follower，对应 `shared.pedro-localization-before-follower`。
@@ -116,7 +130,7 @@ Pedro 2.1.2 的 `Constants.java` 负责构造 `Follower`。四类值必须分开
 | `distanceUnit` | `DistanceUnit.INCH` | 与队伍场地图和实测记录统一选择 | 本流程固定 inch | 手推已知 24 in，telemetry 位移应接近 24 in |
 | `hardwareMapName` | RC Configuration 中 Pinpoint 的精确名称 | 在 Driver Station/RC 配置逐字符核对 | 非空字符串，区分大小写 | INIT 不出现 localizer/follower 初始化错误，pose 会更新 |
 | `encoderResolution` | 实际 goBILDA odometry pod 对应的枚举 | 看 pod 型号/订单记录并对照 SDK enum | `GoBildaOdometryPods` 中与实物相同的一项 | 手推已知距离，比例误差可重复且满足阈值 |
-| `customEncoderResolution` | 只有自定义 pod 才填其实际分辨率，替代上一项 | 厂商数据表和实测标定 | Pedro/Pinpoint API 要求的自定义分辨率；必须为正 | 多个已知距离下比例误差一致，不能只校一个距离 |
+| `customEncoderResolution` | 只有自定义 pod 才填每个已选距离单位对应的 encoder ticks，替代上一项 | 查 manufacturer CPR/gearing，并测 measured/effective wheel diameter，按下方公式计算 | 正数；`distanceUnit=INCH` 时 ticks/inch，`distanceUnit=MM` 时 ticks/mm | 用多个已知距离比较 Localization Test measured-vs-reported distance，比例误差须可重复且满足阈值 |
 | `forwardEncoderDirection` | 让向前推动时 x 增加的方向枚举 | 运行 Localization Test，手推向前；反号就切换方向 | `FORWARD` 或 `REVERSED`，以当前 SDK enum 为准 | 向前推动时 x 单调增加 |
 | `strafeEncoderDirection` | 让向左推动时 y 增加的方向枚举 | 运行 Localization Test，手推向左；反号就切换方向 | `FORWARD` 或 `REVERSED`，以当前 SDK enum 为准 | 向左推动时 y 单调增加 |
 | `yawScalar` | 通常不设置；只有有重复证据时才填校正比例 | 多圈已知角旋转与 Pinpoint heading 对比 | 无量纲；默认校准优先 | 顺/逆时针多个角度都改善；否则删除该覆盖 |
@@ -134,7 +148,15 @@ PinpointConstants localizerConstants=new PinpointConstants()
     .strafeEncoderDirection(YOUR_MEASURED_STRAFE_DIRECTION);
 ```
 
-自定义 pod 时用 `.customEncoderResolution(MEASURED_CUSTOM_RESOLUTION)` **替代** `.encoderResolution(...)`。除非完成表中 yaw 证据，不添加 `.yawScalar(...)`。然后只在 `createFollower(HardwareMap hardwareMap)` 的 `new FollowerBuilder(...)` 链上加入：
+自定义 pod 时用 `.customEncoderResolution(MEASURED_CUSTOM_RESOLUTION)` **替代** `.encoderResolution(...)`。Pedro 2.1.2 的 Pinpoint localizer 会把这个数值和所选 `distanceUnit` 一起传给 FTC 11.2 Pinpoint driver，因此语义是 ticks per selected `distanceUnit`，并不总是 ticks/mm：选择 inch 就填 ticks/inch，选择 mm 才填 ticks/mm。
+
+计算模板只保留符号，不复制机器人值。`encoderCPR` 表示 encoder 每转 ticks；如果 encoder 与 pod wheel 间有传动，则显式乘 manufacturer gear ratio。分母是用 measured/effective wheel diameter 算出的 pod-wheel circumference；也就是 encoder CPR / pod-wheel circumference：
+
+```java
+customEncoderResolution=(encoderCPR*gearRatio)/(Math.PI*effectivePodDiameter);
+```
+
+公式中的 `effectivePodDiameter` 必须与 `distanceUnit` 相同。计算后仍要用多个已知直线距离做 Localization Test measured-vs-reported distance 对比；有效直径可依据重复误差校正，但必须保留原始测量与 reviewer。除非完成表中 yaw 证据，不添加 `.yawScalar(...)`。然后只在 `createFollower(HardwareMap hardwareMap)` 的 `new FollowerBuilder(...)` 链上加入：
 
 ```java
 .pinpointLocalizer(localizerConstants)
@@ -198,7 +220,38 @@ if(safetyLocked||!TEST_STAGE.driveAllowed||follower==null||path==null) { /* stop
 if(safetyLocked||!TEST_STAGE.servoAllowed||servo==null||!inClosedUnitRange(position)) { /* stop */ }
 ```
 
-这是 iterative OpMode：`loop()` 每轮先执行一次受保护的 `follower.update()`，再由 enum state 和 `!follower.isBusy()` 推进 `DRIVE_TO_SCORE`、`RELEASE`、`RELEASE_WAIT`、`DRIVE_TO_PARK`、`DONE`。它不使用 `sleep` 或阻塞循环。`stop()` 先锁定状态，再调用 `breakFollowing()` 做 best-effort cancellation；仍要用 Driver Station STOP 和空场安全员作为真实安全边界。
+这是 iterative OpMode：只有当前 stage 允许 drive 且安全锁已解除时，`loop()` 才通过下面的 canonical gateway 更新 follower；短路径完成后由 enum state transition 进入 `DONE`：
+
+```java
+private void updateFollowerIfAllowed() {
+    if (safetyLocked||!TEST_STAGE.driveAllowed||follower==null) return;
+    follower.update();
+}
+
+private void updateShortDriveTest() {
+    if (autoState==AutoState.DRIVE_TO_PARK&&!follower.isBusy()) autoState=AutoState.DONE;
+}
+```
+
+完整 Auto 同样用 `!follower.isBusy()` 推进 `DRIVE_TO_SCORE`、`RELEASE`、`RELEASE_WAIT`、`DRIVE_TO_PARK`、`DONE`，不使用 `sleep` 或阻塞循环。STOP 先提交逻辑锁定和 `STOPPED` state，再 best-effort 取消 follower：
+
+```java
+@Override
+public void stop() {
+    safetyLocked=true;
+    autoState=AutoState.STOPPED;
+    stopFollowingBestEffort();
+}
+
+// stopFollowingBestEffort() 内；follower 为空时会先 return
+try {
+    follower.breakFollowing();
+} catch (RuntimeException ignored) {
+    // Logical stop state is already committed.
+}
+```
+
+Driver Station STOP 和空场安全员仍是真实安全边界。
 
 ## 四阶段实车测试清单
 
@@ -207,9 +260,9 @@ if(safetyLocked||!TEST_STAGE.servoAllowed||servo==null||!inClosedUnitRange(posit
 ### 1. CONFIG_CHECK
 
 - 前置：机器人架起或驱动轮离地；机构卸载；急停人员就位；十二项已双人检查，`CONFIGURATION_COMPLETE=true`。
-- 允许动作：无 drive、无 servo；只初始化 follower、localizer 和 Servo 资源。
-- 记录 telemetry：`validationIssues`、`safety locked`、stage、state、runtime failure、x/y/heading。
-- 通过：validation issue 为空，hardware resources 都能初始化，pose 静止/手推方向正确，任何机构均不运动。
+- 允许动作：无 drive、无 servo、无定位运动验证；只做 static config 校验、follower/path/servo resource construction，并设置起始 pose。
+- 记录 telemetry：`CONFIG: ...`、`safety locked`、`test stage`、`auto state`、`runtime failure` 和 initial static pose/telemetry。
+- 通过：没有 `CONFIG: ...` validation issue，resources 都能构造，初始静态 pose 与填写值一致，任何机构均不运动。SafePedroAuto 在本阶段不会更新 localizer；移动与方向验证必须在官方 `Localization Test` 中完成。
 - Reviewer：`<name>`；Date：`<YYYY-MM-DD>`；Robot/evidence：`<robot/link>`。
 - 结果：通过前写 `硬件阶段未验证`；保存证据后写 `内容已验证`（配置内容）并晋级。
 
@@ -217,7 +270,7 @@ if(safetyLocked||!TEST_STAGE.servoAllowed||servo==null||!inClosedUnitRange(posit
 
 - 前置：CONFIG_CHECK 证据已审；驱动轮离地或电机断能；机构周围清空，从机械安全位置开始。
 - 允许动作：只允许 Servo closed → 等待 → open；drive capability 为 false。
-- 记录 telemetry：stage、state、elapsed seconds、safety lock、validation issue；视频记录机构位置与声音。
+- 记录 telemetry：`test stage`、`auto state`、`state elapsed (s)`、`safety locked`、`CONFIG: ...`；视频记录机构位置与声音。
 - 通过：closed/open 均可重复到位，无顶死、碰撞、拉线或非预期驱动运动。
 - Reviewer：`<name>`；Date：`<YYYY-MM-DD>`；Robot/evidence：`<robot/link>`。
 - 结果：通过前 `硬件阶段未验证`；通过后编辑为 `SHORT_DRIVE`，重新 build/deploy。
@@ -226,7 +279,7 @@ if(safetyLocked||!TEST_STAGE.servoAllowed||servo==null||!inClosedUnitRange(posit
 
 - 前置：Localization Test 已通过；空场短路线已手推；机构固定安全；机器人后方/侧方留足停止距离，安全员持 STOP。
 - 允许动作：只允许 start → short-test path；Servo capability 为 false，power 不得超过 `0.30`。
-- 记录 telemetry：x/y/heading、`follower busy`、state、runtime failure；另记电池电压、末端误差与停止位置。
+- 记录 telemetry：`x (in)`、`y (in)`、`heading (rad)`、`follower busy`、`auto state`、`runtime failure`；另记电池电压、末端误差与停止位置。
 - 通过：只沿预期方向走短直线，在安全区停止，无明显打滑/振荡，STOP 能结束跟随。
 - Reviewer：`<name>`；Date：`<YYYY-MM-DD>`；Robot/evidence：`<robot/link>`。
 - 结果：通过前 `硬件阶段未验证`；通过后才编辑为 `FULL_AUTO`，重新 build/deploy。
@@ -235,32 +288,32 @@ if(safetyLocked||!TEST_STAGE.servoAllowed||servo==null||!inClosedUnitRange(posit
 
 - 前置：前三阶段均有同一机器人/配置的证据；完整路线手推通过；场地清空；机构装载方式与比赛一致；安全员与边界明确。
 - 允许动作：closed → score path → release → wait → park path；不允许额外机构或未评审路径。
-- 记录 telemetry：每个 enum state 的进入时间、x/y/heading、busy、elapsed、runtime failure；视频和末端 pose/误差。
+- 记录 telemetry：每个 enum state 的进入时间，以及 `x (in)`、`y (in)`、`heading (rad)`、`follower busy`、`state elapsed (s)`、`runtime failure`；视频和末端 pose/误差。
 - 通过：连续多次完成正确时序，路径/机构均无碰撞，末端误差、释放可靠性和停车范围达到队伍预先阈值。
 - Reviewer：`<name>`；Date：`<YYYY-MM-DD>`；Robot/evidence：`<robot/link>`。
 - 结果：证据不足仍写 `硬件阶段未验证`；只有真实证据齐全才写 `硬件四阶段已验证：<robot/reviewer/date>`。
 
 ## Telemetry 与排障
 
-首先读 `validationIssues` 和 `runtime failure`，不要先加大功率或 PID：
+Driver Station 上的精确 telemetry labels 是 `configuration complete`、`test stage`、`auto state`、`safety locked`、`runtime failure`、`x (in)`、`y (in)`、`heading (rad)`、`follower busy`、`state elapsed (s)`；每项校验问题显示为 `CONFIG: ...`。先读 `CONFIG: ...` 和 `runtime failure`，不要先加大功率或 PID：
 
 | 现象 | 先观察 | 优先检查/动作 |
 |---|---|---|
-| INIT 被锁 | validation issue、stage、resource init | 十二字段 sentinel、hardware name、Follower/Servo 是否存在；一次修一项 |
-| 前推 x 不增 | x/y/heading 直播值 | Pinpoint x port、forward direction、resolution；不要调 follower |
+| INIT 被锁 | `CONFIG: ...`、`test stage`、resource init | 十二字段 sentinel、hardware name、Follower/Servo 是否存在；一次修一项 |
+| 前推 x 不增 | `x (in)`、`y (in)`、`heading (rad)` | Pinpoint x port、forward direction、resolution；不要调 follower |
 | 左移 y 反号 | y 与 pod 原始方向 | y port、strafe direction、offset 符号 |
 | 原地旋转画弧 | x/y 随 heading 的轨迹 | 两个 pod offset、旋转中心、机械松动 |
 | 路径镜像 | start pose 与坐标草图 | 原点/联盟变换、视觉来源转换；禁止手工猜符号 |
 | 振荡/过冲 | pose 噪声、velocity、busy、末端误差 | 先定位与机械，再按所选 braking/PIDF 路线；不要混抄参数 |
 | 提前/永不完成 | busy 变化、velocity、平移/heading 误差、timeout | 找出实际放行或阻塞的 constraint，再单独调整 |
 | Servo 顶死 | 视频、声音、供电、commanded position | 立即 STOP；回到 SERVO_ONLY，以小步重测位置 |
-| telemetry 自身报错 | runtime failure 与 safety lock | 代码会进入 safety stop；修复 telemetry 前不继续硬件测试 |
+| telemetry 自身报错 | `runtime failure` 与 `safety locked` | 代码会进入 safety stop；修复 telemetry 前不继续硬件测试 |
 
 每次测试都保存 stage、Git commit、robot configuration、battery、电池电压、输入值、telemetry/video 和 reviewer。低误差 telemetry 不等于避障、机构安全或比赛可靠。
 
 ## 20827-inspired advanced mapping
 
-20827 的 Auto 经验可作为 `20827-inspired pattern`：用 enum state machine 表达“到点 → 机构动作 → 等待 → 下一条路径”，每个 loop 更新 follower，再用完成条件推进状态；把 pose/path 构建与状态转换分开，便于审查。`SafePedroAuto` 把这个思路压缩成新人可审查的最小流程。
+20827 的 Auto 经验可作为 `20827-inspired pattern`：用 enum state machine 表达“到点 → 机构动作 → 等待 → 下一条路径”，在允许 drive 的 active state 中由每个 loop 更新 follower，再用完成条件推进状态；把 pose/path 构建与状态转换分开，便于审查。`SafePedroAuto` 把这个思路压缩成新人可审查的最小流程。
 
 边界必须明确：20827 仓库不是 Pedro 官方规范，也不是 16093 或新机器人的参数来源。不得复制其中的 hardware names、servo positions、poses、offsets、directions、mass、velocity、PIDF、power 或 timeout。想增加并行机构、复杂路径或传感器分支时，先让四阶段最小 Auto 在当前机器人通过，再单独设计和评审。
 

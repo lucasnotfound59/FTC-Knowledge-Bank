@@ -346,11 +346,108 @@ class PedroTutorialAcceptanceTest {
     @Test
     fun `guide links the canonical example without duplicating the class`() {
         val guide=Files.readString(guidePath)
+        val compactGuide=compact(guide)
         assertTrue("../../examples/pedro/SafePedroAuto.java" in guide)
         assertFalse("public class SafePedroAuto" in guide)
         setOf("CONFIG_CHECK","SERVO_ONLY","SHORT_DRIVE","FULL_AUTO").forEach {
             assertTrue(it in guide,it)
         }
+        setOf(
+            "privatevoidupdateFollowerIfAllowed(){",
+            "if(safetyLocked||!TEST_STAGE.driveAllowed||follower==null)return;",
+            "follower.update();",
+            "if(autoState==AutoState.DRIVE_TO_PARK&&!follower.isBusy())autoState=AutoState.DONE;",
+            "publicvoidstop(){",
+            "safetyLocked=true;autoState=AutoState.STOPPED;stopFollowingBestEffort();",
+            "try{follower.breakFollowing();}"
+        ).forEach { assertTrue(it in compactGuide,it) }
+    }
+
+    @Test
+    fun `config check is static and delegates movement validation to localization test`() {
+        val guide=Files.readString(guidePath)
+        val configCheck=guide.substringAfter("### 1. CONFIG_CHECK")
+            .substringBefore("### 2. SERVO_ONLY")
+
+        assertTrue("static config" in configCheck)
+        assertTrue("follower/path/servo resource construction" in configCheck)
+        assertTrue("initial static pose/telemetry" in configCheck)
+        assertTrue("移动与方向验证必须在官方 `Localization Test` 中完成" in configCheck)
+        assertFalse("手推" in configCheck)
+        assertFalse("live pose" in configCheck)
+        assertFalse("follower.update()" in configCheck)
+    }
+
+    @Test
+    fun `route B gives exact official dependency edits without module ambiguity`() {
+        val guide=Files.readString(guidePath)
+        val routeB=guide.substringAfter("### Route B — current FIRST v11.2 team project")
+            .substringBefore("## 坐标系")
+
+        assertTrue("`build.dependencies.gradle` 的 `repositories {}`" in routeB)
+        assertTrue("maven { url = \"https://mymaven.bylazar.com/releases\" }" in routeB)
+        assertTrue("implementation 'com.pedropathing:ftc:2.1.2'" in routeB)
+        assertTrue("implementation 'com.pedropathing:telemetry:1.0.0'" in routeB)
+        assertTrue("implementation 'com.bylazar:fullpanels:1.0.12'" in routeB)
+        assertTrue("只有复制并使用 Panels/tuners 时" in routeB)
+        assertTrue("outside the core fixture scope" in routeB)
+        assertTrue("compile SDK 34" in routeB)
+        assertFalse("TeamCode/build.gradle" in routeB)
+    }
+
+    @Test
+    fun `route A separates snapshot build from configured hardware deployment`() {
+        val guide=Files.readString(guidePath)
+        val routeA=guide.substringAfter("### Route A — official Quickstart snapshot")
+            .substringBefore("### Route B — current FIRST v11.2 team project")
+        val buildOnly=routeA.indexOf("未修改 snapshot 只做 Gradle Sync 和 build")
+        val noDeploy=routeA.indexOf("不要 deploy 或运行任何机器人 OpMode")
+        val configure=routeA.indexOf("配置当前机器人的 hardware names、localizer、offsets 和 directions")
+        val approval=routeA.indexOf("reviewer approval")
+        val deploy=routeA.indexOf("获得批准后才 deploy")
+        val localization=routeA.indexOf("运行 `Localization Test`")
+
+        listOf(buildOnly,noDeploy,configure,approval,deploy,localization).forEach {
+            assertTrue(it>=0,"missing Route A separation cue")
+        }
+        assertTrue(buildOnly<noDeploy)
+        assertTrue(noDeploy<configure)
+        assertTrue(configure<approval)
+        assertTrue(approval<deploy)
+        assertTrue(deploy<localization)
+    }
+
+    @Test
+    fun `custom pinpoint resolution uses selected distance unit and measurable formula`() {
+        val guide=Files.readString(guidePath)
+        val pinpoint=guide.substringAfter("## Pinpoint 完整新生流程")
+            .substringBefore("## 官方调参顺序")
+
+        setOf(
+            "ticks per selected `distanceUnit`",
+            "ticks/inch","ticks/mm",
+            "encoder CPR / pod-wheel circumference",
+            "manufacturer CPR/gearing",
+            "measured/effective wheel diameter",
+            "customEncoderResolution=(encoderCPR*gearRatio)/(Math.PI*effectivePodDiameter)",
+            "Localization Test measured-vs-reported distance"
+        ).forEach { assertTrue(it in pinpoint,it) }
+        assertTrue("并不总是 ticks/mm" in pinpoint)
+        assertFalse("Pedro/Pinpoint API 要求的自定义分辨率" in pinpoint)
+    }
+
+    @Test
+    fun `guide uses exact driver station telemetry labels and has no localization typo`() {
+        val guide=Files.readString(guidePath)
+        setOf(
+            "`CONFIG: ...`","`configuration complete`","`test stage`","`auto state`",
+            "`safety locked`","`runtime failure`","`x (in)`","`y (in)`",
+            "`heading (rad)`","`follower busy`","`state elapsed (s)`"
+        ).forEach { assertTrue(it in guide,it) }
+        assertFalse("`validationIssues`" in guide)
+        assertFalse("`elapsed seconds`" in guide)
+        assertFalse("`safety lock`" in guide)
+        assertFalse("y 墤" in guide)
     }
 
     @Test
