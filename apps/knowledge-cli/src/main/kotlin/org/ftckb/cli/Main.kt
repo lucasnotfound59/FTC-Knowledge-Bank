@@ -12,7 +12,51 @@ fun runCli(args:List<String>,out:PrintStream=System.out):Int {
         out.println("usage: knowledge-cli <validate|resolve> <knowledge-root> [--team N --season S]")
         return 64
     }
-    val loaded=FileKnowledgeRepository.load(Path.of(args[1]))
+    if (args[0] !in setOf("validate","resolve")) {
+        out.println("unknown command: ${args[0]}")
+        return 64
+    }
+    if (args[0]=="validate" && args.size!=2) {
+        out.println("validate accepts exactly one knowledge root")
+        return 64
+    }
+    if (args[0]=="resolve" && "--team" !in args.drop(2)) {
+        out.println("missing --team")
+        return 64
+    }
+    if (args[0]=="resolve" && "--season" !in args.drop(2)) {
+        out.println("missing --season")
+        return 64
+    }
+    if (args[0]=="resolve" && args.drop(2).size%2!=0) {
+        out.println("resolve options must be flag-value pairs")
+        return 64
+    }
+    if (args[0]=="resolve") {
+        val optionPairs=args.drop(2).chunked(2)
+        val unknown=optionPairs.firstOrNull { it[0] !in setOf("--team","--season") }
+        if (unknown!=null) {
+            out.println("unknown resolve option: ${unknown[0]}")
+            return 64
+        }
+        val duplicate=optionPairs.groupBy { it[0] }.entries.firstOrNull { it.value.size>1 }
+        if (duplicate!=null) {
+            out.println("duplicate resolve option: ${duplicate.key}")
+            return 64
+        }
+        val empty=optionPairs.firstOrNull { it[1].isEmpty() }
+        if (empty!=null) {
+            out.println("empty value for ${empty[0]}")
+            return 64
+        }
+    }
+    val loaded=try {
+        FileKnowledgeRepository.load(Path.of(args[1]))
+    } catch (exception:Exception) {
+        val detail=exception.message?.lineSequence()?.firstOrNull()?.trim().orEmpty()
+        out.println("error loading knowledge: ${detail.ifEmpty { exception.javaClass.simpleName }}")
+        return 2
+    }
     if (loaded.violations.isNotEmpty()) {
         loaded.violations.sortedWith(compareBy({ it.ruleId },{ it.field })).forEach {
             out.println("error rule=${it.ruleId} field=${it.field} message=${it.message}")
@@ -37,7 +81,7 @@ fun runCli(args:List<String>,out:PrintStream=System.out):Int {
                 0
             }
         }
-        else -> 64.also { out.println("unknown command: ${args[0]}") }
+        else -> error("unreachable command: ${args[0]}")
     }
 }
 
