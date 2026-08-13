@@ -1,5 +1,6 @@
 package org.ftckb.cli
 
+import java.net.URI
 import java.nio.file.Files
 import java.nio.file.Path
 import org.ftckb.domain.ApproverRole
@@ -10,11 +11,49 @@ import org.ftckb.domain.RuleStatus
 import org.ftckb.knowledge.FileKnowledgeRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 
 class KnowledgeGuideAcceptanceTest {
     private val root=Path.of("..","..","knowledge").normalize()
+    private val linkPattern=Regex("""\[[^]]+]\(([^)]+)\)""")
+
+    private fun headingSlugs(markdown:String):Set<String> {
+        val counts=mutableMapOf<String,Int>()
+        return markdown.lineSequence().mapNotNull { line ->
+            val heading=Regex("""^#{1,6}\s+(.+?)\s*$""").matchEntire(line)?.groupValues?.get(1)
+                ?: return@mapNotNull null
+            val base=heading.lowercase()
+                .replace(Regex("""[`*_~]"""),"")
+                .replace(Regex("""[^\p{L}\p{N}\s-]"""),"")
+                .trim().replace(Regex("""\s+"""),"-")
+            val index=counts.getOrDefault(base,0)
+            counts[base]=index+1
+            if (index==0) base else "$base-$index"
+        }.toSet()
+    }
+
+    private fun assertGuideLinks(guide:Path) {
+        linkPattern.findAll(Files.readString(guide)).forEach { match ->
+            val link=match.groupValues[1]
+            if (link.startsWith("http://") || link.startsWith("https://")) {
+                val uri=URI(link)
+                assertTrue(uri.isAbsolute && uri.scheme=="https" && uri.host!=null,"$guide has non-HTTPS link $link")
+                assertTrue(uri.userInfo==null,"$guide has URL user-info $link")
+                return@forEach
+            }
+            val filePart=link.substringBefore('#')
+            val fragment=link.substringAfter('#',"")
+            val target=if (filePart.isBlank()) guide else guide.parent.resolve(filePart).normalize()
+            assertTrue(Files.exists(target),"$guide has missing link $link")
+            if (fragment.isNotBlank() && target.toString().endsWith(".md")) {
+                assertTrue(fragment in headingSlugs(Files.readString(target)),"$guide has missing fragment $link")
+            }
+        }
+    }
+
     private val expected=mapOf(
         "guides/setup/android-studio-ftc-sdk.md" to setOf(
             "shared.ftc-sdk-pin-release",
@@ -83,19 +122,45 @@ class KnowledgeGuideAcceptanceTest {
     }
 
     @Test
-    fun `relative links in knowledge guides resolve`() {
-        val linkPattern=Regex("""\[[^]]+]\(([^)]+)\)""")
+    fun `knowledge guide links resolve locally and external syntax is safe`() {
         Files.walk(root.resolve("guides")).use { paths ->
             paths.filter { Files.isRegularFile(it) && it.toString().endsWith(".md") }.forEach { guide ->
-                linkPattern.findAll(Files.readString(guide)).forEach { match ->
-                    val link=match.groupValues[1]
-                    if (!link.startsWith("http://") && !link.startsWith("https://") &&
-                        !link.startsWith("#") && !link.startsWith("mailto:")) {
-                        val target=guide.parent.resolve(link.substringBefore('#')).normalize()
-                        assertTrue(Files.exists(target),"$guide has missing link $link")
-                    }
-                }
+                assertGuideLinks(guide)
             }
         }
+    }
+
+    @Test
+    fun `github style heading fragments support unicode formatting and duplicate suffixes`() {
+        assertEquals(
+            setOf("pedro-路径","重复-标题","重复-标题-1"),
+            headingSlugs("# Pedro `路径`\n## 重复 *标题*\n### 重复 标题\n")
+        )
+    }
+
+    @Test
+    fun `same file and cross file fragments resolve while bad fragments fail`(@TempDir tempDir:Path) {
+        val target=tempDir.resolve("target.md")
+        val guide=tempDir.resolve("guide.md")
+        Files.writeString(target,"# 目标 标题\n")
+        Files.writeString(
+            guide,
+            "# 重复标题\n## 重复标题\n[同文件](#重复标题-1)\n[跨文件](target.md#目标-标题)\n"
+        )
+        assertGuideLinks(guide)
+
+        Files.writeString(guide,"# 已有\n[坏锚点](target.md#不存在)\n")
+        assertThrows(AssertionError::class.java) { assertGuideLinks(guide) }
+    }
+
+    @Test
+    fun `external links must be absolute HTTPS without user info`(@TempDir tempDir:Path) {
+        val guide=tempDir.resolve("guide.md")
+        Files.writeString(guide,"[HTTP](http://example.com)\n")
+        assertThrows(AssertionError::class.java) { assertGuideLinks(guide) }
+        Files.writeString(guide,"[Credentials](https://user@example.com/path)\n")
+        assertThrows(AssertionError::class.java) { assertGuideLinks(guide) }
+        Files.writeString(guide,"[No host](https:/path)\n")
+        assertThrows(AssertionError::class.java) { assertGuideLinks(guide) }
     }
 }

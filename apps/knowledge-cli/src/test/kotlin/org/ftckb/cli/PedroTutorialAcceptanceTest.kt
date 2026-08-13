@@ -464,6 +464,17 @@ class PedroTutorialAcceptanceTest {
     }
 
     @Test
+    fun `20827 is cited only as a pinned non normative architecture case`() {
+        val guide=Files.readString(guidePath)
+        val commit="118c28e137334bbbea510d77f1fa384e8b1b5779"
+        assertTrue(commit in guide)
+        setOf("TopAutoBase","BottomAutoBase","TopAutoRed","TopAutoBlue","Constants.createFollower","XKCommandOpmode")
+            .forEach { assertTrue(it in guide,it) }
+        assertTrue("非规范" in guide)
+        assertTrue("不是 Pedro 官方要求" in guide)
+    }
+
+    @Test
     fun `pedro rules are approved shared and active for both teams`() {
         val loaded=org.ftckb.knowledge.FileKnowledgeRepository.load(repositoryRoot.resolve("knowledge"))
         assertTrue(loaded.violations.isEmpty(),loaded.violations.joinToString())

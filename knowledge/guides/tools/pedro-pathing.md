@@ -313,9 +313,20 @@ Driver Station 上的精确 telemetry labels 是 `configuration complete`、`tes
 
 ## 20827-inspired advanced mapping
 
-20827 的 Auto 经验可作为 `20827-inspired pattern`：用 enum state machine 表达“到点 → 机构动作 → 等待 → 下一条路径”，在允许 drive 的 active state 中由每个 loop 更新 follower，再用完成条件推进状态；把 pose/path 构建与状态转换分开，便于审查。`SafePedroAuto` 把这个思路压缩成新人可审查的最小流程。
+本节只记录在队伍代码中观察到的结构来源（observed team-code provenance）。它是可整体删除的**非规范**案例：20827 仓库不是 Pedro 技术权威，下面的架构也**不是 Pedro 官方要求**；删除本节不会改变本文任何 Pedro 官方指令、安全约定或 machine rule。
 
-边界必须明确：20827 仓库不是 Pedro 官方规范，也不是 16093 或新机器人的参数来源。不得复制其中的 hardware names、servo positions、poses、offsets、directions、mass、velocity、PIDF、power 或 timeout。想增加并行机构、复杂路径或传感器分支时，先让四阶段最小 Auto 在当前机器人通过，再单独设计和评审。
+案例固定到 20827 commit [`118c28e137334bbbea510d77f1fa384e8b1b5779`](https://github.com/xiaokai-lyk/FTC20827-2026Decode/tree/118c28e137334bbbea510d77f1fa384e8b1b5779/TeamCode/src/main/java/org/firstinspires/ftc/teamcode)。只比较结构，不复制 route coordinates 或 mechanism sequence：
+
+| Beginner example | 20827 case | Migration lesson |
+|---|---|---|
+| one `SafePedroAuto` | [`TopAutoBase` / `BottomAutoBase`](https://github.com/xiaokai-lyk/FTC20827-2026Decode/tree/118c28e137334bbbea510d77f1fa384e8b1b5779/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/autos) | move route flow into a reusable base only after one route is understood |
+| Pose constants in one file | [`TopAutoRed` / `TopAutoBlue` constructor parameters](https://github.com/xiaokai-lyk/FTC20827-2026Decode/tree/118c28e137334bbbea510d77f1fa384e8b1b5779/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/autos) | thin alliance classes supply coordinates without duplicating state flow |
+| `Constants.createFollower` | [same centralized factory pattern](https://github.com/xiaokai-lyk/FTC20827-2026Decode/blob/118c28e137334bbbea510d77f1fa384e8b1b5779/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/pedroPathing/Constants.java) | keep drivetrain/localizer construction out of match logic |
+| enum state machine | [integer `pathState` in the case study](https://github.com/xiaokai-lyk/FTC20827-2026Decode/tree/118c28e137334bbbea510d77f1fa384e8b1b5779/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/autos) | retain named enum states for newcomer code; integer states are not required |
+| direct Servo gateway | [`XKCommandOpmode` + FTCLib scheduler](https://github.com/xiaokai-lyk/FTC20827-2026Decode/blob/118c28e137334bbbea510d77f1fa384e8b1b5779/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/XKCommandOpmode.java) | command framework is an optional mechanism-coordination upgrade |
+| prebuilt paths | [`Supplier<PathChain>` from current pose](https://github.com/xiaokai-lyk/FTC20827-2026Decode/tree/118c28e137334bbbea510d77f1fa384e8b1b5779/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/autos) | dynamic return paths are advanced and require explicit current-pose reasoning |
+
+20827 也不是 16093 或新机器人的参数来源。不得复制其中的 hardware names、servo positions、poses、offsets、directions、mass、velocity、PIDF、power 或 timeout。想增加并行机构、复杂路径或传感器分支时，先让四阶段最小 Auto 在当前机器人通过，再单独设计和评审。
 
 ## 相关规则与来源
 
