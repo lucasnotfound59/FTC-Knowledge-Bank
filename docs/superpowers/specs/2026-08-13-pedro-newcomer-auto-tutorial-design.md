@@ -58,7 +58,7 @@ The tutorial labels the following separately:
 
 ### 4.1 Machine rules
 
-`knowledge/shared/tools/pedro-pathing.yaml` remains the machine-facing layer. It contains narrow, evidence-backed candidate rules such as current-robot tuning, localization before follower tuning, and explicit coordinate conversion.
+`knowledge/shared/tools/pedro-pathing.yaml` remains the machine-facing layer. It contains narrow, evidence-backed approved shared rules such as current-robot tuning, localization before follower tuning, and explicit coordinate conversion.
 
 The 20827 architecture is not added as a shared rule. A team may choose another correct Auto architecture.
 
@@ -90,7 +90,7 @@ This section explains the migration; it does not include 20827's shooter, intake
 
 ```mermaid
 flowchart LR
-    A["Official Pedro docs and pinned source"] --> B["Candidate YAML rules"]
+    A["Official Pedro docs and pinned source"] --> B["Approved shared YAML rules"]
     A --> C["Chinese Pedro tutorial"]
     D["20827 commit-pinned team example"] -->|"non-normative architecture case"| C
     B --> E["FTC Agent constraints"]
@@ -229,8 +229,8 @@ Servo telemetry says what was commanded, not that the mechanism physically reach
 
 ### 9.1 Automated content checks
 
-- The Pedro YAML passes schema, evidence, and candidate-policy validation.
-- Candidate Pedro rules remain absent from active resolution output.
+- The Pedro YAML passes schema, evidence, and approval-policy validation.
+- Approved Pedro rules resolve active for both 20827 and 16093 in season 2025-2026.
 - Every rule ID named by the guide exists.
 - Markdown internal links, source links, and the canonical example link resolve.
 - Every value in `CONFIGURE HERE` appears in the parameter dictionary with acquisition method, unit/range, and validation.
@@ -263,7 +263,7 @@ If no physical robot was used, the release may state “content and compilation 
 - automatically remembering or approving physical test completion;
 - season-specific scoring strategy;
 - multi-mechanism scheduling, vision correction, obstacle avoidance, or trajectory optimization;
-- promoting candidate rules to approved status; and
+- changing the approved Pedro rules or their approval metadata; and
 - implementing the full IDE or Agent architecture in this slice.
 
 ## 11. Source Set

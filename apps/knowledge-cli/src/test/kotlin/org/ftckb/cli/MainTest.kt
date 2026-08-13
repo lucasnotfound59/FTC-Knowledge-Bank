@@ -156,7 +156,31 @@ class MainTest {
             PrintStream(output)
         )
         assertEquals(0,code)
-        assertEquals("active official.keep-customizations-in-teamcode\n",output.toString())
+        assertEquals(
+            """
+            active official.keep-customizations-in-teamcode
+            active shared.dashboard-pin-stable-dependency
+            active shared.dependency-verify-sync-build-run
+            active shared.ftc-sdk-pin-release
+            active shared.ftc-sdk-preserve-build-tooling
+            active shared.ftc-sdk-separate-toolchain-versions
+            active shared.ftclib-check-current-prerequisites
+            active shared.ftclib-pin-module-versions
+            active shared.gobilda-identify-exact-sku
+            active shared.gobilda-separate-stall-and-operating-values
+            active shared.gobilda-servo-mode-and-pwm-range
+            active shared.gobilda-use-output-shaft-encoder-resolution
+            active shared.limelight-back-up-before-os-update
+            active shared.limelight-check-result-validity
+            active shared.limelight-configure-camera-pose
+            active shared.limelight-enforce-freshness-policy
+            active shared.limelight-synchronize-pipeline-dependent-reads
+            active shared.pedro-explicit-coordinate-conversion
+            active shared.pedro-localization-before-follower
+            active shared.pedro-tune-current-robot
+            """.trimIndent()+"\n",
+            output.toString()
+        )
     }
 
     @Test

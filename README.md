@@ -9,7 +9,7 @@
 | 状态 | 能力 |
 | --- | --- |
 | 已实现 | schema v1/v2 规则模型、Git/官方网页证据、严格本地 YAML 加载、证据与审批校验、规则优先级和冲突解析、`validate` / `resolve` CLI、20827 与 16093 初始档案、自动化测试 |
-| 部分完成 | `knowledge/` 当前包含 23 条规则：1 条已批准官方规则和 22 条候选规则；已有 6 篇 FTC SDK、依赖与工具教程，队伍知识内容仍需扩充 |
+| 部分完成 | `knowledge/` 当前包含 23 条规则：20 条已批准规则（1 条官方规则、19 条共享规则）和 3 条候选规则；候选规则保持 inactive，已有 6 篇 FTC SDK、依赖与工具教程，队伍知识内容仍需扩充 |
 | 尚未实现 | 自动导入和分析 FTC 仓库、候选规范提取、审批 UI/历史、Ask/Edit/Run Agent、Android Studio 插件、Control Hub 部署 |
 
 当前使用 JDK 21 验证的测试套件有 66 项测试全部通过；这是当前快照，测试数量会随功能增长。
@@ -73,14 +73,17 @@ Windows PowerShell 使用 wrapper 的 `.bat` 文件：
 
 后文所有 `./gradlew` 命令在 Windows 上都替换为 `.\gradlew.bat`。
 
-准确输出为：
+关键输出会包括：
 
 ```text
 validation=ok rules=23
 active official.keep-customizations-in-teamcode
+active shared.dashboard-pin-stable-dependency
+...
+active shared.pedro-tune-current-robot
 ```
 
-另外 22 条规则都是 `candidate`，因此没有出现在 active 输出中是正确结果，也证明候选规则不会自动生效。
+该上下文会输出官方规则以及所有适用的已批准共享规则（共 20 条）；其余 3 条规则是 `candidate`，保持 inactive，因此不会出现在 active 输出中。候选规则不会自动生效。
 
 ## 完整使用手册
 
@@ -112,8 +115,8 @@ CLI 会递归读取知识根目录中扩展名为小写 `.yaml` 或 `.yml` 的�
 | --- | --- |
 | `knowledge/official/rules.yaml` | FIRST 官方约束 |
 | `knowledge/shared/rules.yaml` | 跨队共享规则与候选规则 |
-| `knowledge/shared/setup/` | Android Studio、FTC SDK 与第三方依赖候选规则 |
-| `knowledge/shared/tools/` | Pedro、goBILDA 与 Limelight 工具候选规则 |
+| `knowledge/shared/setup/` | Android Studio、FTC SDK 与第三方依赖共享规则 |
+| `knowledge/shared/tools/` | Pedro、goBILDA 与 Limelight 工具共享规则 |
 | `knowledge/guides/` | 面向队员的中文教程；不会被规则加载器解析 |
 | `knowledge/teams/<team>/rules.yaml` | 队号专属规则与候选规则 |
 | `knowledge/schema/examples/rule-example.yaml.example` | schema v1 Git 证据示例；扩展名不会被递归加载 |

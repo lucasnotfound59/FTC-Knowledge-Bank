@@ -2,13 +2,14 @@ package org.ftckb.cli
 
 import java.nio.file.Files
 import java.nio.file.Path
+import org.ftckb.domain.ApproverRole
 import org.ftckb.domain.RuleAuthority
 import org.ftckb.domain.RuleContext
 import org.ftckb.domain.RuleResolver
 import org.ftckb.domain.RuleStatus
 import org.ftckb.knowledge.FileKnowledgeRepository
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -49,7 +50,7 @@ class KnowledgeGuideAcceptanceTest {
     )
 
     @Test
-    fun `guide rules have exact candidate governance and never resolve active`() {
+    fun `guide rules have approved shared governance and resolve active`() {
         val loaded=FileKnowledgeRepository.load(root)
         assertTrue(loaded.violations.isEmpty(),loaded.violations.joinToString())
         val byId=loaded.rules.associateBy { it.id }
@@ -57,14 +58,16 @@ class KnowledgeGuideAcceptanceTest {
 
         assertEquals(19,expectedIds.size)
         assertEquals(expectedIds,loaded.rules.map { it.id }.filter { it in expectedIds }.toSet())
+        val expectedActiveIds=listOf("official.keep-customizations-in-teamcode")+expectedIds.sorted()
 
         expected.forEach { (guidePath,ids) ->
             val guide=Files.readString(root.resolve(guidePath))
             ids.forEach { id ->
                 val rule=byId.getValue(id)
-                assertEquals(RuleStatus.CANDIDATE,rule.status,id)
+                assertEquals(RuleStatus.APPROVED,rule.status,id)
                 assertEquals(RuleAuthority.SHARED,rule.authority,id)
-                assertNull(rule.approval,id)
+                assertNotNull(rule.approval,id)
+                assertEquals(ApproverRole.OVERALL_SOFTWARE_LEAD,rule.approval?.role,id)
                 assertTrue(id in guide,"$guidePath must cite $id")
             }
             assertTrue("## 相关规则" in guide,"$guidePath must explain governing rules")
@@ -72,10 +75,11 @@ class KnowledgeGuideAcceptanceTest {
             assertTrue("安全" in guide,"$guidePath must state safety or misuse boundaries")
         }
 
-        val resolution=RuleResolver.resolve(loaded.rules,RuleContext("20827","2025-2026"))
-        assertTrue(resolution.conflicts.isEmpty(),resolution.conflicts.joinToString())
-        assertEquals(listOf("official.keep-customizations-in-teamcode"),resolution.activeRules.map { it.id })
-        assertTrue(resolution.activeRules.none { it.id in expectedIds })
+        for (team in listOf("20827","16093")) {
+            val resolution=RuleResolver.resolve(loaded.rules,RuleContext(team,"2025-2026"))
+            assertTrue(resolution.conflicts.isEmpty(),resolution.conflicts.joinToString())
+            assertEquals(expectedActiveIds,resolution.activeRules.map { it.id },team)
+        }
     }
 
     @Test

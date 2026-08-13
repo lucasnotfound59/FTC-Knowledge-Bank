@@ -199,7 +199,7 @@ public class PedroSmokeTest extends OpMode {
 - `shared.pedro-localization-before-follower`
 - `shared.pedro-explicit-coordinate-conversion`
 
-这些规则当前都是 `candidate`。
+这些规则当前都是已批准的 `shared` 规则，且在 2025-2026 赛季对 20827 与 16093 的解析中生效。
 
 ## 官方来源
 

@@ -23,7 +23,7 @@
 - Keep `CONFIGURATION_COMPLETE=false` and `TEST_STAGE=CONFIG_CHECK` in committed source.
 - Do not include 20827 coordinates, mechanisms, constants, subsystem imports, or match strategy.
 - Treat 20827 commit `118c28e137334bbbea510d77f1fa384e8b1b5779` as a non-normative architecture case only.
-- Do not promote or approve the three Pedro candidate rules.
+- Preserve the three approved Pedro shared rules and their approval metadata.
 - Do not claim hardware behavior is verified unless all four physical stages are actually run and recorded on a robot.
 - Keep the complete Java example in exactly one tracked file; the guide may link to it and quote short excerpts but may not duplicate the class.
 
@@ -805,7 +805,7 @@ fun `guide states version and provenance boundaries`() {
 }
 
 @Test
-fun `pedro rules remain candidates and inactive for both teams`() {
+fun `pedro rules are approved shared and active for both teams`() {
     val loaded=org.ftckb.knowledge.FileKnowledgeRepository.load(repositoryRoot.resolve("knowledge"))
     assertTrue(loaded.violations.isEmpty(),loaded.violations.joinToString())
     val pedroIds=setOf(
@@ -814,14 +814,25 @@ fun `pedro rules remain candidates and inactive for both teams`() {
         "shared.pedro-explicit-coordinate-conversion"
     )
     loaded.rules.filter { it.id in pedroIds }.forEach {
-        assertEquals(org.ftckb.domain.RuleStatus.CANDIDATE,it.status,it.id)
+        assertEquals(org.ftckb.domain.RuleStatus.APPROVED,it.status,it.id)
+        assertEquals(org.ftckb.domain.RuleAuthority.SHARED,it.authority,it.id)
+        assertTrue(it.approval!=null,it.id)
+        assertEquals(
+            org.ftckb.domain.ApproverRole.OVERALL_SOFTWARE_LEAD,
+            it.approval?.role,
+            it.id
+        )
     }
     for (team in listOf("20827","16093")) {
         val result=org.ftckb.domain.RuleResolver.resolve(
             loaded.rules,
             org.ftckb.domain.RuleContext(team,"2025-2026")
         )
-        assertTrue(result.activeRules.none { it.id in pedroIds },team)
+        assertEquals(
+            pedroIds,
+            result.activeRules.map { it.id }.filter { it in pedroIds }.toSet(),
+            team
+        )
     }
 }
 ```
@@ -1138,8 +1149,8 @@ Expected:
 - all root tests PASS;
 - fixture `compileDebugJavaWithJavac` PASS;
 - `validation=ok rules=23`;
-- Pedro candidate IDs do not appear in active output;
-- existing official active rule remains unchanged.
+- Pedro approved IDs appear in active output for 20827;
+- existing official priority and conflict behavior remains unchanged.
 
 - [ ] **Step 6: Perform final static and scope review**
 
