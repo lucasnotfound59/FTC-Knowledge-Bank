@@ -212,6 +212,10 @@ class RuleYamlCodecTest {
             typedCandidate("type: web\nurl: https://example.org\ntitle: Example\npublisher: Example\naccessedAt: 2026-08-13\nsection: Test\ncommit: abcdef1") to
                 "rules[0].evidence[0] contains unknown fields: commit",
             typedCandidate("type: web\nurl: https://example.org\ntitle: Example\npublisher: Example\naccessedAt: yesterday\nsection: Test") to
+                "accessedAt must use YYYY-MM-DD",
+            typedCandidate("type: web\nurl: https://example.org\ntitle: Example\npublisher: Example\naccessedAt: +10000-01-01\nsection: Test") to
+                "accessedAt must use YYYY-MM-DD",
+            typedCandidate("type: web\nurl: https://example.org\ntitle: Example\npublisher: Example\naccessedAt: 2026-8-3\nsection: Test") to
                 "accessedAt must use YYYY-MM-DD"
         )
 

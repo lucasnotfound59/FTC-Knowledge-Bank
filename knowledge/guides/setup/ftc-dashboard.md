@@ -17,7 +17,7 @@ FTC Dashboard 提供浏览器遥测、实时配置变量和图表。它适合调
 
 ## 两个 Gradle 文件为什么看起来冲突
 
-Dashboard 官方页面要求编辑根目录的 `build.dependencies.gradle`。FIRST v11.2 的 `build.common.gradle` 同时说明：队伍如需自定义构建，应优先放在 `TeamCode/build.gradle`，以降低未来合并 SDK 更新时的冲突。
+Dashboard 官方页面要求编辑根目录的 `build.dependencies.gradle`。FIRST v11.2 的 `TeamCode/build.gradle` 同时说明：队伍如需自定义构建，应优先放在该文件，以降低未来合并 SDK 更新时的冲突。
 
 本知识库把第三方 team dependency 放在 `TeamCode/build.gradle`：作用域更小，也不会修改 FIRST 集中维护的 SDK 依赖清单。如果你的队伍已有统一依赖管理方式，可以继续使用，但必须记录文件位置并避免同一仓库/依赖被声明两次。
 

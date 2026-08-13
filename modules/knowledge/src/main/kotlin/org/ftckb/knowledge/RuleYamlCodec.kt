@@ -16,6 +16,7 @@ import org.snakeyaml.engine.v2.api.Load
 import org.snakeyaml.engine.v2.api.LoadSettings
 
 object RuleYamlCodec {
+    private val localDatePattern=Regex("""\d{4}-\d{2}-\d{2}""")
     private val load=Load(LoadSettings.builder().setAllowDuplicateKeys(false).build())
     private val ruleKeys=setOf(
         "id","topic","title","instruction","rationale","status","authority","applicability",
@@ -96,7 +97,9 @@ object RuleYamlCodec {
     )
 
     private fun Map<String,Any?>.localDate(key:String):LocalDate=runCatching {
-        LocalDate.parse(string(key))
+        val value=string(key)
+        require(localDatePattern.matches(value))
+        LocalDate.parse(value)
     }.getOrElse { error("$key must use YYYY-MM-DD") }
 
     @Suppress("UNCHECKED_CAST")

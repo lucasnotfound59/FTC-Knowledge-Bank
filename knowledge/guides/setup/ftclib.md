@@ -18,7 +18,7 @@ FTCLib 是面向 FTC 的 Java 辅助库，包含 command-based 框架、控制�
 
 | FTCLib 文档要求 | v11.2 tag 当前状态 | 操作 |
 |---|---|---|
-| `mavenCentral()` | 根 `build.gradle` 与 `build.dependencies.gradle` 已有 | 不重复添加 |
+| `mavenCentral()` | 根 `build.gradle` 已有 | 不重复添加 |
 | `minSdkVersion 24` | `build.common.gradle` 已是 24 | 不改 |
 | `multiDexEnabled true` | v11.2 tag 未设置 | 先装 core 并构建；仅在方法数/DEX 错误或当前组合确实需要时添加到 TeamCode 的 `android.defaultConfig` |
 | `JavaVersion.VERSION_1_8` | `build.common.gradle` 已是 Java 8 | 不改；更不能把 Gradle JDK 改成 8 |
@@ -93,9 +93,9 @@ FTCLib 官方 CommandOpMode 文档说明：子类只需实现 `initialize()`，�
 
 只有“解析依赖、编译、安装、INIT 运行”全部通过，才算 core 安装完成。
 
-## 可选：安装 vision
+## 可选 vision：当前兼容性状态为 blocked
 
-如果只是使用 command-based、PID、MotorEx 或 drivebase，不要安装 vision。需要 FTCLib vision 时，将依赖改为：
+如果只是使用 command-based、PID、MotorEx 或 drivebase，不要安装 vision。FTCLib 页面当前列出下面的 artifact：
 
 ```groovy
 dependencies {
@@ -105,13 +105,9 @@ dependencies {
 }
 ```
 
-截至核验日，FTCLib 官方安装页仍明确要求 vision 使用者：
+截至核验日，FTCLib 官方安装页还要求 vision 使用者移除 `arm64-v8a`、只保留 `armeabi-v7a`，并把其链接的 `libOpenCvAndroid453.so` 复制到 Robot Controller 的 `FIRST` 文件夹。
 
-1. 将 FTC 工程中的 `arm64-v8a` ABI 移除，只保留 `armeabi-v7a`；
-2. 下载其链接的 `libOpenCvAndroid453.so`；
-3. 通过 USB/MTP 把该文件复制到 Robot Controller 存储的 `FIRST` 文件夹。
-
-这些步骤会改变可安装架构并向设备写入本地库，不是 core 的通用要求。执行前要核对 FTCLib 页面、所用 Control Hub/RC 架构和文件来源，备份原配置；若页面链接、文件名或版本发生变化，停止并重新核验，不要从非官方网盘寻找同名 `.so`。完成后重新运行依赖报告、`assembleDebug`、部署和一个官方 vision 示例。
+本次没有证明这套历史步骤与 FIRST v11.2、Control Hub 及队伍的其他 native dependencies 兼容，因此本文**不把它写成可直接执行的 v11.2 修改方案**。不要在主比赛工程中照抄 ABI 或 `.so` 操作。确需 vision 时，应在隔离分支中从官方页面开始，明确记录要修改的 Gradle 文件/块、设备架构和 `.so` 校验值，完成 `assembleDebug`、APK 安装与官方 vision 示例实机验证；在这些证据齐全前保持 blocked。若页面链接、文件名或版本发生变化，停止核验，绝不从非官方来源寻找同名 `.so`。
 
 ## 什么时候考虑 multidex
 

@@ -61,3 +61,31 @@ rules:
         accessedAt: 2026-08-13
         section: Compatibility
         version: "8.13"
+      - type: web
+        url: https://github.com/FIRST-Tech-Challenge/FtcRobotController/blob/v11.2/build.gradle
+        title: FtcRobotController v11.2 top-level build file
+        publisher: FIRST Tech Challenge
+        accessedAt: 2026-08-13
+        section: Android Gradle Plugin dependency
+        version: v11.2
+      - type: web
+        url: https://github.com/FIRST-Tech-Challenge/FtcRobotController/blob/v11.2/build.common.gradle
+        title: FtcRobotController v11.2 common Android build configuration
+        publisher: FIRST Tech Challenge
+        accessedAt: 2026-08-13
+        section: Android SDK, NDK, and Java compatibility
+        version: v11.2
+      - type: web
+        url: https://github.com/FIRST-Tech-Challenge/FtcRobotController/blob/v11.2/build.dependencies.gradle
+        title: FtcRobotController v11.2 dependency configuration
+        publisher: FIRST Tech Challenge
+        accessedAt: 2026-08-13
+        section: FTC SDK artifacts
+        version: v11.2
+      - type: web
+        url: https://github.com/FIRST-Tech-Challenge/FtcRobotController/blob/v11.2/gradle/wrapper/gradle-wrapper.properties
+        title: FtcRobotController v11.2 Gradle Wrapper properties
+        publisher: FIRST Tech Challenge
+        accessedAt: 2026-08-13
+        section: distributionUrl
+        version: v11.2
