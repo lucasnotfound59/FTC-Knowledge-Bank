@@ -111,7 +111,7 @@ public class SafePedroAuto extends OpMode {
     @Override
     public void loop() {
         if (safetyLocked) {
-            emitTelemetry();
+            emitTelemetrySafely();
             return;
         }
         try {
@@ -121,21 +121,22 @@ public class SafePedroAuto extends OpMode {
             else if (TEST_STAGE==TestStage.FULL_AUTO) updateFullAuto();
         } catch (RuntimeException exception) {
             enterSafetyStop(exception.getClass().getSimpleName()+": "+exception.getMessage());
+        } finally {
+            emitTelemetrySafely();
         }
-        emitTelemetry();
     }
 
     @Override
     public void stop() {
-        if (follower!=null) follower.breakFollowing();
         safetyLocked=true;
         autoState=AutoState.STOPPED;
+        stopFollowingBestEffort();
     }
 
     private void validateStaticConfiguration() {
         validationIssues.clear();
         if (!CONFIGURATION_COMPLETE) validationIssues.add(ValidationIssue.CONFIGURATION_INCOMPLETE);
-        if (SERVO_NAME.trim().isEmpty() || SERVO_NAME.startsWith("YOUR_"))
+        if (SERVO_NAME==null||SERVO_NAME.trim().isEmpty()||SERVO_NAME.startsWith("YOUR_"))
             validationIssues.add(ValidationIssue.SERVO_NAME_MISSING_OR_SENTINEL);
 
         double[] numbers={SERVO_CLOSED_POSITION,SERVO_OPEN_POSITION,RELEASE_WAIT_SECONDS,
@@ -147,22 +148,22 @@ public class SafePedroAuto extends OpMode {
         validatePose(SHORT_TEST_POSE);
         validatePose(PARK_POSE);
 
-        if (!inClosedUnitRange(SERVO_CLOSED_POSITION) || !inClosedUnitRange(SERVO_OPEN_POSITION))
+        if (!inClosedUnitRange(SERVO_CLOSED_POSITION)||!inClosedUnitRange(SERVO_OPEN_POSITION))
             validationIssues.add(ValidationIssue.SERVO_POSITION_OUT_OF_RANGE);
         if (Double.compare(SERVO_CLOSED_POSITION,SERVO_OPEN_POSITION)==0)
             validationIssues.add(ValidationIssue.SERVO_POSITIONS_IDENTICAL);
-        if (!(RELEASE_WAIT_SECONDS>=0.05 && RELEASE_WAIT_SECONDS<=5.0))
+        if (!(RELEASE_WAIT_SECONDS>=0.05&&RELEASE_WAIT_SECONDS<=5.0))
             validationIssues.add(ValidationIssue.WAIT_DURATION_OUT_OF_RANGE);
-        if (!(SHORT_DRIVE_MAX_POWER>0 && SHORT_DRIVE_MAX_POWER<=0.30) ||
-            !(FULL_AUTO_MAX_POWER>0 && FULL_AUTO_MAX_POWER<=1.0))
+        if (!(SHORT_DRIVE_MAX_POWER>0&&SHORT_DRIVE_MAX_POWER<=0.30)||
+            !(FULL_AUTO_MAX_POWER>0&&FULL_AUTO_MAX_POWER<=1.0))
             validationIssues.add(ValidationIssue.POWER_OUT_OF_RANGE);
-        if (samePosition(START_POSE,SCORE_POSE) || samePosition(START_POSE,SHORT_TEST_POSE) ||
-            samePosition(START_POSE,PARK_POSE) || samePosition(SCORE_POSE,PARK_POSE))
+        if (samePosition(START_POSE,SCORE_POSE)||samePosition(START_POSE,SHORT_TEST_POSE)||
+            samePosition(START_POSE,PARK_POSE)||samePosition(SCORE_POSE,PARK_POSE))
             validationIssues.add(ValidationIssue.ROUTE_POSES_IDENTICAL);
     }
 
     private void validatePose(Pose pose) {
-        if (pose==null || !Double.isFinite(pose.getX()) || !Double.isFinite(pose.getY()) ||
+        if (pose==null||!Double.isFinite(pose.getX())||!Double.isFinite(pose.getY())||
             !Double.isFinite(pose.getHeading())) {
             validationIssues.add(ValidationIssue.POSE_INVALID);
             validationIssues.add(ValidationIssue.NON_FINITE_NUMBER);
@@ -171,7 +172,7 @@ public class SafePedroAuto extends OpMode {
 
     private void initializeResourcesForSelectedStage() {
         boolean checkAllResources=TEST_STAGE==TestStage.CONFIG_CHECK;
-        if (TEST_STAGE.driveAllowed || checkAllResources) {
+        if (TEST_STAGE.driveAllowed||checkAllResources) {
             try {
                 follower=Constants.createFollower(hardwareMap);
                 follower.setStartingPose(START_POSE);
@@ -180,15 +181,15 @@ public class SafePedroAuto extends OpMode {
                 validationIssues.add(ValidationIssue.FOLLOWER_INIT_FAILED);
             }
         }
-        if (TEST_STAGE.servoAllowed || checkAllResources) {
+        if (TEST_STAGE.servoAllowed||checkAllResources) {
             try {
                 servo=hardwareMap.get(Servo.class,SERVO_NAME);
             } catch (RuntimeException exception) {
                 validationIssues.add(ValidationIssue.SERVO_INIT_FAILED);
             }
         }
-        if (((TEST_STAGE.driveAllowed || checkAllResources) && follower==null) ||
-            ((TEST_STAGE.servoAllowed || checkAllResources) && servo==null))
+        if (((TEST_STAGE.driveAllowed||checkAllResources)&&follower==null)||
+            ((TEST_STAGE.servoAllowed||checkAllResources)&&servo==null))
             validationIssues.add(ValidationIssue.STAGE_RESOURCE_UNAVAILABLE);
     }
 
@@ -206,14 +207,14 @@ public class SafePedroAuto extends OpMode {
     }
 
     private void updateServoTest() {
-        if (autoState==AutoState.PRELOAD_CLOSED && stateTimer.seconds()>=RELEASE_WAIT_SECONDS) {
+        if (autoState==AutoState.PRELOAD_CLOSED&&stateTimer.seconds()>=RELEASE_WAIT_SECONDS) {
             autoState=AutoState.RELEASE;
             if (commandServo(SERVO_OPEN_POSITION)) autoState=AutoState.DONE;
         }
     }
 
     private void updateShortDriveTest() {
-        if (autoState==AutoState.DRIVE_TO_PARK && !follower.isBusy()) autoState=AutoState.DONE;
+        if (autoState==AutoState.DRIVE_TO_PARK&&!follower.isBusy()) autoState=AutoState.DONE;
     }
 
     private void updateFullAuto() {
@@ -244,7 +245,7 @@ public class SafePedroAuto extends OpMode {
     }
 
     private boolean commandPath(PathChain path,double maxPower) {
-        if (safetyLocked || !TEST_STAGE.driveAllowed || follower==null || path==null) {
+        if (safetyLocked||!TEST_STAGE.driveAllowed||follower==null||path==null) {
             enterSafetyStop("drive command rejected");
             return false;
         }
@@ -253,7 +254,7 @@ public class SafePedroAuto extends OpMode {
     }
 
     private boolean commandServo(double position) {
-        if (safetyLocked || !TEST_STAGE.servoAllowed || servo==null || !inClosedUnitRange(position)) {
+        if (safetyLocked||!TEST_STAGE.servoAllowed||servo==null||!inClosedUnitRange(position)) {
             enterSafetyStop("servo command rejected");
             return false;
         }
@@ -262,15 +263,32 @@ public class SafePedroAuto extends OpMode {
     }
 
     private void updateFollowerIfAllowed() {
-        if (safetyLocked || !TEST_STAGE.driveAllowed || follower==null) return;
+        if (safetyLocked||!TEST_STAGE.driveAllowed||follower==null) return;
         follower.update();
     }
 
     private void enterSafetyStop(String reason) {
-        runtimeFailure=reason==null ? "unknown runtime failure" : reason;
-        if (follower!=null) follower.breakFollowing();
+        runtimeFailure=reason==null?"unknown runtime failure":reason;
         safetyLocked=true;
         autoState=AutoState.SAFETY_STOP;
+        stopFollowingBestEffort();
+    }
+
+    private void stopFollowingBestEffort() {
+        if (follower==null) return;
+        try {
+            follower.breakFollowing();
+        } catch (RuntimeException ignored) {
+            // The logical stop state is already committed; cancellation is best effort.
+        }
+    }
+
+    private void emitTelemetrySafely() {
+        try {
+            emitTelemetry();
+        } catch (RuntimeException exception) {
+            enterSafetyStop("telemetry "+exception.getClass().getSimpleName()+": "+exception.getMessage());
+        }
     }
 
     private void emitTelemetry() {
@@ -291,11 +309,11 @@ public class SafePedroAuto extends OpMode {
     }
 
     private static boolean inClosedUnitRange(double value) {
-        return Double.isFinite(value) && value>=0 && value<=1;
+        return Double.isFinite(value)&&value>=0&&value<=1;
     }
 
     private static boolean samePosition(Pose first,Pose second) {
-        if (first==null || second==null) return false;
+        if (first==null||second==null) return false;
         return Math.hypot(first.getX()-second.getX(),first.getY()-second.getY())<1e-6;
     }
 }

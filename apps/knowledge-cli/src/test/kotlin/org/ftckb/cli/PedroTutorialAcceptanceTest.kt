@@ -10,9 +10,20 @@ import org.junit.jupiter.api.Test
 class PedroTutorialAcceptanceTest {
     private val repositoryRoot=Path.of("..","..").normalize()
     private val sourcePath=repositoryRoot.resolve("knowledge/examples/pedro/SafePedroAuto.java")
-    private val guidePath=repositoryRoot.resolve("knowledge/guides/tools/pedro-pathing.md")
-
     private fun source()=Files.readString(sourcePath)
+
+    private fun compact(java:String)=java.replace(Regex("""\s+"""),"")
+
+    private fun imports(java:String)=Regex("""(?m)^import\s+([^;]+);$""")
+        .findAll(java).map { it.groupValues[1] }.toSet()
+
+    private fun assertBefore(text:String,first:String,second:String) {
+        val firstIndex=text.indexOf(first)
+        val secondIndex=text.indexOf(second)
+        assertTrue(firstIndex>=0,"missing $first")
+        assertTrue(secondIndex>=0,"missing $second")
+        assertTrue(firstIndex<secondIndex,"$first must occur before $second")
+    }
 
     private fun methodBody(java:String,method:String):String {
         val signature=Regex("""public\s+void\s+$method\s*\(\s*\)\s*\{""").find(java)
@@ -57,6 +68,21 @@ class PedroTutorialAcceptanceTest {
     @Test
     fun `canonical auto is iterative and excludes command frameworks`() {
         val java=source()
+        assertEquals(
+            setOf(
+                "com.pedropathing.follower.Follower",
+                "com.pedropathing.geometry.BezierLine",
+                "com.pedropathing.geometry.Pose",
+                "com.pedropathing.paths.PathChain",
+                "com.qualcomm.robotcore.eventloop.opmode.Autonomous",
+                "com.qualcomm.robotcore.eventloop.opmode.OpMode",
+                "com.qualcomm.robotcore.hardware.Servo",
+                "com.qualcomm.robotcore.util.ElapsedTime",
+                "java.util.EnumSet",
+                "org.firstinspires.ftc.teamcode.pedroPathing.Constants"
+            ),
+            imports(java)
+        )
         assertTrue("public class SafePedroAuto extends OpMode" in java)
         assertTrue("@Autonomous" in java)
         setOf("init","init_loop","start","loop","stop").forEach { method ->
@@ -82,6 +108,23 @@ class PedroTutorialAcceptanceTest {
     }
 
     @Test
+    fun `config check validates both resources without moving hardware`() {
+        val java=source()
+        val initialize=privateMethodBody(java,"initializeResourcesForSelectedStage")
+        val compactInitialize=compact(initialize)
+
+        assertTrue("booleancheckAllResources=TEST_STAGE==TestStage.CONFIG_CHECK;" in compactInitialize)
+        assertTrue("if(TEST_STAGE.driveAllowed||checkAllResources){" in compact(initialize.substringBefore("Constants.createFollower")))
+        assertTrue("if(TEST_STAGE.servoAllowed||checkAllResources){" in compact(initialize.substringBefore("hardwareMap.get")))
+        setOf("init","init_loop").forEach { lifecycle ->
+            val body=methodBody(java,lifecycle)
+            setOf("follower.followPath","follower.update","servo.setPosition").forEach { command ->
+                assertFalse(command in body,"$command must not run during $lifecycle")
+            }
+        }
+    }
+
+    @Test
     fun `stage capabilities and states are explicit`() {
         val java=source()
         assertTrue("CONFIG_CHECK(false,false)" in java)
@@ -95,21 +138,70 @@ class PedroTutorialAcceptanceTest {
     @Test
     fun `motion is non blocking and confined to guarded gateways`() {
         val java=source()
+        val commandPath=privateMethodBody(java,"commandPath")
+        val commandServo=privateMethodBody(java,"commandServo")
+        val updateFollower=privateMethodBody(java,"updateFollowerIfAllowed")
         assertFalse("Thread.sleep" in java)
         assertFalse(Regex("""\bsleep\s*\(""").containsMatchIn(java))
         assertFalse(Regex("""\b(while|do)\b""").containsMatchIn(methodBody(java,"loop")))
         assertEquals(1,Regex("""follower\.followPath\s*\(""").findAll(java).count())
         assertEquals(1,Regex("""servo\.setPosition\s*\(""").findAll(java).count())
         assertEquals(1,Regex("""follower\.update\s*\(""").findAll(java).count())
+        assertEquals(1,Regex("""\.followPath\s*\(""").findAll(java).count())
+        assertEquals(1,Regex("""\.setPosition\s*\(""").findAll(java).count())
+        assertEquals(2,Regex("""\.update\s*\(""").findAll(java).count())
         assertTrue("private boolean commandPath(" in java)
         assertTrue("private boolean commandServo(" in java)
         assertTrue("private void updateFollowerIfAllowed(" in java)
-        assertTrue("follower.followPath" in privateMethodBody(java,"commandPath"))
-        assertTrue("servo.setPosition" in privateMethodBody(java,"commandServo"))
-        assertTrue("follower.update" in privateMethodBody(java,"updateFollowerIfAllowed"))
+        assertTrue("if(safetyLocked||!TEST_STAGE.driveAllowed||follower==null||path==null)" in compact(commandPath.substringBefore("follower.followPath")))
+        assertTrue("if(safetyLocked||!TEST_STAGE.servoAllowed||servo==null||!inClosedUnitRange(position))" in compact(commandServo.substringBefore("servo.setPosition")))
+        assertTrue("if(safetyLocked||!TEST_STAGE.driveAllowed||follower==null)return;" in compact(updateFollower.substringBefore("follower.update")))
+        assertEquals(setOf("follower"),Regex("""\bFollower\s+([A-Za-z_][A-Za-z0-9_]*)""").findAll(java).map { it.groupValues[1] }.toSet())
+        assertEquals(setOf("servo"),Regex("""\bServo\s+([A-Za-z_][A-Za-z0-9_]*)""").findAll(java).map { it.groupValues[1] }.toSet())
+        setOf("turn","holdPoint","startTeleopDrive","setTeleOpMovementVectors","setPower",
+            "setVelocity","setMotorPowers","setDrivePowers").forEach { api ->
+            assertFalse(Regex("""\.$api\s*\(""").containsMatchIn(java),api)
+        }
+        setOf("DcMotor","DcMotorEx","CRServo","Motor","MotorEx").forEach { type ->
+            assertFalse(Regex("""\b$type\b""").containsMatchIn(java),type)
+        }
         assertTrue("follower.isBusy()" in java)
-        assertTrue("follower.breakFollowing()" in methodBody(java,"stop"))
+        assertTrue("stopFollowingBestEffort()" in methodBody(java,"stop"))
         assertFalse("servo.setPosition" in methodBody(java,"stop"))
+    }
+
+    @Test
+    fun `safety transitions precede best effort follower cancellation`() {
+        val java=source()
+        val safetyStop=privateMethodBody(java,"enterSafetyStop")
+        val stop=methodBody(java,"stop")
+
+        assertBefore(safetyStop,"safetyLocked=true","stopFollowingBestEffort()")
+        assertBefore(safetyStop,"autoState=AutoState.SAFETY_STOP","stopFollowingBestEffort()")
+        assertBefore(stop,"safetyLocked=true","stopFollowingBestEffort()")
+        assertBefore(stop,"autoState=AutoState.STOPPED","stopFollowingBestEffort()")
+
+        val cancellation=privateMethodBody(java,"stopFollowingBestEffort")
+        assertTrue("try {" in cancellation)
+        assertTrue("catch (RuntimeException" in cancellation)
+        assertEquals(1,Regex("""follower\.breakFollowing\s*\(""").findAll(java).count())
+        assertTrue("follower.breakFollowing()" in cancellation)
+    }
+
+    @Test
+    fun `loop telemetry failures enter safety stop without recursive telemetry`() {
+        val java=source()
+        val loop=methodBody(java,"loop")
+        val safeTelemetry=privateMethodBody(java,"emitTelemetrySafely")
+
+        assertTrue("if(safetyLocked){emitTelemetrySafely();return;}" in compact(loop))
+        assertTrue("finally{emitTelemetrySafely();}" in compact(loop))
+        assertFalse("emitTelemetry();" in loop)
+        assertTrue("try {" in safeTelemetry)
+        assertTrue("catch (RuntimeException" in safeTelemetry)
+        assertTrue("emitTelemetry();" in safeTelemetry)
+        assertTrue("enterSafetyStop(" in safeTelemetry)
+        assertFalse("emitTelemetrySafely(" in safeTelemetry)
     }
 
     @Test
@@ -138,5 +230,17 @@ class PedroTutorialAcceptanceTest {
         ).forEach { assertTrue(it in java,it) }
         assertTrue("EnumSet<ValidationIssue> validationIssues" in java)
         assertTrue("for (ValidationIssue issue: validationIssues)" in java)
+    }
+
+    @Test
+    fun `null servo name is aggregated before string access`() {
+        val validation=compact(privateMethodBody(source(),"validateStaticConfiguration"))
+        val nullGuard=validation.indexOf("SERVO_NAME==null")
+        val stringAccess=validation.indexOf("SERVO_NAME.trim()")
+        assertTrue(nullGuard>=0,"missing null servo-name guard")
+        assertTrue(stringAccess>=0,"missing servo-name validation")
+        assertTrue(nullGuard<stringAccess,"null guard must precede SERVO_NAME string access")
+        assertTrue("SERVO_NAME==null||SERVO_NAME.trim().isEmpty()||SERVO_NAME.startsWith(\"YOUR_\")" in validation)
+        assertTrue("validationIssues.add(ValidationIssue.SERVO_NAME_MISSING_OR_SENTINEL)" in validation)
     }
 }
