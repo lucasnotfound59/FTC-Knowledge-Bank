@@ -2,6 +2,8 @@ package org.ftckb.cli
 
 import java.nio.file.Files
 import java.nio.file.Path
+import java.security.MessageDigest
+import java.util.Properties
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -12,6 +14,14 @@ class PedroTutorialAcceptanceTest {
     private val sourcePath=repositoryRoot.resolve("knowledge/examples/pedro/SafePedroAuto.java")
     private val fixtureRoot=repositoryRoot.resolve("fixtures/pedro-compile")
     private fun source()=Files.readString(sourcePath)
+
+    private fun fixtureProperties()=Properties().apply {
+        Files.newBufferedReader(fixtureRoot.resolve("gradle.properties")).use(::load)
+    }
+
+    private fun sha256(path:Path)=MessageDigest.getInstance("SHA-256")
+        .digest(Files.readAllBytes(path))
+        .joinToString("") { byte -> (byte.toInt() and 0xff).toString(16).padStart(2,'0') }
 
     private fun compact(java:String)=java.replace(Regex("""\s+"""),"")
 
@@ -247,9 +257,10 @@ class PedroTutorialAcceptanceTest {
 
     @Test
     fun `compile fixture pins the reviewed release matrix`() {
-        val properties=java.util.Properties().apply {
-            Files.newBufferedReader(fixtureRoot.resolve("gradle.properties")).use(::load)
-        }
+        val properties=fixtureProperties()
+        assertEquals("8.7.0",properties.getProperty("agpVersion"))
+        assertEquals("30",properties.getProperty("compileSdk"))
+        assertEquals("24",properties.getProperty("minSdk"))
         assertEquals("11.2.0",properties.getProperty("ftcSdkVersion"))
         assertEquals("v11.2",properties.getProperty("ftcSdkTag"))
         assertEquals("4ed7c4666aec265a6fd9e674ca40462e9dfe4bf8",properties.getProperty("ftcSdkCommit"))
@@ -261,5 +272,50 @@ class PedroTutorialAcceptanceTest {
         assertFalse("SafePedroAuto.java" in Files.walk(fixtureRoot).use { paths ->
             paths.filter(Files::isRegularFile).map { it.fileName.toString() }.toList()
         })
+    }
+
+    @Test
+    fun `compile fixture locks provenance source and pinned dependencies`() {
+        val properties=fixtureProperties()
+        val wrapperProperties=Files.readString(fixtureRoot.resolve("gradle/wrapper/gradle-wrapper.properties"))
+        val fixtureBuild=compact(Files.readString(fixtureRoot.resolve("build.gradle")))
+        val canonicalSources=Files.walk(repositoryRoot).use { paths ->
+            paths.filter(Files::isRegularFile)
+                .filter { it.fileName.toString()=="SafePedroAuto.java" }
+                .map { repositoryRoot.relativize(it).toString() }
+                .toList()
+        }
+
+        assertEquals("https\\://services.gradle.org/distributions/gradle-8.9-bin.zip",
+            wrapperProperties.lineSequence().first { it.startsWith("distributionUrl=") }.substringAfter('='))
+        mapOf(
+            "gradlew" to "874d75d37bf38c810a8314e0b2f78a3c77fce9437963ae33cec8543d92662b61",
+            "gradlew.bat" to "f4f428c5626b3d90cef3bd4e7fd3ad3ea5760442db8c09d586b5bfe031dbe5e3",
+            "gradle/wrapper/gradle-wrapper.jar" to "96f793a18e056c23ffeec67c1f3bb8eccff5a4a407fc9ceac183527e7eedf4b6",
+            "gradle/wrapper/gradle-wrapper.properties" to "ef02d8fe6df48d7e49abb80fea9caa3eb0fc562ee361380a480dabbba0ef07c5"
+        ).forEach { (relativePath,expected) ->
+            assertEquals(expected,sha256(fixtureRoot.resolve(relativePath)),relativePath)
+        }
+        assertTrue("sourceCompatibilityJavaVersion.VERSION_1_8" in fixtureBuild)
+        assertTrue("targetCompatibilityJavaVersion.VERSION_1_8" in fixtureBuild)
+        assertTrue("main.java.srcDirs+='../../knowledge/examples/pedro'" in fixtureBuild)
+        assertTrue("implementation\"org.firstinspires.ftc:RobotCore:${'$'}{ftcSdkVersion}\"" in fixtureBuild)
+        assertTrue("implementation\"org.firstinspires.ftc:Hardware:${'$'}{ftcSdkVersion}\"" in fixtureBuild)
+        assertTrue("implementation\"com.pedropathing:ftc:${'$'}{pedroVersion}\"" in fixtureBuild)
+        assertEquals(listOf("knowledge/examples/pedro/SafePedroAuto.java"),canonicalSources)
+        assertFalse("pedro-compile" in Files.readString(repositoryRoot.resolve("settings.gradle.kts")))
+        assertEquals("11.2.0",properties.getProperty("ftcSdkVersion"))
+        assertEquals("2.1.2",properties.getProperty("pedroVersion"))
+    }
+
+    @Test
+    fun `root compile tasks use delayed SDK validation and platform-safe wrapper commands`() {
+        val rootBuild=compact(Files.readString(repositoryRoot.resolve("build.gradle.kts")))
+
+        assertTrue("workingDir(layout.projectDirectory.dir(\"fixtures/pedro-compile\"))" in rootBuild)
+        assertTrue("if(System.getProperty(\"os.name\").lowercase().contains(\"windows\")){commandLine(\"cmd\",\"/c\",\"gradlew.bat\",\"clean\",\"compileDebugJavaWithJavac\",\"--no-daemon\")}else{commandLine(\"./gradlew\",\"clean\",\"compileDebugJavaWithJavac\",\"--no-daemon\")}" in rootBuild)
+        assertTrue("doFirst{valsdk=System.getenv(\"ANDROID_HOME\")?:System.getenv(\"ANDROID_SDK_ROOT\")?:error(\"SetANDROID_HOMEorANDROID_SDK_ROOTbeforeverifyPedroExampleCompile\")environment(\"ANDROID_HOME\",sdk)}" in rootBuild)
+        assertTrue("tasks.register(\"verifyPedroRelease\")" in rootBuild)
+        assertTrue("dependsOn(\":modules:domain:test\",\":modules:knowledge:test\",\":apps:knowledge-cli:test\",verifyPedroExampleCompile)" in rootBuild)
     }
 }

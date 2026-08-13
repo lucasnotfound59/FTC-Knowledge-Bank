@@ -12,8 +12,11 @@ val verifyPedroExampleCompile=tasks.register<Exec>("verifyPedroExampleCompile") 
     group="verification"
     description="Compiles the canonical Pedro Auto against the pinned Android fixture"
     workingDir(layout.projectDirectory.dir("fixtures/pedro-compile"))
-    val wrapper=if (System.getProperty("os.name").lowercase().contains("windows")) "gradlew.bat" else "./gradlew"
-    commandLine(wrapper,"clean","compileDebugJavaWithJavac","--no-daemon")
+    if (System.getProperty("os.name").lowercase().contains("windows")) {
+        commandLine("cmd","/c","gradlew.bat","clean","compileDebugJavaWithJavac","--no-daemon")
+    } else {
+        commandLine("./gradlew","clean","compileDebugJavaWithJavac","--no-daemon")
+    }
     doFirst {
         val sdk=System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")
             ?: error("Set ANDROID_HOME or ANDROID_SDK_ROOT before verifyPedroExampleCompile")
