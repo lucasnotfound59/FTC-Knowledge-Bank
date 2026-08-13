@@ -1,0 +1,20 @@
+plugins { id 'com.android.library' }
+
+android {
+    namespace 'org.ftckb.fixtures.pedro'
+    compileSdk providers.gradleProperty('compileSdk').get().toInteger()
+    defaultConfig { minSdk providers.gradleProperty('minSdk').get().toInteger() }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    sourceSets {
+        main.java.srcDirs += '../../knowledge/examples/pedro'
+    }
+}
+
+dependencies {
+    implementation "org.firstinspires.ftc:RobotCore:${ftcSdkVersion}"
+    implementation "org.firstinspires.ftc:Hardware:${ftcSdkVersion}"
+    implementation "com.pedropathing:ftc:${pedroVersion}"
+}

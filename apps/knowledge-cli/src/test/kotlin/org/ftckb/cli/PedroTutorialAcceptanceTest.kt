@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test
 class PedroTutorialAcceptanceTest {
     private val repositoryRoot=Path.of("..","..").normalize()
     private val sourcePath=repositoryRoot.resolve("knowledge/examples/pedro/SafePedroAuto.java")
+    private val fixtureRoot=repositoryRoot.resolve("fixtures/pedro-compile")
     private fun source()=Files.readString(sourcePath)
 
     private fun compact(java:String)=java.replace(Regex("""\s+"""),"")
@@ -242,5 +243,23 @@ class PedroTutorialAcceptanceTest {
         assertTrue(nullGuard<stringAccess,"null guard must precede SERVO_NAME string access")
         assertTrue("SERVO_NAME==null||SERVO_NAME.trim().isEmpty()||SERVO_NAME.startsWith(\"YOUR_\")" in validation)
         assertTrue("validationIssues.add(ValidationIssue.SERVO_NAME_MISSING_OR_SENTINEL)" in validation)
+    }
+
+    @Test
+    fun `compile fixture pins the reviewed release matrix`() {
+        val properties=java.util.Properties().apply {
+            Files.newBufferedReader(fixtureRoot.resolve("gradle.properties")).use(::load)
+        }
+        assertEquals("11.2.0",properties.getProperty("ftcSdkVersion"))
+        assertEquals("v11.2",properties.getProperty("ftcSdkTag"))
+        assertEquals("4ed7c4666aec265a6fd9e674ca40462e9dfe4bf8",properties.getProperty("ftcSdkCommit"))
+        assertEquals("2.1.2",properties.getProperty("pedroVersion"))
+        assertEquals("96df977d30329eef57c226cf1e6854026f4dfe4f",properties.getProperty("pedroCommit"))
+        assertEquals("d3aea9ca3c5b4c09eded8580229b86996480ee89",properties.getProperty("pedroQuickstartCommit"))
+        val build=Files.readString(fixtureRoot.resolve("build.gradle"))
+        assertTrue("../../knowledge/examples/pedro" in build)
+        assertFalse("SafePedroAuto.java" in Files.walk(fixtureRoot).use { paths ->
+            paths.filter(Files::isRegularFile).map { it.fileName.toString() }.toList()
+        })
     }
 }
