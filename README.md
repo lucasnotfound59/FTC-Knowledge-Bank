@@ -126,6 +126,31 @@ MVP 暂不包含自动安装依赖和自动上传到 Control Hub，但会为这�
 
 第一阶段只服务队伍内部。MVP 需要覆盖 Ask、Edit 和 Run 三种能力，但不替队员决定机器人整体软件架构、机械结构或硬件方案。
 
+## Knowledge Core（Foundation）
+
+当前首个可运行切片可以校验版本控制中的规则文件，并按队号和赛季解析生效规则。开发环境需要 **JDK 21**；项目使用 Gradle Wrapper，因此不需要另行安装系统级 Gradle。先确认 `java -version` 指向 JDK 21；若本机安装了多个 JDK，可在命令前临时设置 `JAVA_HOME`。
+
+在仓库根目录通过 wrapper 运行 CLI：
+
+```bash
+./gradlew :apps:knowledge-cli:run --args="validate knowledge"
+./gradlew :apps:knowledge-cli:run --args="resolve knowledge --team 20827 --season 2025-2026"
+./gradlew test
+```
+
+知识文件采用 `schemaVersion: 1` 的 YAML，当前布局如下：
+
+| 路径 | 内容 |
+| --- | --- |
+| `knowledge/official/rules.yaml` | FIRST 官方约束 |
+| `knowledge/shared/rules.yaml` | 跨队共享规则与候选规则 |
+| `knowledge/teams/<team>/rules.yaml` | 队号专属规则、适用赛季与来源 |
+| `knowledge/schema/examples/rule-example.yaml.example` | 可复制的字段示例，不会被 CLI 当作规则加载 |
+
+每条规则记录 `id`、`topic`、可执行的 `instruction`、`rationale`、`status`、`authority`、适用队号/赛季及精确到仓库、commit 和文件位置的 `evidence`。正式规则还必须包含经过权限校验的 `approval`。
+
+候选规则不会自动生效：共享规则和官方规则只能由总软件负责人批准，队号专属规则只能由对应队伍的软件负责人批准。批准后仍按“官方约束 > 队号专属规范 > 共享规范”解析；同一权威层级、同一主题的冲突会阻止解析。校验错误和该类冲突均返回非零退出码，`candidate`、`deprecated` 和 `rejected` 状态都不会进入生效结果。
+
 ## 参考仓库
 
 - [FIRST-Tech-Challenge/FtcRobotController](https://github.com/FIRST-Tech-Challenge/FtcRobotController)：官方 FTC 工程与 SDK 基线；

@@ -1,0 +1,80 @@
+schemaVersion: 1
+rules:
+  - id: shared.pathing
+    topic: pathing
+    title: Shared pathing choice
+    instruction: Use the shared pathing library.
+    rationale: Shared default for the test.
+    status: approved
+    authority: shared
+    applicability:
+      teams: []
+      seasons: [2025-2026]
+    evidence:
+      - repository: owner/repo
+        commit: abcdef1
+        file: TeamCode/build.gradle
+        line: 1
+    approval:
+      approver: overall
+      role: overall_software_lead
+      approvedAt: 2026-08-13T00:00:00Z
+  - id: team.pathing
+    topic: pathing
+    title: Team pathing choice
+    instruction: Use the 20827 pathing library.
+    rationale: Team override for the test.
+    status: approved
+    authority: team
+    applicability:
+      teams: ["20827"]
+      seasons: [2025-2026]
+    evidence:
+      - repository: owner/repo
+        commit: abcdef1
+        file: TeamCode/build.gradle
+        line: 2
+    approval:
+      approver: lead-20827
+      role: team_software_lead
+      team: "20827"
+      approvedAt: 2026-08-13T00:00:00Z
+  - id: official.deploy
+    topic: deployment-safety
+    title: Official deployment safety
+    instruction: Keep the official deployment safety rule.
+    rationale: Official constraint for the test.
+    status: approved
+    authority: official
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - repository: owner/repo
+        commit: abcdef1
+        file: README.md
+        line: 1
+    approval:
+      approver: overall
+      role: overall_software_lead
+      approvedAt: 2026-08-13T00:00:00Z
+  - id: team.deploy
+    topic: deployment-safety
+    title: Team deployment override
+    instruction: Replace the official deployment rule.
+    rationale: Lower-authority rule used to verify precedence.
+    status: approved
+    authority: team
+    applicability:
+      teams: ["20827"]
+      seasons: []
+    evidence:
+      - repository: owner/repo
+        commit: abcdef1
+        file: README.md
+        line: 2
+    approval:
+      approver: lead-20827
+      role: team_software_lead
+      team: "20827"
+      approvedAt: 2026-08-13T00:00:00Z
