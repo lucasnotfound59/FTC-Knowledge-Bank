@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test
 class PedroTutorialAcceptanceTest {
     private val repositoryRoot=Path.of("..","..").normalize()
     private val sourcePath=repositoryRoot.resolve("knowledge/examples/pedro/SafePedroAuto.java")
+    private val guidePath=repositoryRoot.resolve("knowledge/guides/tools/pedro-pathing.md")
     private val fixtureRoot=repositoryRoot.resolve("fixtures/pedro-compile")
     private fun source()=Files.readString(sourcePath)
 
@@ -57,6 +58,14 @@ class PedroTutorialAcceptanceTest {
         val block=java.substringAfter("CONFIGURE HERE START").substringBefore("CONFIGURE HERE END")
         return Regex("""private\s+static\s+final\s+[A-Za-z0-9_<>]+\s+([A-Z][A-Z0-9_]*)\s*=""")
             .findAll(block).map { it.groupValues[1] }.toSet()
+    }
+
+    private fun markdownTableRows(markdown:String,heading:String):List<List<String>> {
+        val section=markdown.substringAfter("## $heading").substringBefore("\n## ")
+        return section.lineSequence().filter { it.trim().startsWith("|") }
+            .map { line -> line.trim().trim('|').split('|').map(String::trim) }
+            .filterNot { row -> row.all { cell -> cell.matches(Regex("[-: ]+")) } }
+            .toList()
     }
 
     private fun privateMethodBody(java:String,method:String):String {
@@ -317,5 +326,75 @@ class PedroTutorialAcceptanceTest {
         assertTrue("doFirst{valsdk=System.getenv(\"ANDROID_HOME\")?:System.getenv(\"ANDROID_SDK_ROOT\")?:error(\"SetANDROID_HOMEorANDROID_SDK_ROOTbeforeverifyPedroExampleCompile\")environment(\"ANDROID_HOME\",sdk)}" in rootBuild)
         assertTrue("tasks.register(\"verifyPedroRelease\")" in rootBuild)
         assertTrue("dependsOn(\":modules:domain:test\",\":modules:knowledge:test\",\":apps:knowledge-cli:test\",verifyPedroExampleCompile)" in rootBuild)
+    }
+
+    @Test
+    fun `guide documents every configure field exactly once`() {
+        val java=source()
+        val guide=Files.readString(guidePath)
+        val rows=markdownTableRows(guide,"SafePedroAuto 参数字典")
+        assertEquals(listOf("参数","填什么","如何获得","单位或范围","如何验证"),rows.first())
+        val documented=rows.drop(1).map { row ->
+            assertEquals(5,row.size,row.joinToString())
+            row.drop(1).forEach { assertTrue(it.isNotBlank(),row.joinToString()) }
+            row.first().removeSurrounding("`")
+        }
+        assertEquals(configureFieldNames(java),documented.toSet())
+        assertEquals(documented.size,documented.toSet().size)
+    }
+
+    @Test
+    fun `guide links the canonical example without duplicating the class`() {
+        val guide=Files.readString(guidePath)
+        assertTrue("../../examples/pedro/SafePedroAuto.java" in guide)
+        assertFalse("public class SafePedroAuto" in guide)
+        setOf("CONFIG_CHECK","SERVO_ONLY","SHORT_DRIVE","FULL_AUTO").forEach {
+            assertTrue(it in guide,it)
+        }
+    }
+
+    @Test
+    fun `guide states version and provenance boundaries`() {
+        val guide=Files.readString(guidePath)
+        setOf(
+            "Pedro requirement","beginner safety convention","20827-inspired pattern","robot-specific value",
+            "11.2.0","2.1.2","4ed7c4666aec265a6fd9e674ca40462e9dfe4bf8",
+            "96df977d30329eef57c226cf1e6854026f4dfe4f","d3aea9ca3c5b4c09eded8580229b86996480ee89"
+        ).forEach { assertTrue(it in guide,it) }
+        assertTrue("FTC 11.1.0" in guide)
+        assertTrue("本项目编译验证" in guide)
+        assertFalse("Pedro 官方保证兼容 FTC 11.2" in guide)
+    }
+
+    @Test
+    fun `pedro rules are approved shared and active for both teams`() {
+        val loaded=org.ftckb.knowledge.FileKnowledgeRepository.load(repositoryRoot.resolve("knowledge"))
+        assertTrue(loaded.violations.isEmpty(),loaded.violations.joinToString())
+        val pedroIds=setOf(
+            "shared.pedro-tune-current-robot",
+            "shared.pedro-localization-before-follower",
+            "shared.pedro-explicit-coordinate-conversion"
+        )
+        loaded.rules.filter { it.id in pedroIds }.forEach {
+            assertEquals(org.ftckb.domain.RuleStatus.APPROVED,it.status,it.id)
+            assertEquals(org.ftckb.domain.RuleAuthority.SHARED,it.authority,it.id)
+            assertTrue(it.approval!=null,it.id)
+            assertEquals(
+                org.ftckb.domain.ApproverRole.OVERALL_SOFTWARE_LEAD,
+                it.approval?.role,
+                it.id
+            )
+        }
+        for (team in listOf("20827","16093")) {
+            val result=org.ftckb.domain.RuleResolver.resolve(
+                loaded.rules,
+                org.ftckb.domain.RuleContext(team,"2025-2026")
+            )
+            assertEquals(
+                pedroIds,
+                result.activeRules.map { it.id }.filter { it in pedroIds }.toSet(),
+                team
+            )
+        }
     }
 }
