@@ -12,7 +12,7 @@ class KnowledgeGuideAcceptanceTest {
     private val root=Path.of("..","..","knowledge").normalize()
 
     @Test
-    fun `setup rules are valid candidates and guides cite them`() {
+    fun `guide rules are valid candidates and guides cite them`() {
         val expected=mapOf(
             "guides/setup/android-studio-ftc-sdk.md" to setOf(
                 "shared.ftc-sdk-pin-release",
@@ -26,6 +26,24 @@ class KnowledgeGuideAcceptanceTest {
             "guides/setup/ftc-dashboard.md" to setOf(
                 "shared.dashboard-pin-stable-dependency",
                 "shared.dependency-verify-sync-build-run"
+            ),
+            "guides/tools/pedro-pathing.md" to setOf(
+                "shared.pedro-tune-current-robot",
+                "shared.pedro-localization-before-follower",
+                "shared.pedro-explicit-coordinate-conversion"
+            ),
+            "guides/tools/gobilda-motors-servos.md" to setOf(
+                "shared.gobilda-identify-exact-sku",
+                "shared.gobilda-use-output-shaft-encoder-resolution",
+                "shared.gobilda-separate-stall-and-operating-values",
+                "shared.gobilda-servo-mode-and-pwm-range"
+            ),
+            "guides/tools/limelight-3a.md" to setOf(
+                "shared.limelight-check-result-validity",
+                "shared.limelight-enforce-freshness-policy",
+                "shared.limelight-synchronize-pipeline-dependent-reads",
+                "shared.limelight-configure-camera-pose",
+                "shared.limelight-back-up-before-os-update"
             )
         )
         val loaded=FileKnowledgeRepository.load(root)

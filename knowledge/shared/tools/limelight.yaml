@@ -1,0 +1,92 @@
+schemaVersion: 2
+rules:
+  - id: shared.limelight-check-result-validity
+    topic: limelight-result-validity
+    title: Check Limelight result validity
+    instruction: Check that the latest Limelight result exists and is valid before using target or pose fields.
+    rationale: The FTC API can return no usable target result.
+    status: candidate
+    authority: shared
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - type: web
+        url: https://docs.limelightvision.io/docs/docs-limelight/apis/ftc-programming
+        title: FTC Java & Blockly Programming Guide
+        publisher: Limelight Vision
+        accessedAt: 2026-08-13
+        section: Getting and Using Results
+        product: Limelight 3A
+  - id: shared.limelight-enforce-freshness-policy
+    topic: limelight-result-freshness
+    title: Enforce a Limelight freshness policy
+    instruction: Define and enforce a task-appropriate maximum result age before using Limelight data in closed-loop control or localization.
+    rationale: A valid result can still be too old for the current control decision.
+    status: candidate
+    authority: shared
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - type: web
+        url: https://docs.limelightvision.io/docs/docs-limelight/apis/ftc-programming
+        title: FTC Java & Blockly Programming Guide
+        publisher: Limelight Vision
+        accessedAt: 2026-08-13
+        section: Is The Data Fresh?
+        product: Limelight 3A
+  - id: shared.limelight-synchronize-pipeline-dependent-reads
+    topic: limelight-pipeline-synchronization
+    title: Synchronize pipeline-dependent reads
+    instruction: Treat pipeline switching as asynchronous and verify the reported pipeline before consuming data that depends on the new pipeline.
+    rationale: The pipeline switch call is fire-and-forget.
+    status: candidate
+    authority: shared
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - type: web
+        url: https://docs.limelightvision.io/docs/docs-limelight/apis/ftc-programming
+        title: FTC Java & Blockly Programming Guide
+        publisher: Limelight Vision
+        accessedAt: 2026-08-13
+        section: Pipeline Management
+        product: Limelight 3A
+  - id: shared.limelight-configure-camera-pose
+    topic: limelight-field-localization-setup
+    title: Configure camera pose for localization
+    instruction: Configure camera pose relative to the robot before field localization and provide current robot orientation before consuming MegaTag 2 results.
+    rationale: Field pose depends on camera extrinsics and MegaTag 2 fuses external orientation.
+    status: candidate
+    authority: shared
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - type: web
+        url: https://docs.limelightvision.io/docs/docs-limelight/apis/ftc-programming
+        title: FTC Java & Blockly Programming Guide
+        publisher: Limelight Vision
+        accessedAt: 2026-08-13
+        section: Where's My Robot? (MegaTag 2)
+        product: Limelight 3A
+  - id: shared.limelight-back-up-before-os-update
+    topic: limelight-update-backup
+    title: Back up before updating LimelightOS
+    instruction: Back up Limelight pipelines and scripts before flashing or upgrading LimelightOS.
+    rationale: The official quick start warns that an OS flash erases them.
+    status: candidate
+    authority: shared
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - type: web
+        url: https://docs.limelightvision.io/docs/docs-limelight/getting-started/limelight-3a
+        title: Limelight 3A Quick-Start
+        publisher: Limelight Vision
+        accessedAt: 2026-08-13
+        section: Updating LimelightOS
+        product: Limelight 3A

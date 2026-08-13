@@ -1,0 +1,53 @@
+schemaVersion: 2
+rules:
+  - id: shared.pedro-tune-current-robot
+    topic: pedro-robot-specific-tuning
+    title: Tune values on the current robot
+    instruction: Treat follower, drivetrain, and localizer values as measurements or tuning outputs for the current robot; do not copy another robot's values as validated configuration.
+    rationale: Pedro constants include robot-specific mass, drivetrain, localizer, velocity, controller, and path-completion values.
+    status: candidate
+    authority: shared
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - type: web
+        url: https://pedropathing.com/docs/pathing/constants
+        title: Constants
+        publisher: Pedro Pathing
+        accessedAt: 2026-08-13
+        section: The Constants file
+  - id: shared.pedro-localization-before-follower
+    topic: pedro-localization-readiness
+    title: Validate localization before path following
+    instruction: Configure and validate the selected localizer before relying on follower tuning or autonomous path accuracy.
+    rationale: Follower control depends on accurate robot pose feedback.
+    status: candidate
+    authority: shared
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - type: web
+        url: https://pedropathing.com/docs/pathing/tuning/localization
+        title: Localization
+        publisher: Pedro Pathing
+        accessedAt: 2026-08-13
+        section: Localization Test
+  - id: shared.pedro-explicit-coordinate-conversion
+    topic: pedro-coordinate-conversion
+    title: Convert coordinate systems explicitly
+    instruction: State source and destination coordinate systems and convert explicitly when exchanging poses between Pedro Pathing and FTC-standard or vision coordinates.
+    rationale: Pedro documents a coordinate convention that differs from the FTC SDK standard.
+    status: candidate
+    authority: shared
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - type: web
+        url: https://pedropathing.com/docs/pathing/reference/coordinates
+        title: Coordinates
+        publisher: Pedro Pathing
+        accessedAt: 2026-08-13
+        section: Coordinates

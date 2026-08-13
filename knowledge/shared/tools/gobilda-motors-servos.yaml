@@ -1,0 +1,86 @@
+schemaVersion: 2
+rules:
+  - id: shared.gobilda-identify-exact-sku
+    topic: gobilda-specification-identity
+    title: Identify the exact goBILDA SKU
+    instruction: Identify the exact goBILDA product and SKU before applying gear ratio, speed, torque, current, encoder, voltage, PWM, or travel specifications.
+    rationale: Products in the same family can have different electrical and mechanical values.
+    status: candidate
+    authority: shared
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - type: web
+        url: https://www.gobilda.com/5203-series-yellow-jacket-planetary-gear-motor-19-2-1-ratio-24mm-length-8mm-rex-shaft-312-rpm-3-3-5v-encoder/
+        title: 5203 Series Yellow Jacket Planetary Gear Motor (19.2:1 Ratio, 24mm Length 8mm REX Shaft, 312 RPM, 3.3 - 5V Encoder)
+        publisher: goBILDA
+        accessedAt: 2026-08-13
+        section: Specs
+        product: 5203 Series Yellow Jacket Planetary Gear Motor
+        sku: 5203-2402-0019
+      - type: web
+        url: https://www.gobilda.com/2000-series-5-turn-dual-mode-servo-25-2-torque/
+        title: 2000 Series 5-Turn, Dual Mode Servo (25-2, Torque)
+        publisher: goBILDA
+        accessedAt: 2026-08-13
+        section: Specs
+        product: 2000 Series 5-Turn Dual Mode Servo (25-2, Torque)
+        sku: 2000-0025-0502
+  - id: shared.gobilda-use-output-shaft-encoder-resolution
+    topic: gobilda-encoder-conversion
+    title: Convert from output-shaft encoder resolution
+    instruction: Use the documented output-shaft encoder resolution for the exact motor SKU and include every external transmission ratio when converting ticks to mechanism motion.
+    rationale: Motor encoder counts describe the motor output shaft, not an arbitrary downstream mechanism.
+    status: candidate
+    authority: shared
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - type: web
+        url: https://www.gobilda.com/5203-series-yellow-jacket-planetary-gear-motor-19-2-1-ratio-24mm-length-8mm-rex-shaft-312-rpm-3-3-5v-encoder/
+        title: 5203 Series Yellow Jacket Planetary Gear Motor (19.2:1 Ratio, 24mm Length 8mm REX Shaft, 312 RPM, 3.3 - 5V Encoder)
+        publisher: goBILDA
+        accessedAt: 2026-08-13
+        section: Specs
+        product: 5203 Series Yellow Jacket Planetary Gear Motor
+        sku: 5203-2402-0019
+  - id: shared.gobilda-separate-stall-and-operating-values
+    topic: gobilda-load-specification
+    title: Separate stall and operating values
+    instruction: Label no-load and stall specifications distinctly and do not present stall values as continuous operating ratings.
+    rationale: The manufacturer publishes these as different operating conditions.
+    status: candidate
+    authority: shared
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - type: web
+        url: https://www.gobilda.com/5203-series-yellow-jacket-planetary-gear-motor-19-2-1-ratio-24mm-length-8mm-rex-shaft-312-rpm-3-3-5v-encoder/
+        title: 5203 Series Yellow Jacket Planetary Gear Motor (19.2:1 Ratio, 24mm Length 8mm REX Shaft, 312 RPM, 3.3 - 5V Encoder)
+        publisher: goBILDA
+        accessedAt: 2026-08-13
+        section: Specs
+        product: 5203 Series Yellow Jacket Planetary Gear Motor
+        sku: 5203-2402-0019
+  - id: shared.gobilda-servo-mode-and-pwm-range
+    topic: gobilda-servo-configuration
+    title: Record servo mode and PWM range
+    instruction: Record exact servo SKU, mode, documented PWM range, voltage, direction, and travel before defining software endpoints or interpreting commands.
+    rationale: A dual-mode servo interprets PWM as position in one mode and speed in continuous mode.
+    status: candidate
+    authority: shared
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - type: web
+        url: https://www.gobilda.com/2000-series-5-turn-dual-mode-servo-25-2-torque/
+        title: 2000 Series 5-Turn, Dual Mode Servo (25-2, Torque)
+        publisher: goBILDA
+        accessedAt: 2026-08-13
+        section: Specs
+        product: 2000 Series 5-Turn Dual Mode Servo (25-2, Torque)
+        sku: 2000-0025-0502

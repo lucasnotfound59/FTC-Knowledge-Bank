@@ -9,10 +9,10 @@
 | 状态 | 能力 |
 | --- | --- |
 | 已实现 | schema v1/v2 规则模型、Git/官方网页证据、严格本地 YAML 加载、证据与审批校验、规则优先级和冲突解析、`validate` / `resolve` CLI、20827 与 16093 初始档案、自动化测试 |
-| 部分完成 | `knowledge/` 当前包含 4 条规则：1 条已批准官方规则和 3 条来自参考仓库的候选规则；队伍知识内容仍需扩充 |
-| 尚未实现 | 自动导入和分析 FTC 仓库、候选规范提取、审批 UI/历史、Ask/Edit/Run Agent、Android Studio 插件、Control Hub 部署、Pedro Pathing 与 Limelight 新人内容 |
+| 部分完成 | `knowledge/` 当前包含 23 条规则：1 条已批准官方规则和 22 条候选规则；已有 6 篇 FTC SDK、依赖与工具教程，队伍知识内容仍需扩充 |
+| 尚未实现 | 自动导入和分析 FTC 仓库、候选规范提取、审批 UI/历史、Ask/Edit/Run Agent、Android Studio 插件、Control Hub 部署 |
 
-当前使用 JDK 21 验证的测试套件有 59 项测试全部通过；这是当前快照，测试数量会随功能增长。
+当前使用 JDK 21 验证的测试套件有 66 项测试全部通过；这是当前快照，测试数量会随功能增长。
 
 ## 5 分钟快速开始
 
@@ -76,11 +76,11 @@ Windows PowerShell 使用 wrapper 的 `.bat` 文件：
 准确输出为：
 
 ```text
-validation=ok rules=4
+validation=ok rules=23
 active official.keep-customizations-in-teamcode
 ```
 
-另外 3 条规则都是 `candidate`，因此没有出现在 active 输出中是正确结果，也证明候选规则不会自动生效。
+另外 22 条规则都是 `candidate`，因此没有出现在 active 输出中是正确结果，也证明候选规则不会自动生效。
 
 ## 完整使用手册
 
@@ -100,6 +100,9 @@ active official.keep-customizations-in-teamcode
 - [在 Android Studio 中配置 FTC SDK](knowledge/guides/setup/android-studio-ftc-sdk.md)
 - [安装 FTCLib](knowledge/guides/setup/ftclib.md)
 - [安装和验证 FTC Dashboard](knowledge/guides/setup/ftc-dashboard.md)
+- [Pedro Pathing 配置、定位与调参](knowledge/guides/tools/pedro-pathing.md)
+- [goBILDA 电机与舵机：从精确 SKU 到代码](knowledge/guides/tools/gobilda-motors-servos.md)
+- [Limelight 3A：接线、pipeline、结果与定位](knowledge/guides/tools/limelight-3a.md)
 
 ### 知识库目录
 
@@ -109,6 +112,9 @@ CLI 会递归读取知识根目录中扩展名为小写 `.yaml` 或 `.yml` 的�
 | --- | --- |
 | `knowledge/official/rules.yaml` | FIRST 官方约束 |
 | `knowledge/shared/rules.yaml` | 跨队共享规则与候选规则 |
+| `knowledge/shared/setup/` | Android Studio、FTC SDK 与第三方依赖候选规则 |
+| `knowledge/shared/tools/` | Pedro、goBILDA 与 Limelight 工具候选规则 |
+| `knowledge/guides/` | 面向队员的中文教程；不会被规则加载器解析 |
 | `knowledge/teams/<team>/rules.yaml` | 队号专属规则与候选规则 |
 | `knowledge/schema/examples/rule-example.yaml.example` | schema v1 Git 证据示例；扩展名不会被递归加载 |
 | `knowledge/schema/examples/web-rule-example.yaml.example` | schema v2 网页证据示例；扩展名不会被递归加载 |
@@ -394,7 +400,7 @@ CLI 的错误信息写到标准输出；脚本应同时检查退出码，不要�
 ./gradlew clean test
 ```
 
-2026-08-13 的当前快照为 59 项测试全部通过；测试数量会随功能增长，以本地最新结果为准。
+2026-08-13 的当前快照为 66 项测试全部通过；测试数量会随功能增长，以本地最新结果为准。
 
 ## 为什么需要这个项目
 
