@@ -17,6 +17,13 @@ object RuleValidator {
         if (rule.status==RuleStatus.APPROVED && rule.approval==null) reject("approval","approved rule requires approval")
         if (rule.status!=RuleStatus.APPROVED && rule.approval!=null) reject("approval","only approved rule may contain approval")
         if (rule.authority==RuleAuthority.TEAM && rule.applicability.teams.isEmpty()) reject("applicability.teams","team rule requires an applicable team")
+        if (rule.status==RuleStatus.APPROVED && rule.approval!=null) {
+            val approval=rule.approval
+            val approver=Approver(approval.approver,approval.role,approval.team)
+            if (!ApprovalPolicy.authorize(rule.authority,rule.applicability.teams,approver)) {
+                reject("approval","approval is not authorized for rule authority and teams")
+            }
+        }
         rule.evidence.forEachIndexed { index,evidence ->
             if (evidence.repository.isBlank()) reject("evidence[$index].repository","repository must not be blank")
             if (!commitPattern.matches(evidence.commit)) reject("evidence[$index].commit","commit must be a Git SHA")

@@ -3,6 +3,7 @@ package org.ftckb.domain
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.time.Instant
 
 class RuleValidatorTest {
     private val evidence=RuleEvidence(
@@ -61,5 +62,23 @@ class RuleValidatorTest {
         )
 
         assertEquals(listOf("team rule requires an applicable team"),RuleValidator.validate(rule).map { it.message })
+    }
+
+    @Test
+    fun `approved team rule rejects overall lead approval`() {
+        val rule=KnowledgeRule(
+            id="team.hardware-layer",
+            topic="hardware-access",
+            title="Use Hardwares",
+            instruction="Use Hardwares for configured devices.",
+            rationale="Team-specific architecture.",
+            status=RuleStatus.APPROVED,
+            authority=RuleAuthority.TEAM,
+            applicability=RuleApplicability(teams=setOf("20827")),
+            evidence=listOf(evidence),
+            approval=Approval("overall",ApproverRole.OVERALL_SOFTWARE_LEAD,approvedAt=Instant.EPOCH)
+        )
+
+        assertEquals(listOf("approval is not authorized for rule authority and teams"),RuleValidator.validate(rule).map { it.message })
     }
 }
