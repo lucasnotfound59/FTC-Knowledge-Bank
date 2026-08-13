@@ -1,7 +1,10 @@
 package org.ftckb.knowledge
 
+import java.time.LocalDate
+import org.ftckb.domain.GitRuleEvidence
 import org.ftckb.domain.RuleAuthority
 import org.ftckb.domain.RuleStatus
+import org.ftckb.domain.WebRuleEvidence
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
@@ -149,10 +152,73 @@ class RuleYamlCodecTest {
     @Test
     fun `rejects unsupported schema versions`() {
         val exception=assertThrows(IllegalArgumentException::class.java) {
-            RuleYamlCodec.decode("schemaVersion: 2\nrules: []")
+            RuleYamlCodec.decode("schemaVersion: 3\nrules: []")
         }
 
         assertEquals("unsupported schemaVersion",exception.message)
+    }
+
+    @Test
+    fun `decodes schema two git and web evidence`() {
+        val yaml="""
+            schemaVersion: 2
+            rules:
+              - id: shared.typed-evidence
+                topic: typed-evidence
+                title: Typed evidence
+                instruction: Use typed evidence.
+                rationale: Sources need distinct validation.
+                status: candidate
+                authority: shared
+                applicability: {}
+                evidence:
+                  - type: git
+                    repository: owner/repo
+                    commit: abcdef1
+                    file: TeamCode/build.gradle
+                    line: 1
+                  - type: web
+                    url: https://docs.example.org/tool
+                    title: Tool documentation
+                    publisher: Example
+                    accessedAt: 2026-08-13
+                    section: Installation
+                    version: "2.0"
+                    product: Example Tool
+                    sku: EX-200
+        """.trimIndent()
+
+        val evidence=RuleYamlCodec.decode(yaml).single().evidence
+
+        assertEquals(GitRuleEvidence("owner/repo","abcdef1","TeamCode/build.gradle",line=1),evidence[0])
+        assertEquals(
+            WebRuleEvidence(
+                "https://docs.example.org/tool","Tool documentation","Example",
+                LocalDate.parse("2026-08-13"),"Installation","2.0","Example Tool","EX-200"
+            ),
+            evidence[1]
+        )
+    }
+
+    @Test
+    fun `schema two requires known strict evidence types`() {
+        val cases=listOf(
+            typedCandidate("repository: owner/repo\ncommit: abcdef1\nfile: README.md\nline: 1") to
+                "type must be a string",
+            typedCandidate("type: video\nurl: https://example.org") to
+                "unsupported evidence type: video",
+            typedCandidate("type: git\nrepository: owner/repo\ncommit: abcdef1\nfile: README.md\nline: 1\nurl: https://example.org") to
+                "rules[0].evidence[0] contains unknown fields: url",
+            typedCandidate("type: web\nurl: https://example.org\ntitle: Example\npublisher: Example\naccessedAt: 2026-08-13\nsection: Test\ncommit: abcdef1") to
+                "rules[0].evidence[0] contains unknown fields: commit",
+            typedCandidate("type: web\nurl: https://example.org\ntitle: Example\npublisher: Example\naccessedAt: yesterday\nsection: Test") to
+                "accessedAt must use YYYY-MM-DD"
+        )
+
+        cases.forEach { (yaml,message) ->
+            val exception=assertThrows(IllegalStateException::class.java) { RuleYamlCodec.decode(yaml) }
+            assertEquals(message,exception.message)
+        }
     }
 
     @Test
@@ -268,5 +334,20 @@ class RuleYamlCodecTest {
                 file: TeamCode/build.gradle
                 ${symbol?.let { "symbol: $it" } ?: ""}
                 line: $line
+    """.trimIndent()
+
+    private fun typedCandidate(evidence:String)="""
+        schemaVersion: 2
+        rules:
+          - id: shared.test
+            topic: test
+            title: Test
+            instruction: Test instruction.
+            rationale: Test rationale.
+            status: candidate
+            authority: shared
+            applicability: {}
+            evidence:
+              - ${evidence.replace("\n","\n                ")}
     """.trimIndent()
 }

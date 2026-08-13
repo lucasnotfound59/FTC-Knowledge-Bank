@@ -8,7 +8,7 @@
 
 | 状态 | 能力 |
 | --- | --- |
-| 已实现 | schema v1 规则模型、严格本地 YAML 加载、证据与审批校验、规则优先级和冲突解析、`validate` / `resolve` CLI、20827 与 16093 初始档案、自动化测试 |
+| 已实现 | schema v1/v2 规则模型、Git/官方网页证据、严格本地 YAML 加载、证据与审批校验、规则优先级和冲突解析、`validate` / `resolve` CLI、20827 与 16093 初始档案、自动化测试 |
 | 部分完成 | `knowledge/` 当前包含 4 条规则：1 条已批准官方规则和 3 条来自参考仓库的候选规则；队伍知识内容仍需扩充 |
 | 尚未实现 | 自动导入和分析 FTC 仓库、候选规范提取、审批 UI/历史、Ask/Edit/Run Agent、Android Studio 插件、Control Hub 部署、Pedro Pathing 与 Limelight 新人内容 |
 
@@ -103,9 +103,10 @@ CLI 会递归读取知识根目录中扩展名为小写 `.yaml` 或 `.yml` 的�
 | `knowledge/official/rules.yaml` | FIRST 官方约束 |
 | `knowledge/shared/rules.yaml` | 跨队共享规则与候选规则 |
 | `knowledge/teams/<team>/rules.yaml` | 队号专属规则与候选规则 |
-| `knowledge/schema/examples/rule-example.yaml.example` | 可复制的完整示例；它既不是 `.yaml` 也不是 `.yml`，不会被递归加载 |
+| `knowledge/schema/examples/rule-example.yaml.example` | schema v1 Git 证据示例；扩展名不会被递归加载 |
+| `knowledge/schema/examples/web-rule-example.yaml.example` | schema v2 网页证据示例；扩展名不会被递归加载 |
 
-所有规则文件都是一个 schema v1 YAML 文档。不要在这些文件中保存密钥、机器人凭据或其他秘密。
+规则文件可以是 schema v1 或 v2 YAML 文档。v1 仅支持旧式 Git 证据；v2 通过必填的 `type` 区分 Git 与网页证据。不要在这些文件中保存密钥、机器人凭据或其他秘密。
 
 ### 规则字段说明
 
@@ -113,10 +114,10 @@ CLI 会递归读取知识根目录中扩展名为小写 `.yaml` 或 `.yml` 的�
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `schemaVersion` | 整数 | 必须为 `1` |
+| `schemaVersion` | 整数 | `1` 或 `2`；新建网页证据规则应使用 `2` |
 | `rules` | 列表 | 规则列表，可以为空 |
 
-每条规则支持以下全部 schema v1 字段：
+两个 schema 版本的规则字段相同；差异只在 `evidence` 的编码方式：
 
 | 字段 | 必填 | 类型/可选值 | 说明 |
 | --- | --- | --- | --- |
@@ -141,7 +142,7 @@ CLI 会递归读取知识根目录中扩展名为小写 `.yaml` 或 `.yml` 的�
 | `teams` | 否 | 字符串列表 | 适用队号；空列表表示不限制队号。`team` 权威规则至少要有一个队号 |
 | `seasons` | 否 | 字符串列表 | 适用赛季；空列表表示不限制赛季 |
 
-每个 `evidence` 对象：
+schema v1 的每个 `evidence` 对象都表示 Git 证据：
 
 | 字段 | 必填 | 类型 | 说明 |
 | --- | --- | --- | --- |
@@ -150,6 +151,33 @@ CLI 会递归读取知识根目录中扩展名为小写 `.yaml` 或 `.yml` 的�
 | `file` | 是 | 字符串 | 仓库相对路径 |
 | `symbol` | 条件必填 | 非空字符串 | 来源类、方法或符号；它与正整数 `line` 至少提供一个 |
 | `line` | 条件必填 | 正整数 | 来源行号；它与非空 `symbol` 至少提供一个 |
+
+schema v2 的每个证据都必须先声明 `type`。`type: git` 继续使用上表字段；不能混入网页字段：
+
+```yaml
+evidence:
+  - type: git
+    repository: owner/repository
+    commit: abcdef1234567890
+    file: TeamCode/src/main/java/example/Example.java
+    symbol: Example
+```
+
+`type: web` 用于供应商或项目的官方文档：
+
+| 字段 | 必填 | 类型 | 说明 |
+| --- | --- | --- | --- |
+| `type` | 是 | `web` | 证据类型判别字段 |
+| `url` | 是 | HTTPS URL | 绝对 HTTPS 地址；不能带用户名或密码 |
+| `title` | 是 | 非空字符串 | 官方页面标题 |
+| `publisher` | 是 | 非空字符串 | 发布者或厂商名称 |
+| `accessedAt` | 是 | `YYYY-MM-DD` | 最后核验页面的日期 |
+| `section` | 是 | 非空字符串 | 支撑该规则的页面章节 |
+| `version` | 否 | 非空字符串 | 页面对应的库、SDK 或文档版本；数字形式应加引号 |
+| `product` | 否 | 非空字符串 | 产品名称 |
+| `sku` | 否 | 非空字符串 | 精确硬件 SKU |
+
+网页证据只记录可追溯来源，不会在 `validate` 时联网。维护者应在更新规则时重新打开官方页面，核对内容并更新 `accessedAt`。
 
 `approval` 对象：
 
@@ -174,15 +202,15 @@ file: repository-relative, / separators only, no absolute path, backslash, empty
 line: positive integer
 ```
 
-schema v1 采取严格解码：未知字段、重复 YAML 键、错误的集合或标量类型，以及不安全的 YAML 对象标签都会报错，而不会被静默忽略。规则 `id` 在整个知识根目录中也不能重复。
+schema v1/v2 都采取严格解码：未知字段、重复 YAML 键、错误的集合或标量类型，以及不安全的 YAML 对象标签都会报错，而不会被静默忽略。schema v2 还会拒绝未知证据类型和 Git/网页字段混用。规则 `id` 在整个知识根目录中也不能重复。
 
 ### 创建候选规则
 
 1. 不要覆盖已有的 `rules.yaml`。推荐在对应 authority 目录创建一个名称唯一的新文件，例如 `knowledge/teams/20827/example.yaml`。
-2. 新文件必须是完整文档，包含一次 `schemaVersion: 1` 和一次 `rules:`。可以参考 `knowledge/schema/examples/rule-example.yaml.example`，但不要直接将示例文件改名后放进加载目录。
+2. 新文件必须是完整文档，包含一次 `schemaVersion` 和一次 `rules:`。Git-only 旧格式可参考 `knowledge/schema/examples/rule-example.yaml.example`；含网页证据的新规则使用 schema v2，并参考 `knowledge/schema/examples/web-rule-example.yaml.example`。不要直接将示例文件改名后放进加载目录。
 3. 如果选择编辑已有文件，只把单条以 `- id:` 开头的 list item 追加到原有 `rules:` 列表下；不能再次写入 `schemaVersion` 或第二个 `rules` 根键。
 4. 从仓库总结出的知识必须先写成 `status: candidate`，且不含 `approval`。
-5. 填写精确的仓库、commit、文件以及非空 symbol 或正整数 line 证据。
+5. Git 证据填写精确仓库、commit、文件以及非空 symbol 或正整数 line；网页证据填写官方 HTTPS 地址、标题、发布者、核验日期和具体章节。
 6. 保存后运行 `validate`。校验通过只表示格式与规则约束正确，不代表候选规则已经获批或生效。
 
 完整的 team 候选规则示例：

@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class RuleResolverTest {
-    private val evidence=RuleEvidence("repo","abcdef1","TeamCode/build.gradle",line=1)
+    private val evidence=GitRuleEvidence("repo","abcdef1","TeamCode/build.gradle",line=1)
     private val overall=Approval("overall",ApproverRole.OVERALL_SOFTWARE_LEAD,approvedAt=Instant.EPOCH)
     private val team=Approval("lead-20827",ApproverRole.TEAM_SOFTWARE_LEAD,"20827",Instant.EPOCH)
 

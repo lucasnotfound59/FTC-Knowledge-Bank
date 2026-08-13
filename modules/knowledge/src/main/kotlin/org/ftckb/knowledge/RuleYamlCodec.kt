@@ -2,13 +2,16 @@ package org.ftckb.knowledge
 
 import java.math.BigDecimal
 import java.time.Instant
+import java.time.LocalDate
 import org.ftckb.domain.Approval
 import org.ftckb.domain.ApproverRole
 import org.ftckb.domain.KnowledgeRule
+import org.ftckb.domain.GitRuleEvidence
 import org.ftckb.domain.RuleApplicability
 import org.ftckb.domain.RuleAuthority
 import org.ftckb.domain.RuleEvidence
 import org.ftckb.domain.RuleStatus
+import org.ftckb.domain.WebRuleEvidence
 import org.snakeyaml.engine.v2.api.Load
 import org.snakeyaml.engine.v2.api.LoadSettings
 
@@ -22,14 +25,15 @@ object RuleYamlCodec {
     fun decode(text:String):List<KnowledgeRule> {
         val root=load.loadFromString(text).asMap("root")
         root.rejectUnknownFields(setOf("schemaVersion","rules"),"root")
-        require(root.int("schemaVersion")==1) { "unsupported schemaVersion" }
+        val schemaVersion=root.int("schemaVersion")
+        require(schemaVersion in 1..2) { "unsupported schemaVersion" }
         return root.requiredList("rules").mapIndexed { index,value ->
             val name="rules[$index]"
-            decodeRule(value.asMap(name),name)
+            decodeRule(value.asMap(name),name,schemaVersion)
         }
     }
 
-    private fun decodeRule(map:Map<String,Any?>,name:String):KnowledgeRule {
+    private fun decodeRule(map:Map<String,Any?>,name:String,schemaVersion:Int):KnowledgeRule {
         map.rejectUnknownFields(ruleKeys,name)
         val applicability=map.optionalMap("applicability") ?: emptyMap()
         applicability.rejectUnknownFields(setOf("teams","seasons"),"$name.applicability")
@@ -53,16 +57,47 @@ object RuleYamlCodec {
             evidence=map.requiredList("evidence").mapIndexed { index,value ->
                 val evidenceName="$name.evidence[$index]"
                 val item=value.asMap(evidenceName)
-                item.rejectUnknownFields(setOf("repository","commit","file","symbol","line"),evidenceName)
-                RuleEvidence(
-                    item.string("repository"),item.string("commit"),item.string("file"),
-                    item.optionalString("symbol"),item.optionalInt("line")
-                )
+                decodeEvidence(item,evidenceName,schemaVersion)
             },
             approval=approval,supersedes=map.optionalString("supersedes"),
             positiveExample=map.optionalString("positiveExample"),negativeExample=map.optionalString("negativeExample")
         )
     }
+
+    private fun decodeEvidence(map:Map<String,Any?>,name:String,schemaVersion:Int):RuleEvidence {
+        if (schemaVersion==1) {
+            map.rejectUnknownFields(setOf("repository","commit","file","symbol","line"),name)
+            return decodeGitEvidence(map)
+        }
+        return when (val type=map.string("type")) {
+            "git" -> {
+                map.rejectUnknownFields(setOf("type","repository","commit","file","symbol","line"),name)
+                decodeGitEvidence(map)
+            }
+            "web" -> {
+                map.rejectUnknownFields(
+                    setOf("type","url","title","publisher","accessedAt","section","version","product","sku"),
+                    name
+                )
+                WebRuleEvidence(
+                    url=map.string("url"),title=map.string("title"),publisher=map.string("publisher"),
+                    accessedAt=map.localDate("accessedAt"),section=map.string("section"),
+                    version=map.optionalString("version"),product=map.optionalString("product"),
+                    sku=map.optionalString("sku")
+                )
+            }
+            else -> error("unsupported evidence type: $type")
+        }
+    }
+
+    private fun decodeGitEvidence(map:Map<String,Any?>)=GitRuleEvidence(
+        map.string("repository"),map.string("commit"),map.string("file"),
+        map.optionalString("symbol"),map.optionalInt("line")
+    )
+
+    private fun Map<String,Any?>.localDate(key:String):LocalDate=runCatching {
+        LocalDate.parse(string(key))
+    }.getOrElse { error("$key must use YYYY-MM-DD") }
 
     @Suppress("UNCHECKED_CAST")
     private fun Any?.asMap(name:String)=this as? Map<String,Any?> ?: error("$name must be a map")

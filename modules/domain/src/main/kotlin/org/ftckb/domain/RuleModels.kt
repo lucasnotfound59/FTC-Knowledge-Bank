@@ -1,19 +1,33 @@
 package org.ftckb.domain
 
 import java.time.Instant
+import java.time.LocalDate
 import java.util.Collections
 
 enum class RuleStatus { CANDIDATE,APPROVED,DEPRECATED,REJECTED }
 enum class RuleAuthority { OFFICIAL,SHARED,TEAM }
 enum class ApproverRole { OVERALL_SOFTWARE_LEAD,TEAM_SOFTWARE_LEAD }
 
-data class RuleEvidence(
+sealed interface RuleEvidence
+
+data class GitRuleEvidence(
     val repository:String,
     val commit:String,
     val file:String,
     val symbol:String?=null,
     val line:Int?=null
-)
+):RuleEvidence
+
+data class WebRuleEvidence(
+    val url:String,
+    val title:String,
+    val publisher:String,
+    val accessedAt:LocalDate,
+    val section:String,
+    val version:String?=null,
+    val product:String?=null,
+    val sku:String?=null
+):RuleEvidence
 
 class RuleApplicability(
     teams:Set<String> =emptySet(),

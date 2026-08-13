@@ -1,0 +1,22 @@
+# schema v2 requires an explicit evidence type on every item.
+schemaVersion: 2
+rules:
+  - id: shared.example-web-rule
+    topic: example-web-topic
+    title: Human-readable web-backed title
+    instruction: A concise, directly enforceable instruction.
+    rationale: Why the team uses this rule.
+    status: candidate
+    authority: shared
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - type: web
+        url: https://docs.example.org/product/setup
+        title: Product setup documentation
+        publisher: Example Vendor
+        accessedAt: 2026-08-13
+        section: Installation
+        version: "2.0"
+        product: Example Product

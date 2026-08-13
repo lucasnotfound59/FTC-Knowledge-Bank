@@ -4,9 +4,10 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.time.Instant
+import java.time.LocalDate
 
 class RuleValidatorTest {
-    private val evidence=RuleEvidence(
+    private val evidence=GitRuleEvidence(
         repository="xiaokai-lyk/FTC20827-2026Decode",
         commit="118c28e137334bbbea510d77f1fa384e8b1b5779",
         file="TeamCode/src/main/java/org/firstinspires/ftc/teamcode/Hardwares.java",
@@ -254,4 +255,64 @@ class RuleValidatorTest {
         assertTrue(RuleValidator.validate(constructed).isEmpty())
         assertTrue(RuleValidator.validate(copied).isEmpty())
     }
+
+    @Test
+    fun `web evidence is validated and snapshotted`() {
+        val evidence=WebRuleEvidence(
+            url="https://docs.example.org/tool",
+            title="Tool documentation",
+            publisher="Example",
+            accessedAt=LocalDate.parse("2026-08-13"),
+            section="Installation",
+            version="2.0"
+        )
+        val mutable=mutableListOf<RuleEvidence>(evidence)
+        val rule=candidateWithEvidence(mutable)
+
+        mutable.clear()
+
+        assertEquals(listOf(evidence),rule.evidence)
+        assertTrue(RuleValidator.validate(rule).isEmpty())
+    }
+
+    @Test
+    fun `rejects unsafe or incomplete web evidence`() {
+        val canonical=WebRuleEvidence(
+            url="https://docs.example.org/tool",
+            title="Tool documentation",
+            publisher="Example",
+            accessedAt=LocalDate.parse("2026-08-13"),
+            section="Installation"
+        )
+        val cases=listOf(
+            canonical.copy(url="http://docs.example.org/tool") to "web URL must be absolute HTTPS without credentials",
+            canonical.copy(url="/tool") to "web URL must be absolute HTTPS without credentials",
+            canonical.copy(url="https://user:pass@docs.example.org/tool") to "web URL must be absolute HTTPS without credentials",
+            canonical.copy(title=" ") to "title must not be blank",
+            canonical.copy(publisher=" ") to "publisher must not be blank",
+            canonical.copy(section=" ") to "section must not be blank",
+            canonical.copy(version=" ") to "version must not be blank when present",
+            canonical.copy(product=" ") to "product must not be blank when present",
+            canonical.copy(sku=" ") to "sku must not be blank when present"
+        )
+
+        cases.forEach { (evidence,message) ->
+            assertEquals(
+                listOf(message),
+                RuleValidator.validate(candidateWithEvidence(listOf(evidence))).map { it.message }
+            )
+        }
+    }
+
+    private fun candidateWithEvidence(evidence:List<RuleEvidence>)=KnowledgeRule(
+        id="shared.web-evidence",
+        topic="web-evidence",
+        title="Web evidence",
+        instruction="Use official web evidence.",
+        rationale="Vendor documentation is not always stored in Git.",
+        status=RuleStatus.CANDIDATE,
+        authority=RuleAuthority.SHARED,
+        applicability=RuleApplicability(),
+        evidence=evidence
+    )
 }

@@ -1,3 +1,4 @@
+# schema v1 remains supported for Git evidence. New official-web rules should use schema v2.
 schemaVersion: 1
 rules:
   - id: shared.example-rule

@@ -58,6 +58,36 @@ class FileKnowledgeRepositoryTest {
         assertEquals(listOf("duplicate rule id"),result.violations.map { it.message })
     }
 
+    @Test
+    fun `loads schema one and schema two documents together`() {
+        val root=Files.createTempDirectory("ftckb-mixed-schema")
+        Files.writeString(root.resolve("legacy.yaml"),candidateRule("shared.legacy"))
+        Files.writeString(root.resolve("web.yaml"),"""
+            schemaVersion: 2
+            rules:
+              - id: shared.web
+                topic: web-source
+                title: Web source
+                instruction: Use an official web source.
+                rationale: Product documentation may not have a Git commit.
+                status: candidate
+                authority: shared
+                applicability: {}
+                evidence:
+                  - type: web
+                    url: https://docs.example.org/tool
+                    title: Tool documentation
+                    publisher: Example
+                    accessedAt: 2026-08-13
+                    section: Installation
+        """.trimIndent())
+
+        val result=FileKnowledgeRepository.load(root)
+
+        assertEquals(listOf("shared.legacy","shared.web"),result.rules.map { it.id })
+        assertEquals(emptyList<String>(),result.violations.map { it.message })
+    }
+
     private fun invalidApprovedRule(id:String)="""
         schemaVersion: 1
         rules:

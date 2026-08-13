@@ -1,5 +1,7 @@
 package org.ftckb.domain
 
+import java.net.URI
+
 data class RuleViolation(val ruleId:String,val field:String,val message:String)
 
 object RuleIdentity {
@@ -46,15 +48,42 @@ object RuleValidator {
             }
         }
         rule.evidence.forEachIndexed { index,evidence ->
-            if (evidence.repository.isBlank()) reject("evidence[$index].repository","repository must not be blank")
-            if (!commitPattern.matches(evidence.commit)) reject("evidence[$index].commit","commit must be a Git SHA")
-            if (!isSafeEvidencePath(evidence.file)) {
-                reject("evidence[$index].file","file must be a safe repository relative path using / separators")
+            when (evidence) {
+                is GitRuleEvidence -> validateGitEvidence(index,evidence,::reject)
+                is WebRuleEvidence -> validateWebEvidence(index,evidence,::reject)
             }
-            if (evidence.symbol.isNullOrBlank() && evidence.line==null) reject("evidence[$index]","evidence requires a symbol or line")
-            if (evidence.line!=null && evidence.line<1) reject("evidence[$index].line","line must be positive")
         }
     }
+
+    private fun validateGitEvidence(index:Int,evidence:GitRuleEvidence,reject:(String,String)->Unit) {
+        if (evidence.repository.isBlank()) reject("evidence[$index].repository","repository must not be blank")
+        if (!commitPattern.matches(evidence.commit)) reject("evidence[$index].commit","commit must be a Git SHA")
+        if (!isSafeEvidencePath(evidence.file)) {
+            reject("evidence[$index].file","file must be a safe repository relative path using / separators")
+        }
+        if (evidence.symbol.isNullOrBlank() && evidence.line==null) {
+            reject("evidence[$index]","evidence requires a symbol or line")
+        }
+        if (evidence.line!=null && evidence.line<1) reject("evidence[$index].line","line must be positive")
+    }
+
+    private fun validateWebEvidence(index:Int,evidence:WebRuleEvidence,reject:(String,String)->Unit) {
+        if (!isSafeWebUrl(evidence.url)) {
+            reject("evidence[$index].url","web URL must be absolute HTTPS without credentials")
+        }
+        if (evidence.title.isBlank()) reject("evidence[$index].title","title must not be blank")
+        if (evidence.publisher.isBlank()) reject("evidence[$index].publisher","publisher must not be blank")
+        if (evidence.section.isBlank()) reject("evidence[$index].section","section must not be blank")
+        if (evidence.version?.isBlank()==true) reject("evidence[$index].version","version must not be blank when present")
+        if (evidence.product?.isBlank()==true) reject("evidence[$index].product","product must not be blank when present")
+        if (evidence.sku?.isBlank()==true) reject("evidence[$index].sku","sku must not be blank when present")
+    }
+
+    private fun isSafeWebUrl(value:String):Boolean=runCatching {
+        val uri=URI(value)
+        uri.isAbsolute && uri.scheme.equals("https",ignoreCase=true) &&
+            !uri.host.isNullOrBlank() && uri.userInfo==null
+    }.getOrDefault(false)
 
     private fun isSafeEvidencePath(file:String):Boolean {
         if (file.isBlank() || '\u0000' in file || '\\' in file) return false
