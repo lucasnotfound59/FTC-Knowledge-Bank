@@ -5,8 +5,12 @@ rules:
     title: Compare FTCLib prerequisites before editing
     instruction: Compare FTCLib prerequisites with the pinned FTC SDK and apply only settings that are not already satisfied.
     rationale: Blindly copying historical setup steps can overwrite FIRST-managed configuration or duplicate current defaults.
-    status: candidate
+    status: approved
     authority: shared
+    approval:
+      approver: overall-software-lead
+      role: overall_software_lead
+      approvedAt: 2026-08-13T00:00:00Z
     applicability:
       teams: []
       seasons: []
@@ -22,8 +26,12 @@ rules:
     title: Pin only required FTCLib modules
     instruction: Declare only required FTCLib modules with exact documented versions and apply vision native-library or ABI steps only when using the vision module.
     rationale: Core and vision have separate versions and prerequisites.
-    status: candidate
+    status: approved
     authority: shared
+    approval:
+      approver: overall-software-lead
+      role: overall_software_lead
+      approvedAt: 2026-08-13T00:00:00Z
     applicability:
       teams: []
       seasons: []

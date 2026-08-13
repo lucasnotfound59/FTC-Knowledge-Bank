@@ -5,8 +5,12 @@ rules:
     title: Pin the official FTC SDK release
     instruction: Build team projects from an identified FIRST FtcRobotController release or tag and record its FTC SDK version.
     rationale: A rolling branch can change and cannot reproduce a known robot build.
-    status: candidate
+    status: approved
     authority: shared
+    approval:
+      approver: overall-software-lead
+      role: overall_software_lead
+      approvedAt: 2026-08-13T00:00:00Z
     applicability:
       teams: []
       seasons: [2025-2026]
@@ -23,8 +27,12 @@ rules:
     title: Preserve release-supplied build tooling
     instruction: Use the Gradle Wrapper, Android Gradle Plugin, and Android build configuration supplied by the selected FTC SDK release unless FIRST documents a compatible change.
     rationale: Independent upgrades can make the FTC workspace incompatible with Android Studio or the robot controller runtime.
-    status: candidate
+    status: approved
     authority: shared
+    approval:
+      approver: overall-software-lead
+      role: overall_software_lead
+      approvedAt: 2026-08-13T00:00:00Z
     applicability:
       teams: []
       seasons: [2025-2026]
@@ -48,8 +56,12 @@ rules:
     title: Record FTC toolchain versions separately
     instruction: Record the Gradle JDK, Java source compatibility, Android SDK levels, and FTC SDK version as distinct values from their actual configuration locations.
     rationale: These similarly named versions control different parts of the build and are not interchangeable.
-    status: candidate
+    status: approved
     authority: shared
+    approval:
+      approver: overall-software-lead
+      role: overall_software_lead
+      approvedAt: 2026-08-13T00:00:00Z
     applicability:
       teams: []
       seasons: [2025-2026]

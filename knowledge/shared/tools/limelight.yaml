@@ -5,8 +5,12 @@ rules:
     title: Check Limelight result validity
     instruction: Check that the latest Limelight result exists and is valid before using target or pose fields.
     rationale: The FTC API can return no usable target result.
-    status: candidate
+    status: approved
     authority: shared
+    approval:
+      approver: overall-software-lead
+      role: overall_software_lead
+      approvedAt: 2026-08-13T00:00:00Z
     applicability:
       teams: []
       seasons: []
@@ -23,8 +27,12 @@ rules:
     title: Enforce a Limelight freshness policy
     instruction: Define and enforce a task-appropriate maximum result age before using Limelight data in closed-loop control or localization.
     rationale: A valid result can still be too old for the current control decision.
-    status: candidate
+    status: approved
     authority: shared
+    approval:
+      approver: overall-software-lead
+      role: overall_software_lead
+      approvedAt: 2026-08-13T00:00:00Z
     applicability:
       teams: []
       seasons: []
@@ -41,8 +49,12 @@ rules:
     title: Synchronize pipeline-dependent reads
     instruction: Treat pipeline switching as asynchronous and verify the reported pipeline before consuming data that depends on the new pipeline.
     rationale: The pipeline switch call is fire-and-forget.
-    status: candidate
+    status: approved
     authority: shared
+    approval:
+      approver: overall-software-lead
+      role: overall_software_lead
+      approvedAt: 2026-08-13T00:00:00Z
     applicability:
       teams: []
       seasons: []
@@ -59,8 +71,12 @@ rules:
     title: Configure camera pose for localization
     instruction: Configure camera pose relative to the robot before field localization and provide current robot orientation before consuming MegaTag 2 results.
     rationale: Field pose depends on camera extrinsics and MegaTag 2 fuses external orientation.
-    status: candidate
+    status: approved
     authority: shared
+    approval:
+      approver: overall-software-lead
+      role: overall_software_lead
+      approvedAt: 2026-08-13T00:00:00Z
     applicability:
       teams: []
       seasons: []
@@ -77,8 +93,12 @@ rules:
     title: Back up before updating LimelightOS
     instruction: Back up Limelight pipelines and scripts before flashing or upgrading LimelightOS.
     rationale: The official quick start warns that an OS flash erases them.
-    status: candidate
+    status: approved
     authority: shared
+    approval:
+      approver: overall-software-lead
+      role: overall_software_lead
+      approvedAt: 2026-08-13T00:00:00Z
     applicability:
       teams: []
       seasons: []

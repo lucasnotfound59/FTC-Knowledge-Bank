@@ -5,8 +5,12 @@ rules:
     title: Identify the exact goBILDA SKU
     instruction: Identify the exact goBILDA product and SKU before applying gear ratio, speed, torque, current, encoder, voltage, PWM, or travel specifications.
     rationale: Products in the same family can have different electrical and mechanical values.
-    status: candidate
+    status: approved
     authority: shared
+    approval:
+      approver: overall-software-lead
+      role: overall_software_lead
+      approvedAt: 2026-08-13T00:00:00Z
     applicability:
       teams: []
       seasons: []
@@ -32,8 +36,12 @@ rules:
     title: Convert from output-shaft encoder resolution
     instruction: Use the documented output-shaft encoder resolution for the exact motor SKU and include every external transmission ratio when converting ticks to mechanism motion.
     rationale: Motor encoder counts describe the motor output shaft, not an arbitrary downstream mechanism.
-    status: candidate
+    status: approved
     authority: shared
+    approval:
+      approver: overall-software-lead
+      role: overall_software_lead
+      approvedAt: 2026-08-13T00:00:00Z
     applicability:
       teams: []
       seasons: []
@@ -51,8 +59,12 @@ rules:
     title: Separate stall and operating values
     instruction: Label no-load and stall specifications distinctly and do not present stall values as continuous operating ratings.
     rationale: The manufacturer publishes these as different operating conditions.
-    status: candidate
+    status: approved
     authority: shared
+    approval:
+      approver: overall-software-lead
+      role: overall_software_lead
+      approvedAt: 2026-08-13T00:00:00Z
     applicability:
       teams: []
       seasons: []
@@ -70,8 +82,12 @@ rules:
     title: Record servo mode and PWM range
     instruction: Record exact servo SKU, mode, documented PWM range, voltage, direction, and travel before defining software endpoints or interpreting commands.
     rationale: A dual-mode servo interprets PWM as position in one mode and speed in continuous mode.
-    status: candidate
+    status: approved
     authority: shared
+    approval:
+      approver: overall-software-lead
+      role: overall_software_lead
+      approvedAt: 2026-08-13T00:00:00Z
     applicability:
       teams: []
       seasons: []
