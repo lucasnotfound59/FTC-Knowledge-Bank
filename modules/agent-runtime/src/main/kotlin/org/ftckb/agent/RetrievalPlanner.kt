@@ -1,5 +1,7 @@
 package org.ftckb.agent
 
+import java.text.Normalizer
+import java.util.Locale
 import org.ftckb.model.MessageRole
 import org.ftckb.model.ModelMessage
 import org.ftckb.model.ModelProvider
@@ -49,9 +51,10 @@ class RetrievalPlanner(private val provider:ModelProvider) {
     }
 
     private fun fallback(input:PlanningInput):RetrievalIntent {
-        val terms=token.findAll(input.question+" "+input.recentReferences.joinToString(" "))
-            .map { it.value.replaceFirstChar(Char::lowercase) }
-            .filter { it.lowercase() !in stopWords }
+        val source=Normalizer.normalize(input.question+" "+input.recentReferences.joinToString(" "),Normalizer.Form.NFKC)
+        val terms=token.findAll(source)
+            .map { Normalizer.normalize(it.value,Normalizer.Form.NFKC).replaceFirstChar { character -> character.lowercase(Locale.ROOT) } }
+            .filter { it.lowercase(Locale.ROOT) !in stopWords }
             .distinct()
             .take(12)
             .toList()
@@ -64,7 +67,7 @@ class RetrievalPlanner(private val provider:ModelProvider) {
     }
 
     private companion object {
-        val token=Regex("[A-Za-z_][A-Za-z0-9_]*")
+        val token=Regex("[\\p{L}\\p{N}_]+")
         val stopWords=setOf("a","an","and","are","does","for","how","in","is","of","the","to","use","what","with")
     }
 }

@@ -15,15 +15,18 @@ class ContextRetriever(
         var characters=0
         var codeNumber=1
         repositoryIndex.search(LocalQuery(intent.concepts,intent.symbols,intent.pathGlobs),48).forEach { fragment ->
-            if (characters+fragment.text.length<=maximumCharacters) {
-                evidence+=CodeEvidence("CODE:C${codeNumber++}",fragment.path,fragment.startLine,fragment.endLine,fragment.sha256,fragment.text)
-                characters+=fragment.text.length
+            val item=CodeEvidence("CODE:C$codeNumber",fragment.path,fragment.startLine,fragment.endLine,fragment.sha256,fragment.text)
+            val length=EvidenceSerialization.block(item).length
+            if (characters+length<=maximumCharacters) {
+                evidence+=item
+                characters+=length
+                codeNumber++
             }
         }
         var ruleNumber=1
         knowledgeRetriever.retrieveRules(intent).sortedBy { it.id }.forEach { rule ->
             val item=RuleEvidenceItem("RULE:R${ruleNumber}",rule)
-            val length=ruleLength(item)
+            val length=EvidenceSerialization.block(item).length
             if (characters+length<=maximumCharacters) {
                 evidence+=item
                 characters+=length
@@ -33,14 +36,13 @@ class ContextRetriever(
         var guideNumber=1
         knowledgeRetriever.retrieveGuides(intent).sortedWith(compareBy({ it.path },{ it.heading })).forEach { guide ->
             val item=guide.copy(id="GUIDE:G${guideNumber}")
-            if (characters+item.text.length<=maximumCharacters) {
+            val length=EvidenceSerialization.block(item).length
+            if (characters+length<=maximumCharacters) {
                 evidence+=item
-                characters+=item.text.length
+                characters+=length
                 guideNumber++
             }
         }
         return ContextPack(evidence,characters)
     }
-
-    private fun ruleLength(item:RuleEvidenceItem)=item.rule.instruction.length+item.rule.rationale.length+item.rule.title.length
 }

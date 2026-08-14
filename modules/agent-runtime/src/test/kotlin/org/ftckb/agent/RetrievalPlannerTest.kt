@@ -1,6 +1,7 @@
 package org.ftckb.agent
 
 import java.nio.file.Path
+import java.nio.file.Files
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
 import org.ftckb.model.ModelProvider
@@ -39,6 +40,16 @@ class RetrievalPlannerTest {
         assertEquals(setOf("driveRobot","pedro","followPath"),intent.concepts)
         assertEquals(emptySet<String>(),intent.symbols)
         assertEquals(emptySet<String>(),intent.pathGlobs)
+        assertEquals(2,provider.requests.size)
+    }
+
+    @Test
+    fun `uses normalized non-Latin fallback concepts after malformed plans`() {
+        val provider=ScriptedProvider("[]","still not json")
+
+        val intent=RetrievalPlanner(provider).plan(input(question="电机如何工作？"))
+
+        assertEquals(setOf("电机如何工作"),intent.concepts)
         assertEquals(2,provider.requests.size)
     }
 
@@ -85,13 +96,21 @@ class RetrievalPlannerTest {
 
         assertEquals(listOf("CODE:C1","RULE:R1","GUIDE:G1"),context.evidence.map { it.id })
         assertEquals("guides/tools/drive.md",(context.evidence.last() as GuideEvidence).path)
-        assertEquals(context.evidence.sumOf { item ->
-            when (item) {
-                is CodeEvidence -> item.text.length
-                is RuleEvidenceItem -> item.rule.instruction.length+item.rule.rationale.length+item.rule.title.length
-                is GuideEvidence -> item.text.length
-            }
-        },context.estimatedCharacters)
+        assertEquals(EvidenceSerialization.payload(context.evidence).length,context.estimatedCharacters)
+    }
+
+    @Test
+    fun `does not retrieve guides through outside-root symlinks`() {
+        write("knowledge/guides/inside.md","# Safe\n\ninside evidence")
+        val outside=tempDir.resolve("outside.md")
+        outside.writeText("# Leaked\n\noutside-secret")
+        val link=tempDir.resolve("knowledge/guides/outside.md")
+        Files.createSymbolicLink(link,outside)
+
+        val guides=KnowledgeRetriever(tempDir.resolve("knowledge"),null,null)
+            .retrieveGuides(RetrievalIntent(setOf("outside-secret"),emptySet(),emptySet(),emptySet(),emptySet()))
+
+        assertEquals(emptyList<GuideEvidence>(),guides)
     }
 
     private fun input(question:String="How does Drive work?",references:Set<String> =emptySet())=

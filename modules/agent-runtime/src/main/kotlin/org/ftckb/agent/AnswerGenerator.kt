@@ -38,22 +38,11 @@ class AnswerGenerator(private val provider:ModelProvider,private val repositoryI
                 append("Question: ").append(input.question).append('\n')
                 input.priorContext?.let { append("Conversation context (not evidence): ").append(it).append('\n') }
                 append("Evidence:\n")
-                input.context.evidence.forEach { appendEvidence(this,it) }
+                append(EvidenceSerialization.payload(input.context.evidence))
                 issue?.let { append("Repair the previous response: ").append(it) }
             })
         ),1024
     )
-
-    private fun appendEvidence(builder:StringBuilder,item:EvidenceItem) {
-        when (item) {
-            is CodeEvidence -> builder.append('[').append(item.id).append("] ").append(item.path)
-                .append(':').append(item.startLine).append('-').append(item.endLine).append('\n').append(item.text).append('\n')
-            is RuleEvidenceItem -> builder.append('[').append(item.id).append("] approved rule ").append(item.rule.id)
-                .append(": ").append(item.rule.instruction).append('\n')
-            is GuideEvidence -> builder.append('[').append(item.id).append("] guide ").append(item.path)
-                .append(" # ").append(item.heading).append('\n').append(item.text).append('\n')
-        }
-    }
 
     private fun decodeAndValidate(text:String,context:ContextPack):List<AnswerClaim> {
         val node=ModelJson.objectNode(text)

@@ -1,6 +1,7 @@
 package org.ftckb.agent
 
 import java.nio.file.Path
+import java.nio.file.Files
 import java.time.Instant
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
@@ -16,6 +17,7 @@ import org.ftckb.model.ModelResponse
 import org.ftckb.repository.RepositoryIndex
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 
@@ -104,6 +106,30 @@ class AnswerGeneratorTest {
             AnswerGenerator(provider,index).generate(AnswerInput("What should change?",null,context))
         }
         assertEquals(2,provider.requests.size)
+    }
+
+    @Test
+    fun `sends evidence payload within the context retrieval cap`() {
+        val repositoryRoot=Files.createDirectories(tempDir.resolve("bounded-repository"))
+        val source=repositoryRoot.resolve("TeamCode/Drive.java")
+        source.parent.createDirectories()
+        source.writeText("class Drive {}")
+        val knowledgeRoot=Files.createDirectories(tempDir.resolve("empty-knowledge"))
+        val index=RepositoryIndex()
+        index.build(repositoryRoot)
+        val cap=80
+        val context=ContextRetriever(index,KnowledgeRetriever(knowledgeRoot,null,null),cap)
+            .retrieve(RetrievalIntent(setOf("drive"),emptySet(),emptySet(),emptySet(),emptySet()))
+        val provider=ScriptedProvider(
+            """{"claims":[{"kind":"model_inference","text":"Inspect the drive class.","citations":[]}]}"""
+        )
+
+        AnswerGenerator(provider,index).generate(AnswerInput("What is Drive?",null,context))
+
+        val payload=provider.requests.single().messages.single { it.role.name=="USER" }.content.substringAfter("Evidence:\n")
+        assertTrue(context.evidence.isNotEmpty())
+        assertEquals(context.estimatedCharacters,payload.length)
+        assertTrue(payload.length<=cap)
     }
 
     private fun context(index:RepositoryIndex,rule:KnowledgeRule=rule()):ContextPack {
