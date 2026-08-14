@@ -14,9 +14,11 @@ import org.ftckb.agent.ContextRetriever
 import org.ftckb.agent.ConversationSaver
 import org.ftckb.agent.ConversationState
 import org.ftckb.agent.KnowledgeRetriever
+import org.ftckb.agent.KnowledgeAccessException
+import org.ftckb.agent.GuideTraversalException
 import org.ftckb.agent.RetrievalPlanner
+import org.ftckb.agent.RedactingModelProvider
 import org.ftckb.model.ModelProvider
-import org.ftckb.model.ModelRequest
 import org.ftckb.model.ProviderConfigLoader
 import org.ftckb.model.ProviderProfile
 import org.ftckb.model.SecretResolver
@@ -71,7 +73,7 @@ class ProductionChatLauncher(
             out.println("error starting chat: model provider initialization failed")
             return 2
         }
-        val outboundProvider=ExactSecretRedactingModelProvider(provider,secret)
+        val outboundProvider=RedactingModelProvider(provider,setOf(secret))
         val conversation=ConversationState(outboundProvider,setOf(secret))
         val agent=AskAgent(
             RetrievalPlanner(outboundProvider),
@@ -102,17 +104,6 @@ class ProductionChatLauncher(
     }
 }
 
-private class ExactSecretRedactingModelProvider(
-    private val delegate:ModelProvider,
-    private val exactSecret:String
-):ModelProvider {
-    override fun complete(request:ModelRequest)=delegate.complete(request.copy(
-        messages=request.messages.map { message ->
-            message.copy(content=message.content.replace(exactSecret,"[REDACTED]"))
-        }
-    ))
-}
-
 private class ProductionAskChatSession(
     private val agent:AskAgent,
     private val saver:ConversationSaver,
@@ -121,8 +112,18 @@ private class ProductionAskChatSession(
     private val repositoryIndex:RepositoryIndex
 ):AskChatSession {
     override fun ask(question:String):AgentAnswer {
-        repositoryIndex.build(chatStatus.repository)
-        agent.ask(question)
+        try {
+            repositoryIndex.build(chatStatus.repository)
+        } catch (_:Exception) {
+            throw AskChatSessionException.RepositoryRead()
+        }
+        try {
+            agent.ask(question)
+        } catch (_:KnowledgeAccessException) {
+            throw AskChatSessionException.KnowledgeRead()
+        } catch (_:GuideTraversalException) {
+            throw AskChatSessionException.KnowledgeRead()
+        }
         return agent.conversation.context().recentTurns.last().answer
     }
 

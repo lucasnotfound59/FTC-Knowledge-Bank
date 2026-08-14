@@ -31,6 +31,9 @@ class RetrievalPlanner(private val provider:ModelProvider) {
                 append("Question: ").append(input.question).append('\n')
                 input.recentSummary?.let { append("Recent summary: ").append(it).append('\n') }
                 if (input.recentReferences.isNotEmpty()) append("Recent references: ").append(input.recentReferences.joinToString()).append('\n')
+                if (input.pendingQuestions.isNotEmpty()) {
+                    append("Pending user turns without validated answers: ").append(input.pendingQuestions.joinToString()).append('\n')
+                }
                 append("Repository summary: ").append(input.repositorySummary)
                 issue?.let { append("\nRepair the previous response: ").append(it) }
             })
@@ -51,7 +54,10 @@ class RetrievalPlanner(private val provider:ModelProvider) {
     }
 
     private fun fallback(input:PlanningInput):RetrievalIntent {
-        val source=Normalizer.normalize(input.question+" "+input.recentReferences.joinToString(" "),Normalizer.Form.NFKC)
+        val source=Normalizer.normalize(
+            input.question+" "+input.recentReferences.joinToString(" ")+" "+input.pendingQuestions.joinToString(" "),
+            Normalizer.Form.NFKC
+        )
         val terms=token.findAll(source)
             .map { Normalizer.normalize(it.value,Normalizer.Form.NFKC).replaceFirstChar { character -> character.lowercase(Locale.ROOT) } }
             .filter { it.lowercase(Locale.ROOT) !in stopWords }

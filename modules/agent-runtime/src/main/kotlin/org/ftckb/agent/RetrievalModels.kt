@@ -30,7 +30,7 @@ data class RetrievalIntent(
 
 data class PlanningInput(
     val question:String,val recentSummary:String?,val recentReferences:Set<String>,
-    val repositorySummary:String
+    val repositorySummary:String,val pendingQuestions:List<String> =emptyList()
 )
 
 sealed interface EvidenceItem { val id:String }

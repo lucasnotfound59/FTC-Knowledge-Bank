@@ -6,7 +6,6 @@ import org.ftckb.model.ModelProvider
 import org.ftckb.model.ModelRequest
 import org.ftckb.model.TokenUsage
 import org.ftckb.domain.RuleStatus
-import org.ftckb.repository.LocalQuery
 import org.ftckb.repository.RepositoryIndex
 
 class AnswerGenerator(private val provider:ModelProvider,private val repositoryIndex:RepositoryIndex) {
@@ -23,7 +22,7 @@ class AnswerGenerator(private val provider:ModelProvider,private val repositoryI
             } catch (error:CitationValidationException) {
                 issue=error.message ?: "invalid citation"
             }
-            if (attempt==1) throw CitationValidationException(issue ?: "answer citations are invalid")
+            if (attempt==1) throw CitationValidationException(issue)
         }
         throw CitationValidationException(issue ?: "answer citations are invalid")
     }
@@ -76,7 +75,7 @@ class AnswerGenerator(private val provider:ModelProvider,private val repositoryI
         val hasRule=citations.any { citation ->
             citation.startsWith("RULE:") && (evidence[citation] as? RuleEvidenceItem)?.rule?.status==RuleStatus.APPROVED
         }
-        val hasCode=citations.any { it.startsWith("CODE:") && (evidence[it] as? CodeEvidence)?.let(::codeHashMatches)==true }
+        val hasCode=citations.any { it.startsWith("CODE:") && evidence[it] is CodeEvidence }
         when (kind) {
             ClaimKind.APPROVED_RULE -> if (!hasRule) throw CitationValidationException("approved_rule requires a current RULE citation")
             ClaimKind.CODE_OBSERVATION -> if (!hasCode) throw CitationValidationException("code_observation requires a current CODE citation")
@@ -85,8 +84,6 @@ class AnswerGenerator(private val provider:ModelProvider,private val repositoryI
     }
 
     private fun codeHashMatches(evidence:CodeEvidence):Boolean {
-        val current=repositoryIndex.search(LocalQuery(emptySet(),pathGlobs=setOf(evidence.path)),10)
-            .firstOrNull { it.path==evidence.path }
-        return current?.sha256==evidence.sha256
+        return repositoryIndex.currentSha256(evidence.path)==evidence.sha256
     }
 }

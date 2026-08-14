@@ -4,6 +4,7 @@ import java.nio.file.Path
 import java.nio.file.Files
 import java.time.Instant
 import java.util.concurrent.TimeUnit
+import java.nio.file.attribute.PosixFilePermission
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
 import org.ftckb.domain.Approval
@@ -94,20 +95,43 @@ class AnswerGeneratorTest {
     }
 
     @Test
-    fun `rejects a code citation whose indexed hash has changed`() {
+    fun `rejects a code citation when the file mutates during the provider response`() {
         val index=RepositoryIndex()
         val context=context(index)
-        tempDir.resolve("TeamCode/Drive.java").writeText("class Drive { void run() { guarded(); } }")
-        index.refresh(setOf("TeamCode/Drive.java"))
-        val provider=ScriptedProvider(
-            """{"claims":[{"kind":"code_observation","text":"Missing.","citations":["CODE:C1"]}]}""",
-            """{"claims":[{"kind":"code_observation","text":"Missing.","citations":["CODE:C1"]}]}"""
-        )
+        val provider=MutatingProvider({
+            tempDir.resolve("TeamCode/Drive.java").writeText("class Drive { void run() { guarded(); } }")
+        })
 
         assertThrows(CitationValidationException::class.java) {
             AnswerGenerator(provider,index).generate(AnswerInput("What should change?",null,context))
         }
         assertEquals(2,provider.requests.size)
+    }
+
+    @Test
+    fun `rejects a code citation when the file is deleted during the provider response`() {
+        val index=RepositoryIndex()
+        val context=context(index)
+        val provider=MutatingProvider({ Files.deleteIfExists(tempDir.resolve("TeamCode/Drive.java")) })
+
+        assertThrows(CitationValidationException::class.java) {
+            AnswerGenerator(provider,index).generate(AnswerInput("What should change?",null,context))
+        }
+        assertEquals(2,provider.requests.size)
+    }
+
+    @Test
+    fun `validates a current citation for a literal filename containing glob metacharacters`() {
+        val index=RepositoryIndex()
+        val path="TeamCode/Drive[Primary]{A}.java"
+        val context=context(index,path=path)
+        val provider=ScriptedProvider(
+            """{"claims":[{"kind":"code_observation","text":"Current.","citations":["CODE:C1"]}]}"""
+        )
+
+        val answer=AnswerGenerator(provider,index).generate(AnswerInput("What should change?",null,context))
+
+        assertEquals(listOf("CODE:C1"),answer.claims.single().citations)
     }
 
     @Test
@@ -169,12 +193,56 @@ class AnswerGeneratorTest {
         assertEquals(listOf("guides/inside.md"),guides.map { it.path })
     }
 
-    private fun context(index:RepositoryIndex,rule:KnowledgeRule=rule()):ContextPack {
-        val file=tempDir.resolve("TeamCode/Drive.java")
+    @Test
+    fun `guide scanning enforces aggregate traversal limits`() {
+        val knowledgeRoot=Files.createDirectories(tempDir.resolve("bounded-guide-knowledge"))
+        val guidesRoot=Files.createDirectories(knowledgeRoot.resolve("guides"))
+        guidesRoot.resolve("one.md").writeText("# Drive one\nfirst")
+        guidesRoot.resolve("two.md").writeText("# Drive two\nsecond")
+        val retriever=KnowledgeRetriever(
+            knowledgeRoot,null,null,GuideTraversalLimits(maxFiles=1)
+        )
+
+        assertThrows(GuideTraversalException::class.java) {
+            retriever.retrieveGuides(RetrievalIntent(setOf("drive"),emptySet(),emptySet(),emptySet(),emptySet()))
+        }
+    }
+
+    @Test
+    fun `guide scanning skips an unreadable markdown entry and keeps readable evidence`() {
+        val knowledgeRoot=Files.createDirectories(tempDir.resolve("unreadable-guide-knowledge"))
+        val guidesRoot=Files.createDirectories(knowledgeRoot.resolve("guides"))
+        guidesRoot.resolve("safe.md").writeText("# Drive safe\nreadable drive evidence")
+        val blocked=guidesRoot.resolve("blocked.md")
+        blocked.writeText("# Drive blocked\nunreadable drive evidence")
+        assumeTrue(Files.getFileStore(guidesRoot).supportsFileAttributeView("posix"))
+        Files.setPosixFilePermissions(blocked,emptySet<PosixFilePermission>())
+        assumeTrue(
+            runCatching { Files.newByteChannel(blocked).use { } }.isFailure,
+            "filesystem still permits reading mode 000 files"
+        )
+        try {
+            val guides=KnowledgeRetriever(knowledgeRoot,null,null)
+                .retrieveGuides(RetrievalIntent(setOf("drive"),emptySet(),emptySet(),emptySet(),emptySet()))
+
+            assertEquals(listOf("guides/safe.md"),guides.map { it.path })
+        } finally {
+            Files.setPosixFilePermissions(
+                blocked,setOf(PosixFilePermission.OWNER_READ,PosixFilePermission.OWNER_WRITE)
+            )
+        }
+    }
+
+    private fun context(
+        index:RepositoryIndex,
+        rule:KnowledgeRule=rule(),
+        path:String="TeamCode/Drive.java"
+    ):ContextPack {
+        val file=tempDir.resolve(path)
         file.parent.createDirectories()
         file.writeText("class Drive { void run() { result.toString(); } }")
         val snapshot=index.build(tempDir)
-        val document=snapshot.documents.getValue("TeamCode/Drive.java")
+        val document=snapshot.documents.getValue(path)
         return ContextPack(
             listOf(
                 CodeEvidence("CODE:C1",document.path,1,1,document.sha256,document.text),
@@ -202,6 +270,18 @@ class AnswerGeneratorTest {
         override fun complete(request:ModelRequest):ModelResponse {
             requests+=request
             return ModelResponse(queue.removeFirst())
+        }
+    }
+
+    private class MutatingProvider(private val mutate:()->Unit):ModelProvider {
+        val requests=mutableListOf<ModelRequest>()
+
+        override fun complete(request:ModelRequest):ModelResponse {
+            requests+=request
+            mutate()
+            return ModelResponse(
+                """{"claims":[{"kind":"code_observation","text":"Missing.","citations":["CODE:C1"]}]}"""
+            )
         }
     }
 }

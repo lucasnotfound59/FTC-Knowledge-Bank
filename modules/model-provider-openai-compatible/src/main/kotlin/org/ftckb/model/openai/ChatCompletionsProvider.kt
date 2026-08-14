@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.json.JsonMapper
 import java.io.IOException
 import java.net.URI
-import org.ftckb.model.MaxTokensParameter
 import org.ftckb.model.ModelProvider
 import org.ftckb.model.ModelProviderException
 import org.ftckb.model.ModelRequest
@@ -51,11 +50,12 @@ internal class ChatCompletionsProvider(
                 .put("role",message.role.name.lowercase())
                 .put("content",message.content)
         }
-        val tokenField=when (profile.maxTokensParameter ?: MaxTokensParameter.MAX_TOKENS) {
-            MaxTokensParameter.MAX_TOKENS -> "max_tokens"
-            MaxTokensParameter.MAX_COMPLETION_TOKENS -> "max_completion_tokens"
+        val tokenField=when (profile.maxTokensParameter) {
+            org.ftckb.model.MaxTokensParameter.MAX_TOKENS -> "max_tokens"
+            org.ftckb.model.MaxTokensParameter.MAX_COMPLETION_TOKENS -> "max_completion_tokens"
+            null -> null
         }
-        body.put(tokenField,request.maxOutputTokens)
+        if (tokenField!=null) body.put(tokenField,minOf(request.maxOutputTokens,profile.maxOutputTokens))
         if (profile.jsonMode) body.putObject("response_format").put("type","json_object")
         body.put("stream",false)
         return mapper.writeValueAsString(body)

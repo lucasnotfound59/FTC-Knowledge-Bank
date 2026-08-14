@@ -1,20 +1,45 @@
 package org.ftckb.agent
 
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
+import java.nio.file.FileVisitResult
 import java.nio.file.LinkOption
 import java.nio.file.Path
+import java.nio.file.SimpleFileVisitor
 import java.nio.file.StandardOpenOption
+import java.nio.file.attribute.BasicFileAttributes
 import org.ftckb.domain.KnowledgeRule
 import org.ftckb.domain.RuleContext
 import org.ftckb.domain.RuleResolver
 import org.ftckb.knowledge.FileKnowledgeRepository
 
-class KnowledgeRetriever(knowledgeRoot:Path,team:String?,season:String?) {
+class GuideTraversalLimits(
+    val maxFiles:Int=5_000,
+    val maxTotalBytes:Long=64L*1_048_576L,
+    val maxDepth:Int=32
+) {
+    init {
+        require(maxFiles>0) { "maxFiles must be positive" }
+        require(maxTotalBytes>0) { "maxTotalBytes must be positive" }
+        require(maxDepth>=0) { "maxDepth must not be negative" }
+    }
+}
+
+class GuideTraversalException(message:String):RuntimeException(message)
+
+class KnowledgeAccessException:RuntimeException("knowledge files are unavailable")
+
+class KnowledgeRetriever(
+    knowledgeRoot:Path,
+    team:String?,
+    season:String?,
+    private val guideLimits:GuideTraversalLimits=GuideTraversalLimits()
+) {
     private val activeRules:List<KnowledgeRule>
     private val guidesRoot:Path?
 
@@ -45,24 +70,51 @@ class KnowledgeRetriever(knowledgeRoot:Path,team:String?,season:String?) {
         val terms=(intent.guideTopics+intent.concepts+intent.symbols).map(String::lowercase).filter(String::isNotBlank)
         if (terms.isEmpty()) return emptyList()
         val guides=mutableListOf<GuideEvidence>()
-        Files.walk(root).use { paths ->
-            paths.sorted().forEach { path ->
-                val file=readGuide(path,root) ?: return@forEach
-                guides+=guideSections(file,terms)
-            }
+        var visitedFiles=0
+        var visitedBytes=0L
+        try {
+            Files.walkFileTree(root,object:SimpleFileVisitor<Path>() {
+                override fun preVisitDirectory(directory:Path,attributes:BasicFileAttributes):FileVisitResult {
+                    if (directory!=root && root.relativize(directory).nameCount>guideLimits.maxDepth) {
+                        throw GuideTraversalException("guide traversal exceeds depth limit")
+                    }
+                    if (directory!=root && Files.isSymbolicLink(directory)) return FileVisitResult.SKIP_SUBTREE
+                    return FileVisitResult.CONTINUE
+                }
+
+                override fun visitFile(path:Path,attributes:BasicFileAttributes):FileVisitResult {
+                    if (root.relativize(path).nameCount>guideLimits.maxDepth) {
+                        throw GuideTraversalException("guide traversal exceeds depth limit")
+                    }
+                    visitedFiles++
+                    if (visitedFiles>guideLimits.maxFiles) throw GuideTraversalException("guide traversal exceeds file-count limit")
+                    visitedBytes=safeAdd(visitedBytes,attributes.size())
+                    if (visitedBytes>guideLimits.maxTotalBytes) throw GuideTraversalException("guide traversal exceeds byte-count limit")
+                    val file=readGuide(path,root) ?: return FileVisitResult.CONTINUE
+                    guides+=guideSections(file,terms)
+                    return FileVisitResult.CONTINUE
+                }
+
+                override fun visitFileFailed(file:Path,error:IOException):FileVisitResult {
+                    if (file==root) throw KnowledgeAccessException()
+                    return FileVisitResult.CONTINUE
+                }
+            })
+        } catch (error:GuideTraversalException) {
+            throw error
+        } catch (_:IOException) {
+            throw KnowledgeAccessException()
         }
         return guides.sortedWith(compareBy({ it.path },{ it.heading }))
     }
 
     private fun readGuide(path:Path,root:Path):GuideFile? {
         if (!path.fileName.toString().endsWith(".md",true)) return null
-        val realFile=try { path.toRealPath() } catch (_:Exception) { return null }
-        if (!realFile.startsWith(root)) return null
         if (!Files.isRegularFile(path,LinkOption.NOFOLLOW_LINKS)) return null
         val bytes=readGuideBytes(path) ?: return null
         if (bytes.any { it==0.toByte() }) return null
         val text=decodeUtf8(bytes) ?: return null
-        return GuideFile(root.parent.relativize(realFile).toString().replace('\\','/'),text)
+        return GuideFile(root.parent.relativize(path).toString().replace('\\','/'),text)
     }
 
     private fun readGuideBytes(path:Path):ByteArray?=try {
@@ -98,6 +150,8 @@ class KnowledgeRetriever(knowledgeRoot:Path,team:String?,season:String?) {
             if (!headingMatches && !textMatches) null else GuideEvidence("",file.path,headingText,section)
         }
     }
+
+    private fun safeAdd(left:Long,right:Long):Long=if (Long.MAX_VALUE-left<right) Long.MAX_VALUE else left+right
 
     private fun decodeUtf8(bytes:ByteArray):String?=try {
         StandardCharsets.UTF_8.newDecoder()

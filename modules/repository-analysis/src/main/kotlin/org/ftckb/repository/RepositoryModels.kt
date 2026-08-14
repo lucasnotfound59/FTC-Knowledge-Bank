@@ -35,13 +35,49 @@ class FtcProjectProfile(
     override fun toString():String="FtcProjectProfile(supported=$supported, sourceModules=$sourceModules, markers=$markers)"
 }
 
-data class IndexedDocument(
+class IndexedDocument(
     val path:String,
     val sha256:String,
     val text:String,
-    val lines:List<String>,
-    val terms:Set<String>
-)
+    lines:List<String>,
+    terms:Set<String>
+) {
+    val lines:List<String> =immutableListCopy(lines)
+    val terms:Set<String> =immutableSetCopy(terms)
+
+    operator fun component1():String=path
+
+    operator fun component2():String=sha256
+
+    operator fun component3():String=text
+
+    operator fun component4():List<String> =lines
+
+    operator fun component5():Set<String> =terms
+
+    fun copy(
+        path:String=this.path,
+        sha256:String=this.sha256,
+        text:String=this.text,
+        lines:List<String> =this.lines,
+        terms:Set<String> =this.terms
+    ):IndexedDocument=IndexedDocument(path,sha256,text,lines,terms)
+
+    override fun equals(other:Any?):Boolean=other is IndexedDocument &&
+        path==other.path && sha256==other.sha256 && text==other.text && lines==other.lines && terms==other.terms
+
+    override fun hashCode():Int {
+        var result=path.hashCode()
+        result=31*result+sha256.hashCode()
+        result=31*result+text.hashCode()
+        result=31*result+lines.hashCode()
+        result=31*result+terms.hashCode()
+        return result
+    }
+
+    override fun toString():String=
+        "IndexedDocument(path=$path, sha256=$sha256, text=$text, lines=$lines, terms=$terms)"
+}
 
 class RepositorySnapshot(
     val root:Path,

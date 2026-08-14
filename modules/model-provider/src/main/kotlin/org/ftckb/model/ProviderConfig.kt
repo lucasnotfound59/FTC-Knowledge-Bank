@@ -19,6 +19,9 @@ data class ProviderProfile(
         require(baseUrl.scheme.equals("https",true) && !baseUrl.host.isNullOrBlank() && baseUrl.userInfo==null) {
             "provider baseUrl must use HTTPS without credentials"
         }
+        require(baseUrl.rawQuery==null && baseUrl.rawFragment==null) {
+            "provider baseUrl must use HTTPS without credentials, query, or fragment"
+        }
         require(model.isNotBlank()) { "provider model must not be blank" }
         require(apiKeyEnv.matches(Regex("[A-Z_][A-Z0-9_]*"))) { "invalid apiKeyEnv" }
         require(timeoutSeconds in 1..300) { "timeoutSeconds must be between 1 and 300" }

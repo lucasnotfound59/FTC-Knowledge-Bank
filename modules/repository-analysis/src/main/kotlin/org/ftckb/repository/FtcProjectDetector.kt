@@ -1,7 +1,8 @@
 package org.ftckb.repository
 
-import java.nio.charset.StandardCharsets
+import java.io.IOException
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.FileVisitResult
 import java.nio.file.SimpleFileVisitor
@@ -11,14 +12,17 @@ import java.util.Locale
 object FtcProjectDetector {
     private const val maxInspectedFileBytes=1_048_576L
 
-    fun detect(root:Path):FtcProjectProfile {
+    fun detect(root:Path,limits:RepositoryTraversalLimits=RepositoryTraversalLimits()):FtcProjectProfile {
         val normalizedRoot=root.toRealPath()
         val markers=mutableListOf<ProjectMarker>()
         val sourceModules=linkedSetOf<String>()
+        var visitedFiles=0
+        var visitedBytes=0L
 
         Files.walkFileTree(normalizedRoot,object:SimpleFileVisitor<Path>() {
             override fun preVisitDirectory(directory:Path,attributes:BasicFileAttributes):FileVisitResult {
                 if (directory==normalizedRoot) return FileVisitResult.CONTINUE
+                enforceDepth(normalizedRoot,directory,limits)
                 if (Files.isSymbolicLink(directory)) return FileVisitResult.SKIP_SUBTREE
                 val relative=normalizedRoot.relativize(directory).invariantSeparatorsPathString()
                 if (isExcluded(relative)) return FileVisitResult.SKIP_SUBTREE
@@ -30,9 +34,14 @@ object FtcProjectDetector {
             }
 
             override fun visitFile(file:Path,attributes:BasicFileAttributes):FileVisitResult {
+                enforceDepth(normalizedRoot,file,limits)
+                visitedFiles++
+                if (visitedFiles>limits.maxFiles) throw RepositoryTraversalException("FTC detection exceeds file-count limit")
+                visitedBytes=safeAdd(visitedBytes,attributes.size())
+                if (visitedBytes>limits.maxTotalBytes) throw RepositoryTraversalException("FTC detection exceeds byte-count limit")
                 if (!attributes.isRegularFile || Files.isSymbolicLink(file)) return FileVisitResult.CONTINUE
                 val relative=normalizedRoot.relativize(file).invariantSeparatorsPathString()
-                if (isExcluded(relative) || Files.size(file)>maxInspectedFileBytes) return FileVisitResult.CONTINUE
+                if (isExcluded(relative)) return FileVisitResult.CONTINUE
                 val name=file.fileName.toString()
                 val text=readUtf8(file) ?: return FileVisitResult.CONTINUE
                 when {
@@ -51,6 +60,11 @@ object FtcProjectDetector {
                 }
                 return FileVisitResult.CONTINUE
             }
+
+            override fun visitFileFailed(file:Path,error:IOException):FileVisitResult {
+                if (file==normalizedRoot) throw RepositoryAccessException()
+                return FileVisitResult.CONTINUE
+            }
         })
         val kinds=markers.map { it.kind }.toSet()
         val supported=kinds.size>=2 && (ProjectMarkerKind.FTC_DEPENDENCY in kinds || ProjectMarkerKind.OPMODE_ANNOTATION in kinds)
@@ -62,14 +76,18 @@ object FtcProjectDetector {
     }
 
     private fun hasBuildFile(directory:Path):Boolean=
-        Files.isRegularFile(directory.resolve("build.gradle")) || Files.isRegularFile(directory.resolve("build.gradle.kts"))
+        Files.isRegularFile(directory.resolve("build.gradle"),LinkOption.NOFOLLOW_LINKS) ||
+            Files.isRegularFile(directory.resolve("build.gradle.kts"),LinkOption.NOFOLLOW_LINKS)
 
-    private fun readUtf8(path:Path):String?=try {
-        val bytes=Files.readAllBytes(path)
-        if (bytes.size>maxInspectedFileBytes || bytes.any { it==0.toByte() }) null else String(bytes,StandardCharsets.UTF_8)
-    } catch (_:Exception) {
-        null
+    private fun readUtf8(path:Path):String?=readBoundedTextNoFollow(path,maxInspectedFileBytes)?.text
+
+    private fun enforceDepth(root:Path,path:Path,limits:RepositoryTraversalLimits) {
+        if (root.relativize(path).nameCount>limits.maxDepth) {
+            throw RepositoryTraversalException("FTC detection exceeds depth limit")
+        }
     }
+
+    private fun safeAdd(left:Long,right:Long):Long=if (Long.MAX_VALUE-left<right) Long.MAX_VALUE else left+right
 
     private fun isExcluded(relative:String):Boolean=relative.split('/').any {
         it.lowercase(Locale.ROOT) in setOf(".git",".gradle","build","generated",".idea","out")

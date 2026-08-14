@@ -39,6 +39,10 @@ class ChatRepl(
             out.println("model provider error: request failed")
         } catch (_:CitationValidationException) {
             out.println("citation validation error: response citations are invalid")
+        } catch (_:AskChatSessionException.RepositoryRead) {
+            out.println("repository error: local repository is unavailable")
+        } catch (_:AskChatSessionException.KnowledgeRead) {
+            out.println("knowledge error: local knowledge is unavailable")
         }
     }
 

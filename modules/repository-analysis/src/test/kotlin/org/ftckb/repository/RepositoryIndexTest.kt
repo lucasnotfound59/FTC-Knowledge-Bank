@@ -2,6 +2,7 @@ package org.ftckb.repository
 
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.attribute.PosixFilePermission
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeBytes
 import kotlin.io.path.writeText
@@ -9,6 +10,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 
@@ -123,6 +125,64 @@ class RepositoryIndexTest {
     }
 
     @Test
+    fun `current hashing never follows a replaced leaf symlink`() {
+        write("Drive.java","class Drive {}")
+        val index=RepositoryIndex()
+        index.build(tempDir)
+        val outside=Files.createTempFile("repository-current-hash-outside",".java")
+        outside.writeText("class Outside {}")
+        try {
+            Files.delete(tempDir.resolve("Drive.java"))
+            Files.createSymbolicLink(tempDir.resolve("Drive.java"),outside)
+
+            assertEquals(null,index.currentSha256("Drive.java"))
+        } finally {
+            Files.deleteIfExists(outside)
+        }
+    }
+
+    @Test
+    fun `enforces aggregate file byte and depth limits`() {
+        val fileRoot=Files.createDirectories(tempDir.resolve("file-limit"))
+        Files.writeString(fileRoot.resolve("A.java"),"class A {}")
+        Files.writeString(fileRoot.resolve("B.java"),"class B {}")
+        assertThrows(RepositoryTraversalException::class.java) {
+            RepositoryIndex(RepositoryTraversalLimits(maxFiles=1)).build(fileRoot)
+        }
+
+        val byteRoot=Files.createDirectories(tempDir.resolve("byte-limit"))
+        Files.writeString(byteRoot.resolve("Large.java"),"class Large {}")
+        assertThrows(RepositoryTraversalException::class.java) {
+            RepositoryIndex(RepositoryTraversalLimits(maxTotalBytes=8)).build(byteRoot)
+        }
+
+        val depthRoot=Files.createDirectories(tempDir.resolve("depth-limit"))
+        Files.createDirectories(depthRoot.resolve("one/two"))
+        Files.writeString(depthRoot.resolve("one/two/Deep.java"),"class Deep {}")
+        assertThrows(RepositoryTraversalException::class.java) {
+            RepositoryIndex(RepositoryTraversalLimits(maxDepth=1)).build(depthRoot)
+        }
+    }
+
+    @Test
+    fun `skips an inaccessible repository entry and continues deterministically`() {
+        val inaccessible=tempDir.resolve("Blocked.java")
+        write("Blocked.java","class Blocked {}")
+        write("Readable.java","class Readable {}")
+        assumeTrue(Files.getFileStore(tempDir).supportsFileAttributeView("posix"))
+        Files.setPosixFilePermissions(inaccessible,emptySet<PosixFilePermission>())
+        val reallyInaccessible=runCatching { Files.newByteChannel(inaccessible).use { } }.isFailure
+        assumeTrue(reallyInaccessible,"filesystem still permits reading mode 000 files")
+        try {
+            val snapshot=RepositoryIndex().build(tempDir)
+
+            assertEquals(setOf("Readable.java"),snapshot.documents.keys)
+        } finally {
+            Files.setPosixFilePermissions(inaccessible,setOf(PosixFilePermission.OWNER_READ,PosixFilePermission.OWNER_WRITE))
+        }
+    }
+
+    @Test
     fun `published repository collections reject mutation through mutable casts`() {
         write("TeamCode/build.gradle","implementation 'org.firstinspires.ftc:RobotCore:9.0.1'")
         write("TeamCode/src/main/java/Drive.java","@TeleOp class Drive {}")
@@ -150,14 +210,21 @@ class RepositoryIndexTest {
             "Drive.java" to IndexedDocument("Drive.java","hash","class Drive",listOf("class Drive"),setOf("drive"))
         )
         val snapshot=RepositorySnapshot(tempDir,profile,documents)
+        val lines=mutableListOf("class Drive")
+        val terms=mutableSetOf("drive")
+        val document=IndexedDocument("Drive.java","hash","class Drive",lines,terms)
 
         sourceModules.add("mutated")
         markers.clear()
         documents.clear()
+        lines.add("mutated")
+        terms.add("mutated")
 
         assertEquals(setOf("TeamCode"),profile.sourceModules)
         assertEquals(1,profile.markers.size)
         assertEquals(setOf("Drive.java"),snapshot.documents.keys)
+        assertEquals(listOf("class Drive"),document.lines)
+        assertEquals(setOf("drive"),document.terms)
         assertThrows(UnsupportedOperationException::class.java) {
             @Suppress("UNCHECKED_CAST")
             (profile.sourceModules as MutableSet<String>).add("cast-mutated")
@@ -165,6 +232,14 @@ class RepositoryIndexTest {
         assertThrows(UnsupportedOperationException::class.java) {
             @Suppress("UNCHECKED_CAST")
             (snapshot.documents as MutableMap<String,IndexedDocument>).clear()
+        }
+        assertThrows(UnsupportedOperationException::class.java) {
+            @Suppress("UNCHECKED_CAST")
+            (document.lines as MutableList<String>).add("cast-mutated")
+        }
+        assertThrows(UnsupportedOperationException::class.java) {
+            @Suppress("UNCHECKED_CAST")
+            (document.terms as MutableSet<String>).add("cast-mutated")
         }
     }
 

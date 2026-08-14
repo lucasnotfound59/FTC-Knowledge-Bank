@@ -2,18 +2,19 @@ package org.ftckb.repository
 
 import java.nio.file.FileSystems
 import java.nio.file.Path
-import java.security.MessageDigest
 import java.util.Locale
 
-class RepositoryIndex {
+class RepositoryIndex(private val traversalLimits:RepositoryTraversalLimits=RepositoryTraversalLimits()) {
     private var current:RepositorySnapshot?=null
 
     fun build(root:Path):RepositorySnapshot {
         val normalizedRoot=root.toRealPath()
-        val documents=SafeRepositoryWalker(normalizedRoot).walk()
+        val documents=SafeRepositoryWalker(normalizedRoot,traversalLimits).walk()
             .map { toDocument(it) }
             .associateByTo(linkedMapOf()) { it.path }
-        return RepositorySnapshot(normalizedRoot,FtcProjectDetector.detect(normalizedRoot),immutableMapCopy(documents)).also { current=it }
+        return RepositorySnapshot(
+            normalizedRoot,FtcProjectDetector.detect(normalizedRoot,traversalLimits),immutableMapCopy(documents)
+        ).also { current=it }
     }
 
     fun search(query:LocalQuery,limit:Int):List<SourceFragment> {
@@ -51,22 +52,32 @@ class RepositoryIndex {
         val snapshot=current ?: error("Build the repository index before refreshing it")
         if (changedPaths.isEmpty()) return snapshot
         if (changedPaths.any { it.endsWith(".gitignore") }) return build(snapshot.root)
-        val walker=SafeRepositoryWalker(snapshot.root)
+        val walker=SafeRepositoryWalker(snapshot.root,traversalLimits)
         val updated=snapshot.documents.toMutableMap()
         changedPaths.mapNotNull { safeRelativePath(it) }.forEach { path ->
             val file=walker.readRelative(path)
             if (file==null) updated.remove(path) else updated[path]=toDocument(file)
         }
         val stableDocuments=updated.toSortedMap().toMap(linkedMapOf())
-        return RepositorySnapshot(snapshot.root,FtcProjectDetector.detect(snapshot.root),immutableMapCopy(stableDocuments)).also { current=it }
+        return RepositorySnapshot(
+            snapshot.root,FtcProjectDetector.detect(snapshot.root,traversalLimits),immutableMapCopy(stableDocuments)
+        ).also { current=it }
+    }
+
+    fun currentSha256(path:String):String? {
+        val snapshot=current ?: return null
+        val exactPath=exactRelativePath(path) ?: return null
+        return runCatching {
+            SafeRepositoryWalker(snapshot.root,traversalLimits).readRelative(exactPath)?.sha256
+        }.getOrNull()
     }
 
     private fun toDocument(file:SafeTextFile):IndexedDocument=IndexedDocument(
         file.path,
-        sha256(file.bytes),
+        file.sha256,
         file.text,
-        immutableListCopy(file.text.split("\n")),
-        immutableSetCopy(TOKEN.findAll(file.text).map { it.value.lowercase(Locale.ROOT) }.toSet())
+        file.text.split("\n"),
+        TOKEN.findAll(file.text).map { it.value.lowercase(Locale.ROOT) }.toSet()
     )
 
     private fun score(document:IndexedDocument,terms:Set<String>,symbols:Set<String>,pathMatch:Boolean):Int {
@@ -96,9 +107,13 @@ class RepositoryIndex {
         if (normalized.isAbsolute || normalized.startsWith("..")) null else normalized.invariantSeparatorsPathString()
     }.getOrNull()
 
-    private fun hasSymbol(text:String,symbol:String):Boolean=Regex("(?<![A-Za-z0-9_])${Regex.escape(symbol)}(?![A-Za-z0-9_])").containsMatchIn(text)
+    private fun exactRelativePath(path:String):String? {
+        if (path.isBlank() || '\\' in path) return null
+        val normalized=safeRelativePath(path) ?: return null
+        return normalized.takeIf { it==path }
+    }
 
-    private fun sha256(bytes:ByteArray):String=MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+    private fun hasSymbol(text:String,symbol:String):Boolean=Regex("(?<![A-Za-z0-9_])${Regex.escape(symbol)}(?![A-Za-z0-9_])").containsMatchIn(text)
 
     companion object {
         private val TOKEN=Regex("[A-Za-z_][A-Za-z0-9_]*")

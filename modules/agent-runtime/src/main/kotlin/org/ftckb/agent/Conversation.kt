@@ -15,8 +15,13 @@ import org.ftckb.model.ModelRequest
 data class ConversationTurn(val question:String,val answer:AgentAnswer,val referencedIds:Set<String>)
 
 data class ConversationContext(
-    val rollingSummary:String?,val recentTurns:List<ConversationTurn>,val recentReferences:Set<String>
+    val rollingSummary:String?,
+    val recentTurns:List<ConversationTurn>,
+    val recentReferences:Set<String>,
+    val pendingQuestions:List<String> =emptyList()
 )
+
+internal class ConversationSubmission internal constructor(internal val id:Long,internal val question:String)
 
 class ConversationState(
     private val provider:ModelProvider,
@@ -27,6 +32,8 @@ class ConversationState(
     private val exactSecrets=exactSecrets.filter(String::isNotBlank).toSet()
     private var rollingSummary:UntrustedSummary?=null
     private var recentTurns=emptyList<ConversationTurn>()
+    private val transcript=mutableListOf<TranscriptEntry>()
+    private var nextSubmissionId=1L
 
     init {
         require(maximumRecentTurns in 1..8) { "maximumRecentTurns must be between 1 and 8" }
@@ -36,18 +43,42 @@ class ConversationState(
     @Synchronized
     fun record(question:String,answer:AgentAnswer,referencedIds:Set<String>) {
         require(question.isNotBlank()) { "question must not be blank" }
-        val turn=ConversationTurn(question,answer,referencedIds.toCollection(LinkedHashSet()))
+        val id=nextSubmissionId++
+        val turn=redactedTurn(ConversationTurn(question,answer,referencedIds.toCollection(LinkedHashSet())))
+        transcript+=TranscriptEntry(id,turn.question,turn.answer,turn.referencedIds)
+        commitRecentTurn(turn)
+    }
+
+    @Synchronized
+    internal fun submit(question:String):ConversationSubmission {
+        require(question.isNotBlank()) { "question must not be blank" }
+        val redactedQuestion=redact(question)
+        val submission=ConversationSubmission(nextSubmissionId++,redactedQuestion)
+        transcript+=TranscriptEntry(submission.id,redactedQuestion,null,emptySet())
+        return submission
+    }
+
+    @Synchronized
+    internal fun record(submission:ConversationSubmission,answer:AgentAnswer,referencedIds:Set<String>) {
+        val index=transcript.indexOfFirst { it.id==submission.id }
+        check(index>=0 && transcript[index].answer==null) { "conversation submission is not pending" }
+        val turn=redactedTurn(ConversationTurn(submission.question,answer,referencedIds.toCollection(LinkedHashSet())))
+        transcript[index]=TranscriptEntry(submission.id,turn.question,turn.answer,turn.referencedIds)
+        commitRecentTurn(turn)
+    }
+
+    private fun commitRecentTurn(turn:ConversationTurn) {
         val updated=recentTurns.toMutableList().apply { add(turn) }
         var updatedSummary=rollingSummary
         while (updated.size>maximumRecentTurns || updated.sumOf(::turnCharacters)>maximumRecentCharacters) {
             if (updated.size==1) {
                 val current=updated.single()
-                updatedSummary=UntrustedSummary(summarize(updatedSummary?.text,current))
+                updatedSummary=UntrustedSummary(summarizeBestEffort(updatedSummary?.text,current))
                 updated[0]=boundedTurn(current)
                 break
             }
             val removed=updated.removeAt(0)
-            updatedSummary=UntrustedSummary(summarize(updatedSummary?.text,removed))
+            updatedSummary=UntrustedSummary(summarizeBestEffort(updatedSummary?.text,removed))
         }
         recentTurns=updated.toList()
         rollingSummary=updatedSummary
@@ -57,7 +88,8 @@ class ConversationState(
     fun context():ConversationContext=ConversationContext(
         rollingSummary?.text?.let(::redact),
         recentTurns.map(::redactedTurn),
-        recentTurns.flatMapTo(LinkedHashSet()) { turn -> turn.referencedIds.map(::redact) }
+        recentTurns.flatMapTo(LinkedHashSet()) { turn -> turn.referencedIds.map(::redact) },
+        pendingContextQuestions()
     )
 
     @Synchronized
@@ -70,6 +102,7 @@ class ConversationState(
     @Synchronized
     internal fun renderSavedSession(providerName:String,modelName:String,savedAt:Instant):String {
         val context=context()
+        val savedTranscript=transcript.toList()
         return buildString {
             append("# FTC Knowledge Bank session\n\n")
             append("Provider: ").append(redact(providerName)).append(" / ").append(redact(modelName)).append('\n')
@@ -79,16 +112,30 @@ class ConversationState(
                 append(redact(it)).append("\n\n")
             }
             append("## Conversation\n\n")
-            context.recentTurns.forEachIndexed { index,turn ->
+            savedTranscript.forEachIndexed { index,entry ->
                 append("### Turn ").append(index+1).append("\n\n")
-                append("User: ").append(redact(turn.question)).append("\n\n")
-                turn.answer.claims.forEach { claim ->
-                    append("- ").append(claim.kind.name.lowercase()).append(": ").append(redact(claim.text))
-                    if (claim.citations.isNotEmpty()) append(" (citations: ").append(claim.citations.joinToString { redact(it) }).append(')')
-                    append('\n')
+                append("User: ").append(redact(entry.question)).append("\n\n")
+                if (entry.answer==null) {
+                    append("Status: pending or failed; no validated assistant answer.\n\n")
+                } else {
+                    entry.answer.claims.forEach { claim ->
+                        append("- ").append(claim.kind.name.lowercase()).append(": ").append(redact(claim.text))
+                        if (claim.citations.isNotEmpty()) append(" (citations: ").append(claim.citations.joinToString { redact(it) }).append(')')
+                        append('\n')
+                    }
+                    if (entry.referencedIds.isNotEmpty()) {
+                        append("References: ").append(entry.referencedIds.joinToString { redact(it) }).append("\n\n")
+                    }
                 }
-                if (turn.referencedIds.isNotEmpty()) append("References: ").append(turn.referencedIds.joinToString { redact(it) }).append("\n\n")
             }
+        }
+    }
+
+    private fun summarizeBestEffort(previous:String?,turn:ConversationTurn):String {
+        return try {
+            summarize(previous,turn).takeIf(String::isNotBlank) ?: deterministicSummary(previous,turn)
+        } catch (_:Exception) {
+            deterministicSummary(previous,turn)
         }
     }
 
@@ -107,6 +154,29 @@ class ConversationState(
             ),512
         ))
         return redact(response.content).trim().take(maximumSummaryCharacters)
+    }
+
+    private fun deterministicSummary(previous:String?,turn:ConversationTurn):String {
+        val combined=buildString {
+            previous?.let { append(redact(it)).append('\n') }
+            append("Deterministic untrusted fallback:\n")
+            append(renderTurn(turn))
+        }
+        return redact(combined).takeLast(maximumSummaryCharacters)
+    }
+
+    private fun pendingContextQuestions():List<String> {
+        val pending=transcript.asReversed().asSequence().filter { it.answer==null }.map { it.question }
+        val selected=ArrayDeque<String>()
+        var characters=0
+        for (question in pending) {
+            if (selected.size>=maximumRecentTurns) break
+            val bounded=question.take(maximumRecentCharacters)
+            if (selected.isNotEmpty() && characters+bounded.length>maximumRecentCharacters) break
+            selected.addFirst(bounded)
+            characters+=bounded.length
+        }
+        return selected.toList()
     }
 
     private fun turnCharacters(turn:ConversationTurn):Int=renderTurn(turn).length
@@ -166,11 +236,17 @@ class ConversationState(
         if (turn.referencedIds.isNotEmpty()) append("References: ").append(turn.referencedIds.joinToString { redact(it) }).append('\n')
     }
 
-    private fun redact(text:String):String=ConversationRedactor.redact(text,exactSecrets)
+    private fun redact(text:String):String=CredentialRedactor.redact(text,exactSecrets)
 
     private companion object { const val maximumSummaryCharacters=4_000 }
 
     private data class UntrustedSummary(val text:String)
+    private class TranscriptEntry(
+        val id:Long,
+        val question:String,
+        val answer:AgentAnswer?,
+        val referencedIds:Set<String>
+    )
 }
 
 class ConversationSaver(
@@ -184,22 +260,5 @@ class ConversationSaver(
             writer.write(text)
         }
         return path
-    }
-}
-
-internal object ConversationRedactor {
-    private val authorization=Regex("(?i)\\bauthorization\\s*:\\s*bearer\\s+[^\\s,;]+")
-    private val bearer=Regex("(?i)\\bbearer\\s+[A-Za-z0-9._~+/-]+={0,2}")
-    private val skToken=Regex("(?i)\\bsk-[A-Za-z0-9._-]+")
-    private val apiKeyAssignment=Regex("(?i)\\b[A-Za-z0-9_-]*api[_-]?key\\s*[:=]\\s*(?:\"[^\"]*\"|'[^']*'|[^\\s,;]+)")
-
-    fun redact(text:String,exactSecrets:Set<String> =emptySet()):String {
-        var redacted=text
-        exactSecrets.sortedByDescending(String::length).forEach { secret -> redacted=redacted.replace(secret,"[REDACTED]") }
-        return redacted
-            .replace(authorization,"[REDACTED_AUTHORIZATION]")
-            .replace(bearer,"[REDACTED_BEARER]")
-            .replace(skToken,"[REDACTED_SECRET]")
-            .replace(apiKeyAssignment,"[REDACTED_API_KEY]")
     }
 }

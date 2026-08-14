@@ -56,6 +56,28 @@ class ChatCompletionsProviderTest {
     }
 
     @Test
+    fun `omits token fields when the profile does not name one`() {
+        val transport=FakeTransport(HttpResult(200,fixture("openai-success.json")))
+        val provider=ProviderFactory.create(profile(maxTokensParameter=null),resolver(),transport)
+
+        provider.complete(request())
+
+        val body=mapper.readTree(transport.exchange.body)
+        assertFalse(body.has("max_tokens"))
+        assertFalse(body.has("max_completion_tokens"))
+    }
+
+    @Test
+    fun `caps every request at the configured profile token limit`() {
+        val transport=FakeTransport(HttpResult(200,fixture("openai-success.json")))
+        val provider=ProviderFactory.create(profile(maxOutputTokens=256),resolver(),transport)
+
+        provider.complete(ModelRequest(listOf(ModelMessage(MessageRole.USER,"hello")),4_096))
+
+        assertEquals(256,mapper.readTree(transport.exchange.body)["max_tokens"].asInt())
+    }
+
+    @Test
     fun `adds json object response format when json mode is configured`() {
         val transport=FakeTransport(HttpResult(200,fixture("openai-success.json")))
         val provider=ProviderFactory.create(profile(jsonMode=true),resolver(),transport)
@@ -126,11 +148,12 @@ class ChatCompletionsProviderTest {
     private fun request()=ModelRequest(listOf(ModelMessage(MessageRole.USER,"hello")),512)
 
     private fun profile(
-        maxTokensParameter:MaxTokensParameter=MaxTokensParameter.MAX_TOKENS,
+        maxTokensParameter:MaxTokensParameter?=MaxTokensParameter.MAX_TOKENS,
+        maxOutputTokens:Int=4096,
         jsonMode:Boolean=false
     )=ProviderProfile(
         "deepseek",URI("https://api.deepseek.com/"),"deepseek-chat","DEEPSEEK_API_KEY",
-        90,4096,maxTokensParameter,jsonMode
+        90,maxOutputTokens,maxTokensParameter,jsonMode
     )
 
     private fun resolver()=SecretResolver { name -> if (name=="DEEPSEEK_API_KEY") "test-key" else null }

@@ -120,14 +120,23 @@ class ChatReplTest {
     }
 
     @Test
-    fun `production removes exact secret from every outbound model request`(@TempDir root:Path) {
+    fun `production redacts credentials from selected code guide and path content before every outbound request`(@TempDir root:Path) {
         val secret=listOf("runtime","outbound","secret").joinToString("-")
+        val pathCredential=listOf("sk","runtime","path","token").joinToString("-")
+        val bearerCredential=listOf("Bearer",listOf("runtime","guide","token").joinToString(".")).joinToString(" ")
+        val assignmentCredential=listOf("SERVICE_API_KEY",listOf("runtime","code","token").joinToString("-")).joinToString("=")
         val repository=root.resolve("repository")
         writeFtcRepository(repository)
-        val secretPath="TeamCode/src/main/java/example/${secret}TeleOp.java"
+        val secretPath="TeamCode/src/main/java/example/${pathCredential}TeleOp.java"
         Files.writeString(
             repository.resolve(secretPath),
-            "@TeleOp public class SecretTeleOp { String marker=\"$secret\"; }\n"
+            "@TeleOp public class SecretTeleOp { String marker=\"$secret\"; String credential=\"$assignmentCredential\"; }\n"
+        )
+        val knowledge=root.resolve("knowledge")
+        Files.createDirectories(knowledge.resolve("guides"))
+        Files.writeString(
+            knowledge.resolve("guides/drive.md"),
+            "# Drive guide\nUse $bearerCredential only as synthetic evidence.\n"
         )
         val config=root.resolve("config.yaml")
         writeFakeConfig(config,"FTC_KB_FAKE_KEY")
@@ -139,9 +148,9 @@ class ChatReplTest {
 
         val code=launcher.run(
             ChatOptions(
-                repository,Path.of("..","..","knowledge").normalize(),"20827","2025-2026","fake",config
+                repository,knowledge,"20827","2025-2026","fake",config
             ),
-            BufferedReader(StringReader((1..9).joinToString("\n") { "inspect the selected TeleOp $it" }+"\n/exit\n")),
+            BufferedReader(StringReader((1..9).joinToString("\n") { "inspect the selected TeleOp $secret $it" }+"\n/exit\n")),
             PrintStream(ByteArrayOutputStream())
         )
 
@@ -155,7 +164,11 @@ class ChatReplTest {
             request.messages.first().role==org.ftckb.model.MessageRole.SYSTEM &&
                 request.messages.drop(1).all { it.role==org.ftckb.model.MessageRole.USER }
         })
-        assertTrue(provider.requests.none { request -> request.messages.any { secret in it.content } })
+        val outbound=provider.requests.flatMap { it.messages }.joinToString("\n") { it.content }
+        listOf(secret,pathCredential,bearerCredential,assignmentCredential).forEach { credential ->
+            assertFalse(outbound.contains(credential),credential)
+        }
+        assertTrue(outbound.contains("[REDACTED"))
     }
 
     @Test
@@ -216,6 +229,8 @@ class ChatReplTest {
                 return when (question) {
                     "provider failure" -> throw ModelProviderException.RateLimited()
                     "citation failure" -> throw CitationValidationException("unknown citation: $sensitiveDiagnostic")
+                    "repository failure" -> throw AskChatSessionException.RepositoryRead()
+                    "knowledge failure" -> throw AskChatSessionException.KnowledgeRead()
                     else -> AgentAnswer(listOf(AnswerClaim(ClaimKind.MODEL_INFERENCE,"still running",emptyList())),null)
                 }
             }
@@ -228,6 +243,8 @@ class ChatReplTest {
             "",
             "provider failure",
             "citation failure",
+            "repository failure",
+            "knowledge failure",
             "/save bad\u0000path",
             "recovered",
             "/mode edit",
@@ -244,10 +261,15 @@ class ChatReplTest {
         val code=ChatRepl(session,input,PrintStream(output)).run()
 
         assertEquals(0,code)
-        assertEquals(listOf("provider failure","citation failure","recovered"),questions)
+        assertEquals(
+            listOf("provider failure","citation failure","repository failure","knowledge failure","recovered"),
+            questions
+        )
         val lines=output.toString().lines()
         assertTrue(lines.contains("model provider error: request failed"))
         assertTrue(lines.contains("citation validation error: response citations are invalid"))
+        assertTrue(lines.contains("repository error: local repository is unavailable"))
+        assertTrue(lines.contains("knowledge error: local knowledge is unavailable"))
         assertTrue(lines.contains("save error: unable to save session"))
         assertFalse(output.toString().contains(sensitiveDiagnostic))
         assertTrue(lines.contains("模型推断: still running"))
@@ -284,6 +306,92 @@ class ChatReplTest {
             "error starting chat: missing API key environment variable: FTC_KB_MISSING_KEY\n",
             output.toString()
         )
+    }
+
+    @Test
+    fun `production reports a deleted repository for one turn and keeps the REPL alive`(@TempDir root:Path) {
+        val repository=root.resolve("repository")
+        val unavailable=root.resolve("repository-unavailable")
+        writeFtcRepository(repository)
+        val config=root.resolve("config.yaml")
+        writeFakeConfig(config,"FTC_KB_FAKE_KEY")
+        val provider=RefreshProbeProvider()
+        val launcher=ProductionChatLauncher(
+            environment={ "fake-secret" },
+            providerCreator={ _,_ -> provider }
+        )
+        val input=object:BufferedReader(StringReader("")) {
+            private var line=0
+
+            override fun readLine():String?=when (line++) {
+                0 -> "inspect before"
+                1 -> {
+                    Files.move(repository,unavailable)
+                    "inspect missing"
+                }
+                2 -> {
+                    Files.move(unavailable,repository)
+                    "inspect recovered"
+                }
+                3 -> "/exit"
+                else -> null
+            }
+        }
+        val output=ByteArrayOutputStream()
+
+        val code=launcher.run(
+            ChatOptions(
+                repository,Path.of("..","..","knowledge").normalize(),"20827","2025-2026","fake",config
+            ),
+            input,PrintStream(output)
+        )
+
+        assertEquals(0,code)
+        assertTrue(output.toString().contains("repository error: local repository is unavailable"))
+        assertEquals(2,provider.requests.count { it.messages.first().content.startsWith("Answer only as JSON") })
+    }
+
+    @Test
+    fun `production reports a deleted guide root for one turn and keeps the REPL alive`(@TempDir root:Path) {
+        val repository=root.resolve("repository")
+        writeFtcRepository(repository)
+        val knowledge=root.resolve("knowledge")
+        val guides=knowledge.resolve("guides")
+        val unavailable=knowledge.resolve("guides-unavailable")
+        Files.createDirectories(guides)
+        Files.writeString(guides.resolve("drive.md"),"# Drive guide\nSafe drive context.\n")
+        val config=root.resolve("config.yaml")
+        writeFakeConfig(config,"FTC_KB_FAKE_KEY")
+        val provider=SecretEvidenceProvider("TeamCode/src/main/java/example/SampleTeleOp.java")
+        val launcher=ProductionChatLauncher(
+            environment={ "fake-secret" },
+            providerCreator={ _,_ -> provider }
+        )
+        val input=object:BufferedReader(StringReader("")) {
+            private var line=0
+
+            override fun readLine():String?=when (line++) {
+                0 -> {
+                    Files.move(guides,unavailable)
+                    "inspect missing guide"
+                }
+                1 -> {
+                    Files.move(unavailable,guides)
+                    "inspect recovered guide"
+                }
+                2 -> "/exit"
+                else -> null
+            }
+        }
+        val output=ByteArrayOutputStream()
+
+        val code=launcher.run(
+            ChatOptions(repository,knowledge,"20827","2025-2026","fake",config),input,PrintStream(output)
+        )
+
+        assertEquals(0,code)
+        assertTrue(output.toString().contains("knowledge error: local knowledge is unavailable"))
+        assertTrue(output.toString().contains("代码观察 [CODE:C1]"))
     }
 
     @Test
@@ -456,7 +564,7 @@ class ChatReplTest {
                       "symbols":[],
                       "pathGlobs":["$secretPath"],
                       "ruleTopics":[],
-                      "guideTopics":[]
+                      "guideTopics":["drive"]
                     }
                 """.trimIndent())
             } else {

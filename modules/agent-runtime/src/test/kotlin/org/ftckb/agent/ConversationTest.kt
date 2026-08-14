@@ -90,6 +90,33 @@ class ConversationTest {
         assertEquals("Goal: inspect Drive.",state.context().rollingSummary)
     }
 
+    @Test
+    fun `explicit save retains the complete redacted transcript after rolling compaction`() {
+        val provider=ScriptedProvider("summary one","summary two")
+        val state=ConversationState(provider,maximumRecentTurns=1)
+        state.record(
+            "historic question one",
+            AgentAnswer(listOf(AnswerClaim(ClaimKind.CODE_OBSERVATION,"historic answer one",listOf("CODE:C1"))),null),
+            setOf("TeamCode/One.java")
+        )
+        state.record(
+            "historic question two",
+            AgentAnswer(listOf(AnswerClaim(ClaimKind.APPROVED_RULE,"historic answer two",listOf("RULE:R1"))),null),
+            setOf("shared.rule-one")
+        )
+        state.record("current question",answer("current answer"),emptySet())
+
+        val saved=ConversationSaver("fake","offline").save(state,root.resolve("complete.md"))
+        val text=Files.readString(saved)
+
+        listOf(
+            "historic question one","historic answer one","CODE:C1",
+            "historic question two","historic answer two","RULE:R1",
+            "current question","current answer"
+        ).forEach { expected -> assertTrue(text.contains(expected),expected) }
+        assertEquals(listOf("current question"),state.context().recentTurns.map { it.question })
+    }
+
     private fun answer(text:String)=AgentAnswer(listOf(AnswerClaim(ClaimKind.MODEL_INFERENCE,text,emptyList())),null)
 
     private fun syntheticSecret()=listOf("sk","synthetic","value").joinToString("-")

@@ -54,4 +54,17 @@ class ProviderConfigLoaderTest {
         }
         assertEquals("provider baseUrl must use HTTPS without credentials",error.message)
     }
+
+    @Test
+    fun `rejects provider roots with a query or fragment`() {
+        listOf(
+            URI("https://example.com/v1?tenant=robotics"),
+            URI("https://example.com/v1#chat")
+        ).forEach { uri ->
+            val error=assertThrows(IllegalArgumentException::class.java) {
+                ProviderProfile("x",uri,"m","KEY",90,4096,null,false)
+            }
+            assertEquals("provider baseUrl must use HTTPS without credentials, query, or fragment",error.message)
+        }
+    }
 }

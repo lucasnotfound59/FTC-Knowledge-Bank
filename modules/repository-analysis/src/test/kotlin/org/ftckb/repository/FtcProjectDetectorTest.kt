@@ -7,6 +7,7 @@ import kotlin.io.path.writeText
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 
@@ -73,5 +74,18 @@ class FtcProjectDetectorTest {
 
         assertFalse(profile.supported)
         assertTrue(profile.markers.isEmpty())
+    }
+
+    @Test
+    fun `FTC detection obeys the same aggregate traversal limits`() {
+        tempDir.resolve("settings.gradle").writeText("include ':TeamCode'")
+        tempDir.resolve("TeamCode/build.gradle").apply {
+            parent.createDirectories()
+            writeText("implementation 'org.firstinspires.ftc:RobotCore:9.0.1'")
+        }
+
+        assertThrows(RepositoryTraversalException::class.java) {
+            FtcProjectDetector.detect(tempDir,RepositoryTraversalLimits(maxFiles=1))
+        }
     }
 }
