@@ -65,6 +65,9 @@ class EditPlanParserTest {
         assertInvalid(plan(replace("TeamCode/Test.java",hash="A".repeat(64))))
         assertInvalid(plan(replace("TeamCode/Test.java",hash="a".repeat(63))))
         assertInvalid(plan(create("TeamCode/New.java",expectedAbsent="false")))
+        assertInvalid("""{"summary":"Safe edits.","operations":[{
+            "kind":"create","path":"TeamCode/New.java","expectedAbsent":false,"expectedAbsent":true,
+            "content":"new","reason":"Create it.","citations":[]}]}""".replace("\n",""))
         assertInvalid(plan(move("TeamCode/Before.java","TeamCode/After.java",expectedAbsent="false")))
     }
 

@@ -4,9 +4,12 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.json.JsonMapper
 import com.fasterxml.jackson.core.JsonParser
+import com.fasterxml.jackson.core.StreamReadFeature
 
 object ModelJson {
-    private val mapper:ObjectMapper=JsonMapper.builder().build()
+    private val mapper:ObjectMapper=JsonMapper.builder()
+        .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
+        .build()
     private val fencedJson=Regex("^\\s*```json[\\t ]*\\r?\\n([\\s\\S]*?)\\r?\\n```\\s*$")
 
     fun objectNode(text:String):JsonNode {
