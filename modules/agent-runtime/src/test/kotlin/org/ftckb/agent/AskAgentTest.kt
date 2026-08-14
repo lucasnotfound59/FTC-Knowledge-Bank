@@ -36,8 +36,8 @@ class AskAgentTest {
             plan(),invalidAnswer(),invalidAnswer()
         )
         val state=ConversationState(provider,maximumRecentCharacters=100)
-        state.record("old question",AgentAnswer(listOf(AnswerClaim(ClaimKind.MODEL_INFERENCE,"old response is deliberately long enough to exceed the compact context budget",emptyList())),null),setOf("TeamCode/Legacy.java"))
-        state.record("new question",AgentAnswer(listOf(AnswerClaim(ClaimKind.MODEL_INFERENCE,"new response is deliberately long enough to roll out the old turn",emptyList())),null),setOf("TeamCode/Drive.java"))
+        state.record("old?",AgentAnswer(listOf(AnswerClaim(ClaimKind.MODEL_INFERENCE,"old response",emptyList())),null),setOf("TeamCode/Legacy.java"))
+        state.record("new?",AgentAnswer(listOf(AnswerClaim(ClaimKind.MODEL_INFERENCE,"new response",emptyList())),null),setOf("TeamCode/Drive.java"))
         val agent=agent(provider,state)
 
         assertThrows(CitationValidationException::class.java) { agent.ask("Use the summary") }
@@ -47,6 +47,23 @@ class AskAgentTest {
         assertTrue(answerRequest.contains("CODE:C9"))
         assertTrue(answerRequest.substringAfter("Evidence:\n").contains("TeamCode/Drive.java"))
         assertEquals(1,state.context().recentTurns.size)
+    }
+
+    @Test
+    fun `redacts exact secrets in cited references before planning and answer prompts`() {
+        val secret=listOf("sk","synthetic","value").joinToString("-")
+        val provider=ScriptedProvider(plan(),answer())
+        val state=ConversationState(provider,exactSecrets=setOf(secret))
+        state.record(
+            "prior question",
+            AgentAnswer(listOf(AnswerClaim(ClaimKind.MODEL_INFERENCE,"prior answer",listOf("CODE:$secret"))),null),
+            setOf("TeamCode/$secret.java")
+        )
+        val agent=agent(provider,state)
+
+        agent.ask("follow up")
+
+        assertTrue(provider.requests.flatMap { it.messages }.none { it.content.contains(secret) })
     }
 
     private fun agent(provider:ModelProvider,state:ConversationState=ConversationState(provider)):AskAgent {

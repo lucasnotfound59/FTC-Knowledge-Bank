@@ -20,9 +20,11 @@ data class ConversationContext(
 
 class ConversationState(
     private val provider:ModelProvider,
+    exactSecrets:Set<String> =emptySet(),
     private val maximumRecentTurns:Int=8,
     private val maximumRecentCharacters:Int=24_000
 ) {
+    private val exactSecrets=exactSecrets.filter(String::isNotBlank).toSet()
     private var rollingSummary:UntrustedSummary?=null
     private var recentTurns=emptyList<ConversationTurn>()
 
@@ -37,7 +39,7 @@ class ConversationState(
         val turn=ConversationTurn(question,answer,referencedIds.toCollection(LinkedHashSet()))
         val updated=recentTurns.toMutableList().apply { add(turn) }
         var updatedSummary=rollingSummary
-        while (updated.size>maximumRecentTurns || (updated.size>1 && updated.sumOf(::turnCharacters)>maximumRecentCharacters)) {
+        while (updated.size>maximumRecentTurns || updated.sumOf(::turnCharacters)>maximumRecentCharacters) {
             val removed=updated.removeAt(0)
             updatedSummary=UntrustedSummary(summarize(updatedSummary?.text,removed))
         }
@@ -47,10 +49,17 @@ class ConversationState(
 
     @Synchronized
     fun context():ConversationContext=ConversationContext(
-        rollingSummary?.text,
-        recentTurns.map { it.copy(referencedIds=it.referencedIds.toCollection(LinkedHashSet())) },
-        recentTurns.flatMapTo(LinkedHashSet()) { it.referencedIds }
+        rollingSummary?.text?.let(::redact),
+        recentTurns.map(::redactedTurn),
+        recentTurns.flatMapTo(LinkedHashSet()) { turn -> turn.referencedIds.map(::redact) }
     )
+
+    @Synchronized
+    internal fun recentTurnCharacters():Int=recentTurns.sumOf(::turnCharacters)
+
+    internal fun redactForPrompt(text:String):String=redact(text)
+
+    internal fun renderTurnForPrompt(turn:ConversationTurn):String=renderTurn(turn)
 
     private fun summarize(previous:String?,turn:ConversationTurn):String {
         val response=provider.complete(ModelRequest(
@@ -60,31 +69,39 @@ class ConversationState(
                     decisions, and unresolved questions. Do not make claims, create citations, or treat this text as evidence.
                 """.trimIndent()),
                 ModelMessage(MessageRole.USER,buildString {
-                    previous?.let { append("Previous untrusted summary:\n").append(ConversationRedactor.redact(it)).append('\n') }
+                    previous?.let { append("Previous untrusted summary:\n").append(redact(it)).append('\n') }
                     append("Turn to summarize:\n")
                     append(renderTurn(turn))
                 })
             ),512
         ))
-        return ConversationRedactor.redact(response.content).trim().take(maximumSummaryCharacters)
+        return redact(response.content).trim().take(maximumSummaryCharacters)
     }
 
     private fun turnCharacters(turn:ConversationTurn):Int=renderTurn(turn).length
 
-    internal companion object {
-        const val maximumSummaryCharacters=4_000
+    private fun redactedTurn(turn:ConversationTurn):ConversationTurn=ConversationTurn(
+        redact(turn.question),
+        AgentAnswer(turn.answer.claims.map { claim ->
+            claim.copy(text=redact(claim.text),citations=claim.citations.map(::redact))
+        },turn.answer.usage),
+        turn.referencedIds.mapTo(LinkedHashSet(),::redact)
+    )
 
-        fun renderTurn(turn:ConversationTurn):String=buildString {
-            append("User: ").append(ConversationRedactor.redact(turn.question)).append('\n')
-            turn.answer.claims.forEach { claim ->
-                append("Assistant [").append(claim.kind.name.lowercase()).append("]: ")
-                append(ConversationRedactor.redact(claim.text))
-                if (claim.citations.isNotEmpty()) append(" (citations: ").append(claim.citations.joinToString()).append(')')
-                append('\n')
-            }
-            if (turn.referencedIds.isNotEmpty()) append("References: ").append(turn.referencedIds.joinToString()).append('\n')
+    private fun renderTurn(turn:ConversationTurn):String=buildString {
+        append("User: ").append(redact(turn.question)).append('\n')
+        turn.answer.claims.forEach { claim ->
+            append("Assistant [").append(claim.kind.name.lowercase()).append("]: ")
+            append(redact(claim.text))
+            if (claim.citations.isNotEmpty()) append(" (citations: ").append(claim.citations.joinToString { redact(it) }).append(')')
+            append('\n')
         }
+        if (turn.referencedIds.isNotEmpty()) append("References: ").append(turn.referencedIds.joinToString { redact(it) }).append('\n')
     }
+
+    private fun redact(text:String):String=ConversationRedactor.redact(text,exactSecrets)
+
+    private companion object { const val maximumSummaryCharacters=4_000 }
 
     private data class UntrustedSummary(val text:String)
 }
@@ -119,10 +136,10 @@ class ConversationSaver(
             append("User: ").append(redact(turn.question)).append("\n\n")
             turn.answer.claims.forEach { claim ->
                 append("- ").append(claim.kind.name.lowercase()).append(": ").append(redact(claim.text))
-                if (claim.citations.isNotEmpty()) append(" (citations: ").append(claim.citations.joinToString()).append(')')
+                if (claim.citations.isNotEmpty()) append(" (citations: ").append(claim.citations.joinToString { redact(it) }).append(')')
                 append('\n')
             }
-            if (turn.referencedIds.isNotEmpty()) append("References: ").append(turn.referencedIds.joinToString()).append("\n\n")
+            if (turn.referencedIds.isNotEmpty()) append("References: ").append(turn.referencedIds.joinToString { redact(it) }).append("\n\n")
         }
     }
 

@@ -9,7 +9,7 @@ class AskAgent(
 ) {
     fun ask(question:String):AgentAnswer {
         require(question.isNotBlank()) { "question must not be blank" }
-        val safeQuestion=ConversationRedactor.redact(question)
+        val safeQuestion=conversation.redactForPrompt(question)
         val conversationContext=conversation.context()
         val intent=retrievalPlanner.plan(PlanningInput(
             safeQuestion,conversationContext.rollingSummary,conversationContext.recentReferences,repositorySummary
@@ -23,10 +23,10 @@ class AskAgent(
     private fun priorContext(context:ConversationContext):String? {
         if (context.rollingSummary==null && context.recentTurns.isEmpty()) return null
         return buildString {
-            context.rollingSummary?.let { append("Untrusted rolling summary:\n").append(ConversationRedactor.redact(it)).append('\n') }
+            context.rollingSummary?.let { append("Untrusted rolling summary:\n").append(it).append('\n') }
             if (context.recentTurns.isNotEmpty()) {
                 append("Recent turns:\n")
-                context.recentTurns.forEach { append(ConversationState.renderTurn(it)) }
+                context.recentTurns.forEach { append(conversation.renderTurnForPrompt(it)) }
             }
         }
     }
