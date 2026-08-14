@@ -290,6 +290,7 @@ class PedroTutorialAcceptanceTest {
         val fixtureBuild=compact(Files.readString(fixtureRoot.resolve("build.gradle")))
         val canonicalSources=Files.walk(repositoryRoot).use { paths ->
             paths.filter(Files::isRegularFile)
+                .filter { !it.startsWith(repositoryRoot.resolve(".worktrees")) }
                 .filter { it.fileName.toString()=="SafePedroAuto.java" }
                 .map { repositoryRoot.relativize(it).toString() }
                 .toList()
@@ -504,5 +505,19 @@ class PedroTutorialAcceptanceTest {
                 team
             )
         }
+    }
+
+    @Test
+    fun `readme exposes tutorial example and release verification`() {
+        val readme=Files.readString(repositoryRoot.resolve("README.md"))
+        assertTrue("knowledge/guides/tools/pedro-pathing.md" in readme)
+        assertTrue("knowledge/guides/tools/pedro-pathing.md#safepedroauto-参数字典" in readme)
+        assertTrue("knowledge/guides/tools/pedro-pathing.md#四阶段实车测试清单" in readme)
+        assertTrue("knowledge/examples/pedro/SafePedroAuto.java" in readme)
+        assertTrue("verifyPedroRelease" in readme)
+        assertTrue("ANDROID_HOME" in readme||"ANDROID_SDK_ROOT" in readme)
+        assertTrue("默认锁定" in readme)
+        assertTrue("不代表部署或实机验证通过" in readme)
+        assertTrue("当前没有已完成的 Pedro 实机验证记录" in readme)
     }
 }
