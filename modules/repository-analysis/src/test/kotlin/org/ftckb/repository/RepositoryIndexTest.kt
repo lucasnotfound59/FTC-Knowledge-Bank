@@ -141,6 +141,33 @@ class RepositoryIndexTest {
         assertFalse(snapshot.documents.containsKey("mutated.java"))
     }
 
+    @Test
+    fun `public model constructors make defensive immutable collection copies`() {
+        val sourceModules=linkedSetOf("TeamCode")
+        val markers=mutableListOf(ProjectMarker(ProjectMarkerKind.TEAMCODE_MODULE,"TeamCode","module"))
+        val profile=FtcProjectProfile(true,sourceModules,markers)
+        val documents=linkedMapOf(
+            "Drive.java" to IndexedDocument("Drive.java","hash","class Drive",listOf("class Drive"),setOf("drive"))
+        )
+        val snapshot=RepositorySnapshot(tempDir,profile,documents)
+
+        sourceModules.add("mutated")
+        markers.clear()
+        documents.clear()
+
+        assertEquals(setOf("TeamCode"),profile.sourceModules)
+        assertEquals(1,profile.markers.size)
+        assertEquals(setOf("Drive.java"),snapshot.documents.keys)
+        assertThrows(UnsupportedOperationException::class.java) {
+            @Suppress("UNCHECKED_CAST")
+            (profile.sourceModules as MutableSet<String>).add("cast-mutated")
+        }
+        assertThrows(UnsupportedOperationException::class.java) {
+            @Suppress("UNCHECKED_CAST")
+            (snapshot.documents as MutableMap<String,IndexedDocument>).clear()
+        }
+    }
+
     private fun write(path:String,text:String) {
         val file=tempDir.resolve(path)
         file.parent.createDirectories()
