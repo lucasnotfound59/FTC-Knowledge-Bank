@@ -229,17 +229,17 @@ private void updateFollowerIfAllowed() {
 }
 
 private void updateShortDriveTest() {
-    if (autoState==AutoState.DRIVE_TO_PARK&&!follower.isBusy()) autoState=AutoState.DONE;
+    if (autoState==AutoState.DRIVE_TO_PARK&&!follower.isBusy()) transitionTo(AutoState.DONE);
 }
 ```
 
-完整 Auto 同样用 `!follower.isBusy()` 推进 `DRIVE_TO_SCORE`、`RELEASE`、`RELEASE_WAIT`、`DRIVE_TO_PARK`、`DONE`，不使用 `sleep` 或阻塞循环。STOP 先提交逻辑锁定和 `STOPPED` state，再 best-effort 取消 follower：
+完整 Auto 同样用 `!follower.isBusy()` 推进 `DRIVE_TO_SCORE`、`RELEASE`、`RELEASE_WAIT`、`DRIVE_TO_PARK`、`DONE`，不使用 `sleep` 或阻塞循环。所有 state 变化都经过 `transitionTo(...)`；只有 state 确实变化时，`state elapsed (s)` 才从零重新计时。STOP 先提交逻辑锁定和 `STOPPED` state，再 best-effort 取消 follower：
 
 ```java
 @Override
 public void stop() {
     safetyLocked=true;
-    autoState=AutoState.STOPPED;
+    transitionTo(AutoState.STOPPED);
     stopFollowingBestEffort();
 }
 
@@ -270,7 +270,7 @@ Driver Station STOP 和空场安全员仍是真实安全边界。
 
 - 前置：CONFIG_CHECK 证据已审；驱动轮离地或电机断能；机构周围清空，从机械安全位置开始。
 - 允许动作：只允许 Servo closed → 等待 → open；drive capability 为 false。
-- 记录 telemetry：`test stage`、`auto state`、`state elapsed (s)`、`safety locked`、`CONFIG: ...`；视频记录机构位置与声音。
+- 记录 telemetry：`test stage`、`auto state`、`state elapsed (s)`、`last servo command`、`safety locked`、`CONFIG: ...`；视频记录机构位置与声音。
 - 通过：closed/open 均可重复到位，无顶死、碰撞、拉线或非预期驱动运动。
 - Reviewer：`<name>`；Date：`<YYYY-MM-DD>`；Robot/evidence：`<robot/link>`。
 - 结果：通过前 `硬件阶段未验证`；通过后编辑为 `SHORT_DRIVE`，重新 build/deploy。
@@ -288,14 +288,14 @@ Driver Station STOP 和空场安全员仍是真实安全边界。
 
 - 前置：前三阶段均有同一机器人/配置的证据；完整路线手推通过；场地清空；机构装载方式与比赛一致；安全员与边界明确。
 - 允许动作：closed → score path → release → wait → park path；不允许额外机构或未评审路径。
-- 记录 telemetry：每个 enum state 的进入时间，以及 `x (in)`、`y (in)`、`heading (rad)`、`follower busy`、`state elapsed (s)`、`runtime failure`；视频和末端 pose/误差。
+- 记录 telemetry：每个 enum state 的进入时间，以及 `x (in)`、`y (in)`、`heading (rad)`、`follower busy`、`state elapsed (s)`、`last servo command`、`runtime failure`；视频和末端 pose/误差。
 - 通过：连续多次完成正确时序，路径/机构均无碰撞，末端误差、释放可靠性和停车范围达到队伍预先阈值。
 - Reviewer：`<name>`；Date：`<YYYY-MM-DD>`；Robot/evidence：`<robot/link>`。
 - 结果：证据不足仍写 `硬件阶段未验证`；只有真实证据齐全才写 `硬件四阶段已验证：<robot/reviewer/date>`。
 
 ## Telemetry 与排障
 
-Driver Station 上的精确 telemetry labels 是 `configuration complete`、`test stage`、`auto state`、`safety locked`、`runtime failure`、`x (in)`、`y (in)`、`heading (rad)`、`follower busy`、`state elapsed (s)`；每项校验问题显示为 `CONFIG: ...`。先读 `CONFIG: ...` 和 `runtime failure`，不要先加大功率或 PID：
+Driver Station 上的精确 telemetry labels 是 `configuration complete`、`test stage`、`auto state`、`safety locked`、`runtime failure`、`x (in)`、`y (in)`、`heading (rad)`、`follower busy`、`last servo command`、`state elapsed (s)`；每项校验问题显示为 `CONFIG: ...`。`state elapsed (s)` 是当前 `auto state` 的已持续时间；`last servo command` 是最后一次成功通过 Servo gateway 的命令（尚未成功发送时为 `NONE`），不是舵机位置反馈。先读 `CONFIG: ...` 和 `runtime failure`，不要先加大功率或 PID：
 
 | 现象 | 先观察 | 优先检查/动作 |
 |---|---|---|
@@ -306,7 +306,7 @@ Driver Station 上的精确 telemetry labels 是 `configuration complete`、`tes
 | 路径镜像 | start pose 与坐标草图 | 原点/联盟变换、视觉来源转换；禁止手工猜符号 |
 | 振荡/过冲 | pose 噪声、velocity、busy、末端误差 | 先定位与机械，再按所选 braking/PIDF 路线；不要混抄参数 |
 | 提前/永不完成 | busy 变化、velocity、平移/heading 误差、timeout | 找出实际放行或阻塞的 constraint，再单独调整 |
-| Servo 顶死 | 视频、声音、供电、commanded position | 立即 STOP；回到 SERVO_ONLY，以小步重测位置 |
+| Servo 顶死 | 视频、声音、供电、`last servo command` | 立即 STOP；该值不是舵机位置反馈；回到 SERVO_ONLY，以小步重测位置 |
 | telemetry 自身报错 | `runtime failure` 与 `safety locked` | 代码会进入 safety stop；修复 telemetry 前不继续硬件测试 |
 
 每次测试都保存 stage、Git commit、robot configuration、battery、电池电压、输入值、telemetry/video 和 reviewer。低误差 telemetry 不等于避障、机构安全或比赛可靠。

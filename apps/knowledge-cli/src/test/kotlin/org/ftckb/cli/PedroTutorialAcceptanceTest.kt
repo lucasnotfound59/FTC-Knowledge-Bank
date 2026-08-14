@@ -1,6 +1,7 @@
 package org.ftckb.cli
 
 import java.nio.file.Files
+import java.nio.file.FileVisitOption
 import java.nio.file.Path
 import java.security.MessageDigest
 import java.util.Properties
@@ -102,7 +103,7 @@ class PedroTutorialAcceptanceTest {
 
     private fun safePedroSources(root:Path,registeredWorktreeRoots:Set<Path>):List<String> {
         val lexicalRoot=lexicalAbsolute(root)
-        return Files.walk(lexicalRoot).use { paths ->
+        return Files.walk(lexicalRoot,FileVisitOption.FOLLOW_LINKS).use { paths ->
             paths.filter(Files::isRegularFile)
                 .filter { it.fileName.toString()=="SafePedroAuto.java" }
                 .filter { !isInNestedRegisteredWorktree(it,lexicalRoot,registeredWorktreeRoots) }
@@ -238,6 +239,18 @@ class PedroTutorialAcceptanceTest {
     }
 
     @Test
+    fun `all state transitions use one timer resetting gateway`() {
+        val java=source()
+        val transition=privateMethodBody(java,"transitionTo")
+
+        assertTrue("if(autoState==next)return;" in compact(transition))
+        assertBefore(transition,"autoState=next","stateTimer.reset()")
+        assertEquals(2,Regex("""\bautoState\s*=(?!=)""").findAll(java).count())
+        assertTrue("private AutoState autoState=AutoState.SAFETY_STOP;" in java)
+        assertTrue("autoState=next;" in transition)
+    }
+
+    @Test
     fun `motion is non blocking and confined to guarded gateways`() {
         val java=source()
         val commandPath=privateMethodBody(java,"commandPath")
@@ -273,15 +286,30 @@ class PedroTutorialAcceptanceTest {
     }
 
     @Test
+    fun `telemetry reports only the last successful servo gateway command`() {
+        val java=source()
+        val commandServo=privateMethodBody(java,"commandServo")
+
+        assertTrue("private enum LastServoCommand" in java)
+        setOf("NONE","CLOSED","OPEN").forEach { assertTrue(it in java,it) }
+        assertTrue("private LastServoCommand lastServoCommand=LastServoCommand.NONE;" in java)
+        assertBefore(commandServo,"servo.setPosition(position)","lastServoCommand=command")
+        assertEquals(2,Regex("""\blastServoCommand\s*=(?!=)""").findAll(java).count())
+        assertTrue("telemetry.addData(\"last servo command\",lastServoCommand);" in java)
+    }
+
+    @Test
     fun `safety transitions precede best effort follower cancellation`() {
         val java=source()
         val safetyStop=privateMethodBody(java,"enterSafetyStop")
         val stop=methodBody(java,"stop")
 
         assertBefore(safetyStop,"safetyLocked=true","stopFollowingBestEffort()")
-        assertBefore(safetyStop,"autoState=AutoState.SAFETY_STOP","stopFollowingBestEffort()")
+        assertBefore(safetyStop,"transitionTo(AutoState.SAFETY_STOP)","stopFollowingBestEffort()")
+        assertBefore(safetyStop,"safetyLocked=true","transitionTo(AutoState.SAFETY_STOP)")
         assertBefore(stop,"safetyLocked=true","stopFollowingBestEffort()")
-        assertBefore(stop,"autoState=AutoState.STOPPED","stopFollowingBestEffort()")
+        assertBefore(stop,"transitionTo(AutoState.STOPPED)","stopFollowingBestEffort()")
+        assertBefore(stop,"safetyLocked=true","transitionTo(AutoState.STOPPED)")
 
         val cancellation=privateMethodBody(java,"stopFollowingBestEffort")
         assertTrue("try {" in cancellation)
@@ -438,9 +466,9 @@ class PedroTutorialAcceptanceTest {
             "privatevoidupdateFollowerIfAllowed(){",
             "if(safetyLocked||!TEST_STAGE.driveAllowed||follower==null)return;",
             "follower.update();",
-            "if(autoState==AutoState.DRIVE_TO_PARK&&!follower.isBusy())autoState=AutoState.DONE;",
+            "if(autoState==AutoState.DRIVE_TO_PARK&&!follower.isBusy())transitionTo(AutoState.DONE);",
             "publicvoidstop(){",
-            "safetyLocked=true;autoState=AutoState.STOPPED;stopFollowingBestEffort();",
+            "safetyLocked=true;transitionTo(AutoState.STOPPED);stopFollowingBestEffort();",
             "try{follower.breakFollowing();}"
         ).forEach { assertTrue(it in compactGuide,it) }
     }
@@ -524,8 +552,11 @@ class PedroTutorialAcceptanceTest {
         setOf(
             "`CONFIG: ...`","`configuration complete`","`test stage`","`auto state`",
             "`safety locked`","`runtime failure`","`x (in)`","`y (in)`",
-            "`heading (rad)`","`follower busy`","`state elapsed (s)`"
+            "`heading (rad)`","`follower busy`","`last servo command`","`state elapsed (s)`"
         ).forEach { assertTrue(it in guide,it) }
+        assertTrue("当前 `auto state` 的已持续时间" in guide)
+        assertTrue("最后一次成功通过 Servo gateway 的命令" in guide)
+        assertTrue("不是舵机位置反馈" in guide)
         assertFalse("`validationIssues`" in guide)
         assertFalse("`elapsed seconds`" in guide)
         assertFalse("`safety lock`" in guide)
@@ -631,6 +662,20 @@ class PedroTutorialAcceptanceTest {
     }
 
     @Test
+    fun `registered worktree membership uses lexical candidate paths`() {
+        val root=Path.of("repository")
+        val registeredRoot=root.resolve("registered-checkout")
+        val registeredCandidate=registeredRoot.resolve("knowledge/examples/pedro/SafePedroAuto.java")
+        val fileAlias=root.resolve("aliases/SafePedroAuto.java")
+        val directoryAliasCandidate=root.resolve("aliases/copied-tree/knowledge/examples/pedro/SafePedroAuto.java")
+        val registeredRoots=setOf(registeredRoot)
+
+        assertTrue(isInNestedRegisteredWorktree(registeredCandidate,root,registeredRoots))
+        assertFalse(isInNestedRegisteredWorktree(fileAlias,root,registeredRoots))
+        assertFalse(isInNestedRegisteredWorktree(directoryAliasCandidate,root,registeredRoots))
+    }
+
+    @Test
     fun `source uniqueness retains symlinks outside registered worktrees`(@TempDir root:Path) {
         val registeredRoot=root.resolve(".worktrees/registered-checkout")
         val registeredCopy=registeredRoot.resolve("knowledge/examples/pedro/SafePedroAuto.java")
@@ -652,6 +697,30 @@ class PedroTutorialAcceptanceTest {
 
         assertEquals(
             listOf(".worktrees/archive/SafePedroAuto.java"),
+            safePedroSources(root,setOf(registeredRoot))
+        )
+    }
+
+    @Test
+    fun `source uniqueness traverses directory symlink aliases outside registered worktrees`(@TempDir root:Path) {
+        val registeredRoot=root.resolve("registered-checkout")
+        val registeredCopy=registeredRoot.resolve("knowledge/examples/pedro/SafePedroAuto.java")
+        val ordinaryAlias=root.resolve("aliases/copied-tree")
+        Files.createDirectories(registeredCopy.parent)
+        Files.createDirectories(ordinaryAlias.parent)
+        Files.writeString(registeredCopy,"registered worktree source")
+        try {
+            Files.createSymbolicLink(ordinaryAlias,registeredRoot)
+        } catch (_:UnsupportedOperationException) {
+            return
+        } catch (_:java.nio.file.FileSystemException) {
+            return
+        } catch (_:SecurityException) {
+            return
+        }
+
+        assertEquals(
+            listOf("aliases/copied-tree/knowledge/examples/pedro/SafePedroAuto.java"),
             safePedroSources(root,setOf(registeredRoot))
         )
     }
