@@ -13,4 +13,5 @@ dependencyResolutionManagement {
 rootProject.name="FTC-Knowledge-Bank"
 include(":modules:domain")
 include(":modules:knowledge")
+include(":modules:model-provider")
 include(":apps:knowledge-cli")
