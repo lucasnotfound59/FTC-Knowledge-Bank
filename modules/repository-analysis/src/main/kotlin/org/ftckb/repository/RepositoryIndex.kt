@@ -13,7 +13,7 @@ class RepositoryIndex {
         val documents=SafeRepositoryWalker(normalizedRoot).walk()
             .map { toDocument(it) }
             .associateByTo(linkedMapOf()) { it.path }
-        return RepositorySnapshot(normalizedRoot,FtcProjectDetector.detect(normalizedRoot),documents).also { current=it }
+        return RepositorySnapshot(normalizedRoot,FtcProjectDetector.detect(normalizedRoot),immutableMapCopy(documents)).also { current=it }
     }
 
     fun search(query:LocalQuery,limit:Int):List<SourceFragment> {
@@ -58,15 +58,15 @@ class RepositoryIndex {
             if (file==null) updated.remove(path) else updated[path]=toDocument(file)
         }
         val stableDocuments=updated.toSortedMap().toMap(linkedMapOf())
-        return RepositorySnapshot(snapshot.root,FtcProjectDetector.detect(snapshot.root),stableDocuments).also { current=it }
+        return RepositorySnapshot(snapshot.root,FtcProjectDetector.detect(snapshot.root),immutableMapCopy(stableDocuments)).also { current=it }
     }
 
     private fun toDocument(file:SafeTextFile):IndexedDocument=IndexedDocument(
         file.path,
         sha256(file.bytes),
         file.text,
-        file.text.split("\n"),
-        TOKEN.findAll(file.text).map { it.value.lowercase(Locale.ROOT) }.toSet()
+        immutableListCopy(file.text.split("\n")),
+        immutableSetCopy(TOKEN.findAll(file.text).map { it.value.lowercase(Locale.ROOT) }.toSet())
     )
 
     private fun score(document:IndexedDocument,terms:Set<String>,symbols:Set<String>,pathMatch:Boolean):Int {

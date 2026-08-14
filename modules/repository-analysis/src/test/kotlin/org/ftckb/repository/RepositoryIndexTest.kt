@@ -8,6 +8,7 @@ import kotlin.io.path.writeText
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 
@@ -97,6 +98,47 @@ class RepositoryIndexTest {
 
         assertEquals("Symbol.java",symbolResults.first().path)
         assertEquals("path/Match.java",pathResults.first().path)
+    }
+
+    @Test
+    fun `refresh rejects internal and external intermediate symlinks`() {
+        write("actual/Inside.java","class Inside {}")
+        val outside=Files.createTempDirectory("repository-index-outside")
+        outside.resolve("Outside.java").writeText("class Outside {}")
+        try {
+            Files.createSymbolicLink(tempDir.resolve("inside-link"),tempDir.resolve("actual"))
+            Files.createSymbolicLink(tempDir.resolve("outside-link"),outside)
+            val index=RepositoryIndex()
+            index.build(tempDir)
+
+            val refreshed=index.refresh(setOf("inside-link/Inside.java","outside-link/Outside.java"))
+
+            assertFalse(refreshed.documents.containsKey("inside-link/Inside.java"))
+            assertFalse(refreshed.documents.containsKey("outside-link/Outside.java"))
+            assertTrue(refreshed.documents.containsKey("actual/Inside.java"))
+        } finally {
+            Files.deleteIfExists(outside.resolve("Outside.java"))
+            Files.deleteIfExists(outside)
+        }
+    }
+
+    @Test
+    fun `published repository collections reject mutation through mutable casts`() {
+        write("TeamCode/build.gradle","implementation 'org.firstinspires.ftc:RobotCore:9.0.1'")
+        write("TeamCode/src/main/java/Drive.java","@TeleOp class Drive {}")
+        write("settings.gradle","include ':TeamCode'")
+        val snapshot=RepositoryIndex().build(tempDir)
+
+        assertThrows(UnsupportedOperationException::class.java) {
+            @Suppress("UNCHECKED_CAST")
+            (snapshot.profile.sourceModules as MutableSet<String>).add("mutated")
+        }
+        assertThrows(UnsupportedOperationException::class.java) {
+            @Suppress("UNCHECKED_CAST")
+            (snapshot.documents as MutableMap<String,IndexedDocument>)["mutated.java"]=snapshot.documents.getValue("TeamCode/build.gradle")
+        }
+        assertFalse(snapshot.profile.sourceModules.contains("mutated"))
+        assertFalse(snapshot.documents.containsKey("mutated.java"))
     }
 
     private fun write(path:String,text:String) {

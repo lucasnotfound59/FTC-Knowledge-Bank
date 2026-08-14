@@ -1,6 +1,7 @@
 package org.ftckb.repository
 
 import java.nio.file.Path
+import java.util.Collections
 
 enum class ProjectMarkerKind { GRADLE_SETTINGS,TEAMCODE_MODULE,FTC_DEPENDENCY,OPMODE_ANNOTATION }
 
@@ -40,3 +41,9 @@ data class SourceFragment(
     val text:String,
     val score:Int
 )
+
+internal fun <T> immutableListCopy(values:Collection<T>):List<T> =Collections.unmodifiableList(ArrayList(values))
+
+internal fun <T> immutableSetCopy(values:Collection<T>):Set<T> =Collections.unmodifiableSet(LinkedHashSet(values))
+
+internal fun <K,V> immutableMapCopy(values:Map<K,V>):Map<K,V> =Collections.unmodifiableMap(LinkedHashMap(values))

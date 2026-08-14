@@ -6,6 +6,7 @@ import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 import java.nio.file.FileVisitResult
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.SimpleFileVisitor
 import java.nio.file.attribute.BasicFileAttributes
@@ -40,8 +41,18 @@ class SafeRepositoryWalker(root:Path) {
         val relative=Path.of(relativePath).normalize()
         if (relative.isAbsolute || relative.startsWith("..")) return null
         val file=root.resolve(relative).normalize()
-        if (!file.startsWith(root) || !Files.isRegularFile(file) || Files.isSymbolicLink(file)) return null
+        if (!file.startsWith(root) || hasSymbolicLinkComponent(relative)) return null
+        if (!Files.isRegularFile(file,LinkOption.NOFOLLOW_LINKS)) return null
         return readFile(file,GitIgnoreRules.load(root))
+    }
+
+    private fun hasSymbolicLinkComponent(relative:Path):Boolean {
+        var current=root
+        relative.forEach { component ->
+            current=current.resolve(component)
+            if (Files.isSymbolicLink(current)) return true
+        }
+        return false
     }
 
     private fun readFile(file:Path,ignoreRules:GitIgnoreRules):SafeTextFile? {

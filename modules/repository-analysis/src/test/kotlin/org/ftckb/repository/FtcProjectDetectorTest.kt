@@ -5,6 +5,7 @@ import java.nio.file.Path
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -55,5 +56,22 @@ class FtcProjectDetectorTest {
         }
 
         assertTrue(!FtcProjectDetector.detect(tempDir).supported)
+    }
+
+    @Test
+    fun `skips excluded directory trees during detection`() {
+        tempDir.resolve(".git/TeamCode/build.gradle").apply {
+            parent.createDirectories()
+            writeText("implementation 'org.firstinspires.ftc:RobotCore:9.0.1'")
+        }
+        tempDir.resolve(".git/TeamCode/src/main/java/Hidden.java").apply {
+            parent.createDirectories()
+            writeText("@TeleOp class Hidden {}")
+        }
+
+        val profile=FtcProjectDetector.detect(tempDir)
+
+        assertFalse(profile.supported)
+        assertTrue(profile.markers.isEmpty())
     }
 }
