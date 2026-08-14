@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 
 class PedroTutorialAcceptanceTest {
     private val repositoryRoot=Path.of("..","..").normalize()
@@ -28,6 +29,73 @@ class PedroTutorialAcceptanceTest {
 
     private fun imports(java:String)=Regex("""(?m)^import\s+([^;]+);$""")
         .findAll(java).map { it.groupValues[1] }.toSet()
+
+    private fun gitOutput(root:Path,vararg arguments:String):String {
+        val command=listOf("git","-C",root.toRealPath().toString())+arguments
+        val process=ProcessBuilder(command).redirectErrorStream(true).start()
+        val output=process.inputStream.bufferedReader().use { it.readText() }
+        val exitCode=process.waitFor()
+        check(exitCode==0) { "${command.joinToString(" ")} failed ($exitCode): $output" }
+        return output
+    }
+
+    private fun registeredGitWorktreeRoots(root:Path)=
+        gitOutput(root,"worktree","list","--porcelain","-z")
+            .split('\u0000')
+            .filter { it.startsWith("worktree ") }
+            .map { Path.of(it.removePrefix("worktree ")) }
+            .filter(Files::isDirectory)
+            .map(Path::toRealPath)
+            .toSet()
+
+    private fun trackedSafePedroSources(root:Path)=gitOutput(root,"ls-files","-z")
+        .split('\u0000')
+        .filter { it.substringAfterLast('/')=="SafePedroAuto.java" }
+
+    private fun markdownLinkTargets(markdown:String)=Regex("""\[[^]]+]\(([^)\s]+)\)""")
+        .findAll(markdown)
+        .map { it.groupValues[1] }
+        .toSet()
+
+    private fun markdownHeadingSlugs(markdown:String)=markdown.lineSequence()
+        .mapNotNull { line -> Regex("""^#{1,6}\s+(.+?)\s*#*\s*$""").matchEntire(line) }
+        .map { match ->
+            match.groupValues[1]
+                .lowercase()
+                .replace(Regex("""[^\p{L}\p{N}\s_-]"""),"")
+                .trim()
+                .replace(Regex("""\s+"""),"-")
+        }
+        .toSet()
+
+    private fun assertMarkdownLinkResolves(markdown:String,target:String) {
+        assertTrue(target in markdownLinkTargets(markdown),"missing Markdown link to $target")
+        val relativePath=target.substringBefore('#')
+        val fragment=target.substringAfter('#',"")
+        val resolved=repositoryRoot.resolve(relativePath).normalize()
+        assertTrue(Files.isRegularFile(resolved),"link target does not exist: $relativePath")
+        if(fragment.isNotEmpty()) {
+            val slugs=markdownHeadingSlugs(Files.readString(resolved))
+            assertTrue(fragment in slugs,"fragment #$fragment does not match a heading in $relativePath")
+        }
+    }
+
+    private fun safePedroSources(root:Path,registeredWorktreeRoots:Set<Path>):List<String> {
+        val realRoot=root.toRealPath()
+        val nestedWorktreeRoots=registeredWorktreeRoots
+            .map(Path::toRealPath)
+            .filter { it!=realRoot }
+        return Files.walk(realRoot).use { paths ->
+            paths.filter(Files::isRegularFile)
+                .filter { it.fileName.toString()=="SafePedroAuto.java" }
+                .filter { candidate ->
+                    val realCandidate=candidate.toRealPath()
+                    nestedWorktreeRoots.none(realCandidate::startsWith)
+                }
+                .map { realRoot.relativize(it.toRealPath()).toString().replace('\\','/') }
+                .toList()
+        }
+    }
 
     private fun assertBefore(text:String,first:String,second:String) {
         val firstIndex=text.indexOf(first)
@@ -288,13 +356,11 @@ class PedroTutorialAcceptanceTest {
         val properties=fixtureProperties()
         val wrapperProperties=Files.readString(fixtureRoot.resolve("gradle/wrapper/gradle-wrapper.properties"))
         val fixtureBuild=compact(Files.readString(fixtureRoot.resolve("build.gradle")))
-        val canonicalSources=Files.walk(repositoryRoot).use { paths ->
-            paths.filter(Files::isRegularFile)
-                .filter { !it.startsWith(repositoryRoot.resolve(".worktrees")) }
-                .filter { it.fileName.toString()=="SafePedroAuto.java" }
-                .map { repositoryRoot.relativize(it).toString() }
-                .toList()
-        }
+        val canonicalSources=safePedroSources(
+            repositoryRoot,
+            registeredGitWorktreeRoots(repositoryRoot)
+        )
+        val trackedSources=trackedSafePedroSources(repositoryRoot)
 
         assertEquals("https\\://services.gradle.org/distributions/gradle-8.9-bin.zip",
             wrapperProperties.lineSequence().first { it.startsWith("distributionUrl=") }.substringAfter('='))
@@ -313,6 +379,7 @@ class PedroTutorialAcceptanceTest {
         assertTrue("implementation\"org.firstinspires.ftc:Hardware:${'$'}{ftcSdkVersion}\"" in fixtureBuild)
         assertTrue("implementation\"com.pedropathing:ftc:${'$'}{pedroVersion}\"" in fixtureBuild)
         assertEquals(listOf("knowledge/examples/pedro/SafePedroAuto.java"),canonicalSources)
+        assertEquals(listOf("knowledge/examples/pedro/SafePedroAuto.java"),trackedSources)
         assertFalse("pedro-compile" in Files.readString(repositoryRoot.resolve("settings.gradle.kts")))
         assertEquals("11.2.0",properties.getProperty("ftcSdkVersion"))
         assertEquals("2.1.2",properties.getProperty("pedroVersion"))
@@ -510,14 +577,42 @@ class PedroTutorialAcceptanceTest {
     @Test
     fun `readme exposes tutorial example and release verification`() {
         val readme=Files.readString(repositoryRoot.resolve("README.md"))
-        assertTrue("knowledge/guides/tools/pedro-pathing.md" in readme)
-        assertTrue("knowledge/guides/tools/pedro-pathing.md#safepedroauto-参数字典" in readme)
-        assertTrue("knowledge/guides/tools/pedro-pathing.md#四阶段实车测试清单" in readme)
-        assertTrue("knowledge/examples/pedro/SafePedroAuto.java" in readme)
+        assertMarkdownLinkResolves(
+            readme,
+            "knowledge/guides/tools/pedro-pathing.md#safepedroauto-参数字典"
+        )
+        assertMarkdownLinkResolves(
+            readme,
+            "knowledge/guides/tools/pedro-pathing.md#四阶段实车测试清单"
+        )
+        assertMarkdownLinkResolves(readme,"knowledge/examples/pedro/SafePedroAuto.java")
         assertTrue("verifyPedroRelease" in readme)
         assertTrue("ANDROID_HOME" in readme||"ANDROID_SDK_ROOT" in readme)
         assertTrue("默认锁定" in readme)
         assertTrue("不代表部署或实机验证通过" in readme)
         assertTrue("当前没有已完成的 Pedro 实机验证记录" in readme)
+    }
+
+    @Test
+    fun `source uniqueness excludes registered worktrees not directory names`(@TempDir root:Path) {
+        val ordinaryArchive=root.resolve(".worktrees/archive/SafePedroAuto.java")
+        val registeredRoot=root.resolve(".worktrees/registered-checkout")
+        val registeredCopy=registeredRoot.resolve("knowledge/examples/pedro/SafePedroAuto.java")
+        Files.createDirectories(ordinaryArchive.parent)
+        Files.createDirectories(registeredCopy.parent)
+        Files.writeString(ordinaryArchive,"ordinary duplicate")
+        Files.writeString(registeredCopy,"registered worktree duplicate")
+
+        assertEquals(
+            setOf(
+                ".worktrees/archive/SafePedroAuto.java",
+                ".worktrees/registered-checkout/knowledge/examples/pedro/SafePedroAuto.java"
+            ),
+            safePedroSources(root,emptySet()).toSet()
+        )
+        assertEquals(
+            listOf(".worktrees/archive/SafePedroAuto.java"),
+            safePedroSources(root,setOf(registeredRoot))
+        )
     }
 }
