@@ -50,7 +50,7 @@ class ConversationTest {
             setOf("TeamCode/$secret.java")
         )
         val saver=ConversationSaver(
-            "deepseek","deepseek-chat",setOf(secret),
+            "deepseek","deepseek-chat",
             Clock.fixed(Instant.parse("2026-08-15T00:00:00Z"),ZoneOffset.UTC)
         )
 
@@ -81,10 +81,12 @@ class ConversationTest {
     fun `compacts an oversized newest turn so recent context stays under 24000 characters`() {
         val state=ConversationState(ScriptedProvider("Goal: inspect Drive."))
 
-        state.record("Drive?",answer("x".repeat(25_000)),emptySet())
+        state.record("Drive?",answer("x".repeat(25_000)),setOf("TeamCode/Drive.java"))
 
         assertTrue(state.recentTurnCharacters()<=24_000)
-        assertTrue(state.context().recentTurns.isEmpty())
+        assertEquals(listOf("Drive?"),state.context().recentTurns.map { it.question })
+        assertTrue(state.context().recentTurns.single().answer.claims.single().text.length<25_000)
+        assertEquals(setOf("TeamCode/Drive.java"),state.context().recentReferences)
         assertEquals("Goal: inspect Drive.",state.context().rollingSummary)
     }
 

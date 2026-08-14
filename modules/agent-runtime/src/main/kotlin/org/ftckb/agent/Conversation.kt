@@ -40,6 +40,12 @@ class ConversationState(
         val updated=recentTurns.toMutableList().apply { add(turn) }
         var updatedSummary=rollingSummary
         while (updated.size>maximumRecentTurns || updated.sumOf(::turnCharacters)>maximumRecentCharacters) {
+            if (updated.size==1) {
+                val current=updated.single()
+                updatedSummary=UntrustedSummary(summarize(updatedSummary?.text,current))
+                updated[0]=boundedTurn(current)
+                break
+            }
             val removed=updated.removeAt(0)
             updatedSummary=UntrustedSummary(summarize(updatedSummary?.text,removed))
         }
@@ -61,6 +67,31 @@ class ConversationState(
 
     internal fun renderTurnForPrompt(turn:ConversationTurn):String=renderTurn(turn)
 
+    @Synchronized
+    internal fun renderSavedSession(providerName:String,modelName:String,savedAt:Instant):String {
+        val context=context()
+        return buildString {
+            append("# FTC Knowledge Bank session\n\n")
+            append("Provider: ").append(redact(providerName)).append(" / ").append(redact(modelName)).append('\n')
+            append("Saved: ").append(DateTimeFormatter.ISO_INSTANT.format(savedAt)).append("\n\n")
+            context.rollingSummary?.let {
+                append("## Untrusted compact summary\n\n")
+                append(redact(it)).append("\n\n")
+            }
+            append("## Conversation\n\n")
+            context.recentTurns.forEachIndexed { index,turn ->
+                append("### Turn ").append(index+1).append("\n\n")
+                append("User: ").append(redact(turn.question)).append("\n\n")
+                turn.answer.claims.forEach { claim ->
+                    append("- ").append(claim.kind.name.lowercase()).append(": ").append(redact(claim.text))
+                    if (claim.citations.isNotEmpty()) append(" (citations: ").append(claim.citations.joinToString { redact(it) }).append(')')
+                    append('\n')
+                }
+                if (turn.referencedIds.isNotEmpty()) append("References: ").append(turn.referencedIds.joinToString { redact(it) }).append("\n\n")
+            }
+        }
+    }
+
     private fun summarize(previous:String?,turn:ConversationTurn):String {
         val response=provider.complete(ModelRequest(
             listOf(
@@ -79,6 +110,42 @@ class ConversationState(
     }
 
     private fun turnCharacters(turn:ConversationTurn):Int=renderTurn(turn).length
+
+    private fun boundedTurn(turn:ConversationTurn):ConversationTurn {
+        var bounded=redactedTurn(turn)
+        while (turnCharacters(bounded)>maximumRecentCharacters) {
+            val longestClaimIndex=bounded.answer.claims.indices.maxByOrNull { bounded.answer.claims[it].text.length }
+            val longestClaimLength=longestClaimIndex?.let { bounded.answer.claims[it].text.length } ?: 0
+            when {
+                bounded.question.length>=longestClaimLength && bounded.question.isNotEmpty() -> {
+                    bounded=bounded.copy(question=shorten(bounded.question,turnCharacters(bounded)-maximumRecentCharacters))
+                }
+                longestClaimIndex!=null && longestClaimLength>0 -> {
+                    val claims=bounded.answer.claims.toMutableList()
+                    val claim=claims[longestClaimIndex]
+                    claims[longestClaimIndex]=claim.copy(text=shorten(claim.text,turnCharacters(bounded)-maximumRecentCharacters))
+                    bounded=bounded.copy(answer=bounded.answer.copy(claims=claims))
+                }
+                else -> {
+                    val citationIndex=bounded.answer.claims.indexOfFirst { it.citations.isNotEmpty() }
+                    check(citationIndex>=0) { "referenced IDs exceed the recent conversation character limit" }
+                    val claims=bounded.answer.claims.toMutableList()
+                    claims[citationIndex]=claims[citationIndex].copy(citations=emptyList())
+                    bounded=bounded.copy(answer=bounded.answer.copy(claims=claims))
+                }
+            }
+        }
+        return bounded
+    }
+
+    private fun shorten(text:String,excess:Int):String {
+        val length=(text.length-excess).coerceAtLeast(0)
+        return when (length) {
+            0 -> ""
+            1 -> "…"
+            else -> text.take(length-1)+"…"
+        }
+    }
 
     private fun redactedTurn(turn:ConversationTurn):ConversationTurn=ConversationTurn(
         redact(turn.question),
@@ -109,41 +176,15 @@ class ConversationState(
 class ConversationSaver(
     private val providerName:String,
     private val modelName:String,
-    exactSecrets:Set<String> =emptySet(),
     private val clock:Clock=Clock.systemUTC()
 ) {
-    private val exactSecrets=exactSecrets.filter(String::isNotBlank).toSet()
-
     fun save(state:ConversationState,path:Path):Path {
-        val text=render(state.context())
+        val text=state.renderSavedSession(providerName,modelName,Instant.now(clock))
         Files.newBufferedWriter(path,StandardCharsets.UTF_8,StandardOpenOption.CREATE_NEW,StandardOpenOption.WRITE).use { writer ->
             writer.write(text)
         }
         return path
     }
-
-    private fun render(context:ConversationContext):String=buildString {
-        append("# FTC Knowledge Bank session\n\n")
-        append("Provider: ").append(redact(providerName)).append(" / ").append(redact(modelName)).append('\n')
-        append("Saved: ").append(DateTimeFormatter.ISO_INSTANT.format(Instant.now(clock))).append("\n\n")
-        context.rollingSummary?.let {
-            append("## Untrusted compact summary\n\n")
-            append(redact(it)).append("\n\n")
-        }
-        append("## Conversation\n\n")
-        context.recentTurns.forEachIndexed { index,turn ->
-            append("### Turn ").append(index+1).append("\n\n")
-            append("User: ").append(redact(turn.question)).append("\n\n")
-            turn.answer.claims.forEach { claim ->
-                append("- ").append(claim.kind.name.lowercase()).append(": ").append(redact(claim.text))
-                if (claim.citations.isNotEmpty()) append(" (citations: ").append(claim.citations.joinToString { redact(it) }).append(')')
-                append('\n')
-            }
-            if (turn.referencedIds.isNotEmpty()) append("References: ").append(turn.referencedIds.joinToString { redact(it) }).append("\n\n")
-        }
-    }
-
-    private fun redact(text:String)=ConversationRedactor.redact(text,exactSecrets)
 }
 
 internal object ConversationRedactor {

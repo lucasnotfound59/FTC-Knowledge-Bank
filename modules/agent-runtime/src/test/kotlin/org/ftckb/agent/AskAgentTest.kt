@@ -1,6 +1,10 @@
 package org.ftckb.agent
 
 import java.nio.file.Path
+import java.nio.file.Files
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
 import org.ftckb.model.ModelProvider
@@ -51,7 +55,7 @@ class AskAgentTest {
 
     @Test
     fun `redacts exact secrets in cited references before planning and answer prompts`() {
-        val secret=listOf("sk","synthetic","value").joinToString("-")
+        val secret=listOf("opaque","session","marker").joinToString(".")
         val provider=ScriptedProvider(plan(),answer())
         val state=ConversationState(provider,exactSecrets=setOf(secret))
         state.record(
@@ -64,6 +68,11 @@ class AskAgentTest {
         agent.ask("follow up")
 
         assertTrue(provider.requests.flatMap { it.messages }.none { it.content.contains(secret) })
+        val saved=ConversationSaver(
+            "deepseek","deepseek-chat",
+            Clock.fixed(Instant.parse("2026-08-15T00:00:00Z"),ZoneOffset.UTC)
+        ).save(state,root.resolve("session.md"))
+        assertTrue(!Files.readString(saved).contains(secret))
     }
 
     private fun agent(provider:ModelProvider,state:ConversationState=ConversationState(provider)):AskAgent {
