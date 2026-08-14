@@ -1,5 +1,6 @@
 package org.ftckb.cli
 
+import java.io.BufferedReader
 import java.io.PrintStream
 import java.nio.file.Path
 import kotlin.system.exitProcess
@@ -8,7 +9,13 @@ import org.ftckb.domain.RuleIdentity
 import org.ftckb.domain.RuleResolver
 import org.ftckb.knowledge.FileKnowledgeRepository
 
-fun runCli(args:List<String>,out:PrintStream=System.out):Int {
+fun runCli(
+    args:List<String>,
+    out:PrintStream=System.out,
+    input:BufferedReader=System.`in`.bufferedReader(),
+    chatLauncher:ChatLauncher=ProductionChatLauncher()
+):Int {
+    if (args.firstOrNull()=="chat") return runChatCommand(args.drop(1),input,out,chatLauncher)
     if (args.size<2) {
         out.println("usage: knowledge-cli <validate|resolve> <knowledge-root> [--team N --season S]")
         return 64
