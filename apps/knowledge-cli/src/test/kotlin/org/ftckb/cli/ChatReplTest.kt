@@ -105,9 +105,105 @@ class ChatReplTest {
         assertTrue(provider.requests.any { request ->
             request.messages.any { it.content.contains("Conversation context (not evidence)") }
         })
+        val firstPlanningRequest=provider.requests.first {
+            it.messages.first().content.startsWith("Return exactly one JSON object")
+        }
+        val planningText=firstPlanningRequest.messages.joinToString("\n") { it.content }
+        assertFalse(planningText.contains(repository.toRealPath().toString()))
+        assertFalse(planningText.contains("TeamCode/src/main/java/example/SampleTeleOp.java"))
+        assertTrue(planningText.contains("sourceModules=TeamCode"))
+        assertTrue(planningText.contains("markerCount=4"))
+        assertTrue(planningText.contains("documentCount=3"))
         assertTrue(provider.requests.none { request -> request.messages.any { exactSecret in it.content } })
         assertTrue(Files.readString(saved).contains("[REDACTED]"))
         assertFalse(Files.readString(saved).contains(exactSecret))
+    }
+
+    @Test
+    fun `production removes exact secret from every outbound model request`(@TempDir root:Path) {
+        val secret=listOf("runtime","outbound","secret").joinToString("-")
+        val repository=root.resolve("repository")
+        writeFtcRepository(repository)
+        val secretPath="TeamCode/src/main/java/example/${secret}TeleOp.java"
+        Files.writeString(
+            repository.resolve(secretPath),
+            "@TeleOp public class SecretTeleOp { String marker=\"$secret\"; }\n"
+        )
+        val config=root.resolve("config.yaml")
+        writeFakeConfig(config,"FTC_KB_FAKE_KEY")
+        val provider=SecretEvidenceProvider(secretPath)
+        val launcher=ProductionChatLauncher(
+            environment={ secret },
+            providerCreator={ _,_ -> provider }
+        )
+
+        val code=launcher.run(
+            ChatOptions(
+                repository,Path.of("..","..","knowledge").normalize(),"20827","2025-2026","fake",config
+            ),
+            BufferedReader(StringReader((1..9).joinToString("\n") { "inspect the selected TeleOp $it" }+"\n/exit\n")),
+            PrintStream(ByteArrayOutputStream())
+        )
+
+        assertEquals(0,code)
+        assertTrue(provider.requests.any {
+            it.messages.first().content.startsWith("Produce a compact untrusted conversation summary")
+        })
+        assertTrue(provider.requests.any { it.maxOutputTokens==512 })
+        assertTrue(provider.requests.any { it.maxOutputTokens==1024 })
+        assertTrue(provider.requests.all { request ->
+            request.messages.first().role==org.ftckb.model.MessageRole.SYSTEM &&
+                request.messages.drop(1).all { it.role==org.ftckb.model.MessageRole.USER }
+        })
+        assertTrue(provider.requests.none { request -> request.messages.any { secret in it.content } })
+    }
+
+    @Test
+    fun `production rebuilds repository index before every Ask turn`(@TempDir root:Path) {
+        val repository=root.resolve("repository")
+        writeFtcRepository(repository)
+        val source=repository.resolve("TeamCode/src/main/java/example/SampleTeleOp.java")
+        Files.writeString(source,"@TeleOp public class SampleTeleOp { String state=\"before-change\"; }\n")
+        val config=root.resolve("config.yaml")
+        writeFakeConfig(config,"FTC_KB_FAKE_KEY")
+        val provider=RefreshProbeProvider()
+        val launcher=ProductionChatLauncher(
+            environment={ "fake-secret" },
+            providerCreator={ _,_ -> provider }
+        )
+        val input=object:BufferedReader(StringReader("")) {
+            private var line=0
+
+            override fun readLine():String?=when (line++) {
+                0 -> "inspect before"
+                1 -> {
+                    Files.writeString(
+                        source,
+                        "@TeleOp public class SampleTeleOp { String state=\"after-change\"; }\n"
+                    )
+                    "inspect after"
+                }
+                2 -> "/exit"
+                else -> null
+            }
+        }
+
+        val code=launcher.run(
+            ChatOptions(
+                repository,Path.of("..","..","knowledge").normalize(),"20827","2025-2026","fake",config
+            ),
+            input,
+            PrintStream(ByteArrayOutputStream())
+        )
+
+        assertEquals(0,code)
+        val answerRequests=provider.requests.filter {
+            it.messages.first().content.startsWith("Answer only as JSON")
+        }
+        assertEquals(2,answerRequests.size)
+        assertTrue(answerRequests[0].messages.any { "before-change" in it.content })
+        assertTrue(answerRequests[1].messages.any { "after-change" in it.content })
+        assertTrue(answerRequests[1].messages.none { "before-change" in it.content })
     }
 
     @Test
@@ -243,6 +339,31 @@ class ChatReplTest {
         assertTrue(output.toString().contains("saved=${sessions.resolve("relative.md").toAbsolutePath()}"))
     }
 
+    @Test
+    fun `rejected repository save creates no sessions directory`(@TempDir root:Path) {
+        val repository=root.resolve("repository")
+        writeFtcRepository(repository)
+        val config=root.resolve("config.yaml")
+        writeFakeConfig(config,"FTC_KB_FAKE_KEY")
+        val sessions=repository.resolve(".sessions")
+        val launcher=ProductionChatLauncher(
+            environment={ "fake-secret" },
+            providerCreator={ _,_ -> ModelProvider { error("provider must not be called") } },
+            sessionsDirectory={ sessions }
+        )
+
+        val code=launcher.run(
+            ChatOptions(
+                repository,Path.of("..","..","knowledge").normalize(),"20827","2025-2026","fake",config
+            ),
+            BufferedReader(StringReader("/save\n/exit\n")),
+            PrintStream(ByteArrayOutputStream())
+        )
+
+        assertEquals(0,code)
+        assertFalse(Files.exists(sessions))
+    }
+
     private class FakeAskChatSession(
         private val answer:AgentAnswer,
         private val chatStatus:ChatStatus,
@@ -319,6 +440,64 @@ class ChatReplTest {
                     }
                 """.trimIndent())
                 else -> error("unexpected fake provider request")
+            }
+        }
+    }
+
+    private class SecretEvidenceProvider(private val secretPath:String):ModelProvider {
+        val requests=mutableListOf<ModelRequest>()
+
+        override fun complete(request:ModelRequest):ModelResponse {
+            requests+=request.copy(messages=request.messages.map(ModelMessage::copy))
+            return if (request.messages.first().content.startsWith("Return exactly one JSON object")) {
+                ModelResponse("""
+                    {
+                      "concepts":[],
+                      "symbols":[],
+                      "pathGlobs":["$secretPath"],
+                      "ruleTopics":[],
+                      "guideTopics":[]
+                    }
+                """.trimIndent())
+            } else {
+                ModelResponse("""
+                    {
+                      "claims":[{
+                        "kind":"code_observation",
+                        "text":"The selected TeleOp contains a marker.",
+                        "citations":["CODE:C1"]
+                      }]
+                    }
+                """.trimIndent())
+            }
+        }
+    }
+
+    private class RefreshProbeProvider:ModelProvider {
+        val requests=mutableListOf<ModelRequest>()
+
+        override fun complete(request:ModelRequest):ModelResponse {
+            requests+=request.copy(messages=request.messages.map(ModelMessage::copy))
+            return if (request.messages.first().content.startsWith("Return exactly one JSON object")) {
+                ModelResponse("""
+                    {
+                      "concepts":[],
+                      "symbols":["SampleTeleOp"],
+                      "pathGlobs":[],
+                      "ruleTopics":[],
+                      "guideTopics":[]
+                    }
+                """.trimIndent())
+            } else {
+                ModelResponse("""
+                    {
+                      "claims":[{
+                        "kind":"code_observation",
+                        "text":"The indexed SampleTeleOp state is current.",
+                        "citations":["CODE:C1"]
+                      }]
+                    }
+                """.trimIndent())
             }
         }
     }

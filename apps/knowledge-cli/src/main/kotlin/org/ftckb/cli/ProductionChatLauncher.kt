@@ -16,6 +16,7 @@ import org.ftckb.agent.ConversationState
 import org.ftckb.agent.KnowledgeRetriever
 import org.ftckb.agent.RetrievalPlanner
 import org.ftckb.model.ModelProvider
+import org.ftckb.model.ModelRequest
 import org.ftckb.model.ProviderConfigLoader
 import org.ftckb.model.ProviderProfile
 import org.ftckb.model.SecretResolver
@@ -70,37 +71,57 @@ class ProductionChatLauncher(
             out.println("error starting chat: model provider initialization failed")
             return 2
         }
-        val conversation=ConversationState(provider,setOf(secret))
+        val outboundProvider=ExactSecretRedactingModelProvider(provider,secret)
+        val conversation=ConversationState(outboundProvider,setOf(secret))
         val agent=AskAgent(
-            RetrievalPlanner(provider),
+            RetrievalPlanner(outboundProvider),
             ContextRetriever(repositoryIndex,knowledgeRetriever),
-            AnswerGenerator(provider,repositoryIndex),
+            AnswerGenerator(outboundProvider,repositoryIndex),
             conversation,
-            repositorySummary(snapshot.root,snapshot.documents.keys,snapshot.profile.sourceModules)
+            repositorySummary(
+                snapshot.profile.sourceModules,
+                snapshot.profile.markers.size,
+                snapshot.documents.size
+            )
         )
         val session=ProductionAskChatSession(
             agent,
             ConversationSaver(profile.name,profile.model),
             ChatStatus(snapshot.root,options.team,options.season,profile.name,profile.model),
-            sessionsDirectory
+            sessionsDirectory,
+            repositoryIndex
         )
         return ChatRepl(session,input,out).run()
     }
 
-    private fun repositorySummary(root:Path,paths:Set<String>,sourceModules:Set<String>):String=buildString {
-        append("root=").append(root)
+    private fun repositorySummary(sourceModules:Set<String>,markerCount:Int,documentCount:Int):String=buildString {
+        append("supported=true")
         append("; sourceModules=").append(sourceModules.sorted().joinToString(","))
-        append("; indexedPaths=").append(paths.sorted().joinToString(","))
+        append("; markerCount=").append(markerCount)
+        append("; documentCount=").append(documentCount)
     }
+}
+
+private class ExactSecretRedactingModelProvider(
+    private val delegate:ModelProvider,
+    private val exactSecret:String
+):ModelProvider {
+    override fun complete(request:ModelRequest)=delegate.complete(request.copy(
+        messages=request.messages.map { message ->
+            message.copy(content=message.content.replace(exactSecret,"[REDACTED]"))
+        }
+    ))
 }
 
 private class ProductionAskChatSession(
     private val agent:AskAgent,
     private val saver:ConversationSaver,
     private val chatStatus:ChatStatus,
-    private val sessionsDirectory:()->Path
+    private val sessionsDirectory:()->Path,
+    private val repositoryIndex:RepositoryIndex
 ):AskChatSession {
     override fun ask(question:String):AgentAnswer {
+        repositoryIndex.build(chatStatus.repository)
         agent.ask(question)
         return agent.conversation.context().recentTurns.last().answer
     }
@@ -117,28 +138,29 @@ private class ProductionAskChatSession(
             .toAbsolutePath()
             .normalize()
         val destination=when {
-            path==null -> {
-                Files.createDirectories(directory)
-                directory.resolve("${saveTimestamp.format(Instant.now())}.md")
-            }
+            path==null -> directory.resolve("${saveTimestamp.format(Instant.now())}.md")
             path.isAbsolute -> path.normalize()
-            else -> {
-                Files.createDirectories(directory)
-                directory.resolve(path).normalize().also {
-                    require(it.startsWith(directory)) { "relative save path escapes the sessions directory" }
-                }
+            else -> directory.resolve(path).normalize().also {
+                require(it.startsWith(directory)) { "relative save path escapes the sessions directory" }
             }
         }.toAbsolutePath().normalize()
         require(!insideRepository(destination)) { "save path is inside the FTC repository" }
+        if (path==null || !path.isAbsolute) Files.createDirectories(directory)
         return destination
     }
 
     private fun insideRepository(destination:Path):Boolean {
         val repository=chatStatus.repository.toRealPath()
         if (destination.startsWith(repository)) return true
-        val parent=destination.parent ?:return false
-        val realParent=runCatching { parent.toRealPath() }.getOrNull() ?:return false
-        return realParent.resolve(destination.fileName).normalize().startsWith(repository)
+        return canonicalizeThroughExistingAncestor(destination)?.startsWith(repository)==true
+    }
+
+    private fun canonicalizeThroughExistingAncestor(destination:Path):Path? {
+        var ancestor:Path?=destination.parent
+        while (ancestor!=null && !Files.exists(ancestor)) ancestor=ancestor.parent
+        val existing=ancestor ?:return null
+        val suffix=existing.relativize(destination)
+        return runCatching { existing.toRealPath().resolve(suffix).normalize() }.getOrNull()
     }
 
     private companion object {
