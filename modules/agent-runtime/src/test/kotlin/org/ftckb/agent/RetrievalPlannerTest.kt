@@ -1,7 +1,6 @@
 package org.ftckb.agent
 
 import java.nio.file.Path
-import java.nio.file.Files
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
 import org.ftckb.model.ModelProvider
@@ -97,20 +96,6 @@ class RetrievalPlannerTest {
         assertEquals(listOf("CODE:C1","RULE:R1","GUIDE:G1"),context.evidence.map { it.id })
         assertEquals("guides/tools/drive.md",(context.evidence.last() as GuideEvidence).path)
         assertEquals(EvidenceSerialization.payload(context.evidence).length,context.estimatedCharacters)
-    }
-
-    @Test
-    fun `does not retrieve guides through outside-root symlinks`() {
-        write("knowledge/guides/inside.md","# Safe\n\ninside evidence")
-        val outside=tempDir.resolve("outside.md")
-        outside.writeText("# Leaked\n\noutside-secret")
-        val link=tempDir.resolve("knowledge/guides/outside.md")
-        Files.createSymbolicLink(link,outside)
-
-        val guides=KnowledgeRetriever(tempDir.resolve("knowledge"),null,null)
-            .retrieveGuides(RetrievalIntent(setOf("outside-secret"),emptySet(),emptySet(),emptySet(),emptySet()))
-
-        assertEquals(emptyList<GuideEvidence>(),guides)
     }
 
     private fun input(question:String="How does Drive work?",references:Set<String> =emptySet())=

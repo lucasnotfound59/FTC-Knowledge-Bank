@@ -132,6 +132,22 @@ class AnswerGeneratorTest {
         assertTrue(payload.length<=cap)
     }
 
+    @Test
+    fun `does not open an outside-root guide symlink`() {
+        val knowledgeRoot=Files.createDirectories(tempDir.resolve("guide-knowledge"))
+        val guidesRoot=Files.createDirectories(knowledgeRoot.resolve("guides"))
+        guidesRoot.resolve("inside.md").writeText("# Safe\n\ninside-secret")
+        val outside=tempDir.resolve("outside.md")
+        outside.writeText("# Leaked\n\noutside-secret")
+        Files.createSymbolicLink(guidesRoot.resolve("outside.md"),outside)
+
+        val guides=KnowledgeRetriever(knowledgeRoot,null,null)
+            .retrieveGuides(RetrievalIntent(setOf("secret"),emptySet(),emptySet(),emptySet(),emptySet()))
+
+        assertEquals(listOf("guides/inside.md"),guides.map { it.path })
+        assertTrue(guides.none { "outside-secret" in it.text })
+    }
+
     private fun context(index:RepositoryIndex,rule:KnowledgeRule=rule()):ContextPack {
         val file=tempDir.resolve("TeamCode/Drive.java")
         file.parent.createDirectories()
