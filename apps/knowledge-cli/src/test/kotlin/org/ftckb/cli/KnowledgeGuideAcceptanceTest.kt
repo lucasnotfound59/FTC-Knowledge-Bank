@@ -1,6 +1,7 @@
 package org.ftckb.cli
 
 import java.net.URI
+import java.net.URISyntaxException
 import java.nio.file.Files
 import java.nio.file.Path
 import org.ftckb.domain.ApproverRole
@@ -18,6 +19,7 @@ import org.junit.jupiter.api.io.TempDir
 
 class KnowledgeGuideAcceptanceTest {
     private val root=Path.of("..","..","knowledge").normalize()
+    private val repositoryRoot=root.parent.toAbsolutePath().normalize()
     private val linkPattern=Regex("""\[[^]]+]\(([^)]+)\)""")
 
     private fun headingSlugs(markdown:String):Set<String> {
@@ -35,22 +37,45 @@ class KnowledgeGuideAcceptanceTest {
         }.toSet()
     }
 
-    private fun assertGuideLinks(guide:Path) {
+    private fun h2Section(markdown:String,heading:String)=markdown
+        .substringAfter("## $heading")
+        .substringBefore("\n## ")
+
+    private fun assertLink(guide:Path,link:String,allowedRoot:Path) {
+        if (Regex("""^[A-Za-z][A-Za-z0-9+.-]*:""").containsMatchIn(link)) {
+            val uri=try {
+                URI(link)
+            } catch (exception:URISyntaxException) {
+                throw AssertionError("$guide has invalid external link $link",exception)
+            }
+            assertTrue(
+                uri.isAbsolute && uri.scheme.equals("https",ignoreCase=true) && !uri.host.isNullOrBlank(),
+                "$guide has non-HTTPS or hostless link $link"
+            )
+            assertTrue(uri.userInfo==null,"$guide has URL user-info $link")
+            return
+        }
+        val filePart=link.substringBefore('#')
+        val fragment=link.substringAfter('#',"")
+        assertTrue(!filePart.startsWith("/") && !filePart.startsWith("\\"),"$guide has absolute or UNC link $link")
+        assertTrue(!Regex("""^[A-Za-z]:[\\/].*""").matches(filePart),"$guide has Windows drive link $link")
+        val allowed=allowedRoot.toAbsolutePath().normalize()
+        val target=if (filePart.isBlank()) {
+            guide.toAbsolutePath().normalize()
+        } else {
+            guide.parent.resolve(filePart).toAbsolutePath().normalize()
+        }
+        assertTrue(target.startsWith(allowed),"$guide has link outside repository root $link")
+        assertTrue(Files.exists(target),"$guide has missing link $link")
+        assertTrue(target.toRealPath().startsWith(allowed.toRealPath()),"$guide has symlink outside repository root $link")
+        if (fragment.isNotBlank() && target.toString().endsWith(".md")) {
+            assertTrue(fragment in headingSlugs(Files.readString(target)),"$guide has missing fragment $link")
+        }
+    }
+
+    private fun assertGuideLinks(guide:Path,allowedRoot:Path=guide.parent.toAbsolutePath().normalize()) {
         linkPattern.findAll(Files.readString(guide)).forEach { match ->
-            val link=match.groupValues[1]
-            if (link.startsWith("http://") || link.startsWith("https://")) {
-                val uri=URI(link)
-                assertTrue(uri.isAbsolute && uri.scheme=="https" && uri.host!=null,"$guide has non-HTTPS link $link")
-                assertTrue(uri.userInfo==null,"$guide has URL user-info $link")
-                return@forEach
-            }
-            val filePart=link.substringBefore('#')
-            val fragment=link.substringAfter('#',"")
-            val target=if (filePart.isBlank()) guide else guide.parent.resolve(filePart).normalize()
-            assertTrue(Files.exists(target),"$guide has missing link $link")
-            if (fragment.isNotBlank() && target.toString().endsWith(".md")) {
-                assertTrue(fragment in headingSlugs(Files.readString(target)),"$guide has missing fragment $link")
-            }
+            assertLink(guide,match.groupValues[1],allowedRoot)
         }
     }
 
@@ -125,7 +150,7 @@ class KnowledgeGuideAcceptanceTest {
     fun `knowledge guide links resolve locally and external syntax is safe`() {
         Files.walk(root.resolve("guides")).use { paths ->
             paths.filter { Files.isRegularFile(it) && it.toString().endsWith(".md") }.forEach { guide ->
-                assertGuideLinks(guide)
+                assertGuideLinks(guide,repositoryRoot)
             }
         }
     }
@@ -136,6 +161,26 @@ class KnowledgeGuideAcceptanceTest {
             setOf("pedro-路径","重复-标题","重复-标题-1"),
             headingSlugs("# Pedro `路径`\n## 重复 *标题*\n### 重复 标题\n")
         )
+    }
+
+    @Test
+    fun `20827 mapping is removable provenance while safety boundaries remain outside it`() {
+        val guide=Files.readString(root.resolve("guides/tools/pedro-pathing.md"))
+        val section=h2Section(guide,"20827-inspired advanced mapping")
+        setOf(
+            "observed team-code provenance","非规范","不是 Pedro 官方要求",
+            "TopAutoBase","BottomAutoBase","TopAutoRed","TopAutoBlue",
+            "Constants.createFollower","XKCommandOpmode","Supplier<PathChain>"
+        ).forEach { assertTrue(it in section,it) }
+        setOf("不得复制","四阶段最小 Auto","必须","先让").forEach {
+            assertTrue(it !in section,"20827 removable section contains normative safety phrase: $it")
+        }
+        val safetyBoundary="不得复制其他机器人的 hardware names、servo positions、poses、offsets、directions、mass、velocity、PIDF、power 或 timeout。"
+        val progressionBoundary="先让四阶段最小 Auto 在当前机器人通过，再单独设计和评审。"
+        assertTrue(safetyBoundary in guide)
+        assertTrue(progressionBoundary in guide)
+        assertTrue(safetyBoundary !in section)
+        assertTrue(progressionBoundary !in section)
     }
 
     @Test
@@ -162,5 +207,49 @@ class KnowledgeGuideAcceptanceTest {
         assertThrows(AssertionError::class.java) { assertGuideLinks(guide) }
         Files.writeString(guide,"[No host](https:/path)\n")
         assertThrows(AssertionError::class.java) { assertGuideLinks(guide) }
+    }
+
+    @Test
+    fun `scheme classification is case insensitive and fail closed`(@TempDir tempDir:Path) {
+        val guide=tempDir.resolve("guide.md")
+        Files.writeString(guide,"# Guide\n")
+        assertLink(guide,"https://example.com/path",tempDir)
+        assertLink(guide,"HTTPS://example.com/path",tempDir)
+        listOf(
+            "http://example.com","HTTP://example.com","mailto:team@example.com",
+            "file:local.txt","ftp:artifact","https:/path"
+        ).forEach { link ->
+            assertThrows(AssertionError::class.java) { assertLink(guide,link,tempDir) }
+        }
+    }
+
+    @Test
+    fun `local links reject absolute paths drives UNC and root escape`(@TempDir tempDir:Path) {
+        val allowedRoot=tempDir.resolve("allowed")
+        val guideDir=allowedRoot.resolve("a/b/c")
+        Files.createDirectories(guideDir)
+        val guide=guideDir.resolve("guide.md")
+        val local=guideDir.resolve("target.md")
+        Files.writeString(guide,"# Local heading\n")
+        Files.writeString(local,"# Target heading\n")
+        assertLink(guide,"target.md#target-heading",allowedRoot)
+        assertLink(guide,"#local-heading",allowedRoot)
+
+        val outside=tempDir.resolve("outside.md")
+        Files.writeString(outside,"# Outside\n")
+        val windowsSlash=guideDir.resolve("C:/target.md")
+        Files.createDirectories(windowsSlash.parent)
+        Files.writeString(windowsSlash,"# Windows\n")
+        val windowsBackslash=guideDir.resolve("C:\\target.md")
+        Files.writeString(windowsBackslash,"# Windows\n")
+        val uncBackslash=guideDir.resolve("\\\\server\\share.md")
+        Files.writeString(uncBackslash,"# UNC\n")
+        listOf(
+            outside.toString(),"C:/target.md","C:\\target.md",
+            "/${outside.toString().trimStart('/')}","//${outside.toString().trimStart('/')}",
+            "\\\\server\\share.md","../../../../outside.md"
+        ).forEach { link ->
+            assertThrows(AssertionError::class.java) { assertLink(guide,link,allowedRoot) }
+        }
     }
 }

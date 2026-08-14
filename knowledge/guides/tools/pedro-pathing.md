@@ -311,6 +311,8 @@ Driver Station 上的精确 telemetry labels 是 `configuration complete`、`tes
 
 每次测试都保存 stage、Git commit、robot configuration、battery、电池电压、输入值、telemetry/video 和 reviewer。低误差 telemetry 不等于避障、机构安全或比赛可靠。
 
+不得复制其他机器人的 hardware names、servo positions、poses、offsets、directions、mass、velocity、PIDF、power 或 timeout。想增加并行机构、复杂路径或传感器分支时，先让四阶段最小 Auto 在当前机器人通过，再单独设计和评审。
+
 ## 20827-inspired advanced mapping
 
 本节只记录在队伍代码中观察到的结构来源（observed team-code provenance）。它是可整体删除的**非规范**案例：20827 仓库不是 Pedro 技术权威，下面的架构也**不是 Pedro 官方要求**；删除本节不会改变本文任何 Pedro 官方指令、安全约定或 machine rule。
@@ -325,8 +327,6 @@ Driver Station 上的精确 telemetry labels 是 `configuration complete`、`tes
 | enum state machine | [integer `pathState` in the case study](https://github.com/xiaokai-lyk/FTC20827-2026Decode/tree/118c28e137334bbbea510d77f1fa384e8b1b5779/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/autos) | retain named enum states for newcomer code; integer states are not required |
 | direct Servo gateway | [`XKCommandOpmode` + FTCLib scheduler](https://github.com/xiaokai-lyk/FTC20827-2026Decode/blob/118c28e137334bbbea510d77f1fa384e8b1b5779/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/XKCommandOpmode.java) | command framework is an optional mechanism-coordination upgrade |
 | prebuilt paths | [`Supplier<PathChain>` from current pose](https://github.com/xiaokai-lyk/FTC20827-2026Decode/tree/118c28e137334bbbea510d77f1fa384e8b1b5779/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/autos) | dynamic return paths are advanced and require explicit current-pose reasoning |
-
-20827 也不是 16093 或新机器人的参数来源。不得复制其中的 hardware names、servo positions、poses、offsets、directions、mass、velocity、PIDF、power 或 timeout。想增加并行机构、复杂路径或传感器分支时，先让四阶段最小 Auto 在当前机器人通过，再单独设计和评审。
 
 ## 相关规则与来源
 
