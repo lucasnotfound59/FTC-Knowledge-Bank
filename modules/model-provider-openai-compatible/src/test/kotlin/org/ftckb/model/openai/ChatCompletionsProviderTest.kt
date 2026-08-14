@@ -13,6 +13,7 @@ import org.ftckb.model.SecretResolver
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class ChatCompletionsProviderTest {
@@ -68,13 +69,29 @@ class ChatCompletionsProviderTest {
     }
 
     @Test
-    fun `caps every request at the configured profile token limit`() {
+    fun `caps a named token field at the configured profile limit`() {
         val transport=FakeTransport(HttpResult(200,fixture("openai-success.json")))
         val provider=ProviderFactory.create(profile(maxOutputTokens=256),resolver(),transport)
 
         provider.complete(ModelRequest(listOf(ModelMessage(MessageRole.USER,"hello")),4_096))
 
         assertEquals(256,mapper.readTree(transport.exchange.body)["max_tokens"].asInt())
+        assertTrue(transport.sent)
+    }
+
+    @Test
+    fun `rejects an oversized request even when token fields are omitted`() {
+        val transport=FakeTransport(HttpResult(200,fixture("openai-success.json")))
+        val provider=ProviderFactory.create(
+            profile(maxTokensParameter=null,maxOutputTokens=256),resolver(),transport
+        )
+
+        val error=assertThrows(ModelProviderException.RequestLimit::class.java) {
+            provider.complete(ModelRequest(listOf(ModelMessage(MessageRole.USER,"hello")),4_096))
+        }
+
+        assertEquals("model provider profile cannot enforce the requested output limit",error.message)
+        assertFalse(transport.sent)
     }
 
     @Test
@@ -162,8 +179,10 @@ class ChatCompletionsProviderTest {
 
     private class FakeTransport(private val result:HttpResult):HttpTransport {
         lateinit var exchange:HttpExchange
+        var sent=false
 
         override fun send(exchange:HttpExchange):HttpResult {
+            sent=true
             this.exchange=exchange
             return result
         }

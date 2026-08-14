@@ -125,12 +125,18 @@ class ChatReplTest {
         val pathCredential=listOf("sk","runtime","path","token").joinToString("-")
         val bearerCredential=listOf("Bearer",listOf("runtime","guide","token").joinToString(".")).joinToString(" ")
         val assignmentCredential=listOf("SERVICE_API_KEY",listOf("runtime","code","token").joinToString("-")).joinToString("=")
+        val quotedAssignmentValue=listOf("runtime","quoted","value").joinToString("-")
+        val quotedAssignmentKey=listOf("api","key").joinToString("_")
+        val indexedAssignmentValue=listOf("runtime","indexed","value").joinToString("-")
+        val indexedAssignmentKey=listOf("api","Key").joinToString("")
         val repository=root.resolve("repository")
         writeFtcRepository(repository)
         val secretPath="TeamCode/src/main/java/example/${pathCredential}TeleOp.java"
         Files.writeString(
             repository.resolve(secretPath),
-            "@TeleOp public class SecretTeleOp { String marker=\"$secret\"; String credential=\"$assignmentCredential\"; }\n"
+            "@TeleOp public class SecretTeleOp { String marker=\"$secret\"; String credential=\"$assignmentCredential\"; }\n" +
+                "// \"$quotedAssignmentKey\": \"$quotedAssignmentValue\"\n" +
+                "// config[\"$indexedAssignmentKey\"]=\"$indexedAssignmentValue\"\n"
         )
         val knowledge=root.resolve("knowledge")
         Files.createDirectories(knowledge.resolve("guides"))
@@ -165,7 +171,10 @@ class ChatReplTest {
                 request.messages.drop(1).all { it.role==org.ftckb.model.MessageRole.USER }
         })
         val outbound=provider.requests.flatMap { it.messages }.joinToString("\n") { it.content }
-        listOf(secret,pathCredential,bearerCredential,assignmentCredential).forEach { credential ->
+        listOf(
+            secret,pathCredential,bearerCredential,assignmentCredential,
+            quotedAssignmentValue,indexedAssignmentValue
+        ).forEach { credential ->
             assertFalse(outbound.contains(credential),credential)
         }
         assertTrue(outbound.contains("[REDACTED"))

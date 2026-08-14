@@ -19,6 +19,9 @@ internal class ChatCompletionsProvider(
     private val mapper:JsonMapper=JsonMapper.builder().build()
 ):ModelProvider {
     override fun complete(request:ModelRequest):ModelResponse {
+        if (profile.maxTokensParameter==null && request.maxOutputTokens>profile.maxOutputTokens) {
+            throw ModelProviderException.RequestLimit()
+        }
         val result=try {
             transport.send(HttpExchange(
                 endpoint(),

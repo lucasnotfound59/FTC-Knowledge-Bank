@@ -7,7 +7,11 @@ object CredentialRedactor {
     private val authorization=Regex("(?i)\\bauthorization\\s*:\\s*bearer\\s+[^\\s,;]+")
     private val bearer=Regex("(?i)\\bbearer\\s+[A-Za-z0-9._~+/-]+={0,2}")
     private val skToken=Regex("(?i)\\bsk-[A-Za-z0-9._-]+")
-    private val apiKeyAssignment=Regex("(?i)\\b[A-Za-z0-9_-]*api[_-]?key\\s*[:=]\\s*(?:\"[^\"]*\"|'[^']*'|[^\\s,;]+)")
+    private val apiKeyAssignment=Regex(
+        "(?i)(?:[\"']?[A-Za-z0-9_-]*api[_-]?key[\"']?|" +
+            "[A-Za-z0-9_.$-]+\\s*\\[\\s*[\"'][A-Za-z0-9_-]*api[_-]?key[\"']\\s*])" +
+            "\\s*[:=]\\s*(?:\"[^\"\\r\\n]*\"|'[^'\\r\\n]*'|[^\\s,;]+)"
+    )
 
     fun redact(text:String,exactSecrets:Set<String> =emptySet()):String {
         var redacted=text

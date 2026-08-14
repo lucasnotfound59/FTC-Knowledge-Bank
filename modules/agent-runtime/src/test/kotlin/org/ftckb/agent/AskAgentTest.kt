@@ -111,6 +111,28 @@ class AskAgentTest {
         assertEquals(1,agent.conversation.context().recentTurns.size)
     }
 
+    @Test
+    fun `propagates a low planning token limit as a typed provider failure`() {
+        val provider=LowLimitProvider(256)
+        val agent=agent(provider)
+
+        assertThrows(ModelProviderException.RequestLimit::class.java) { agent.ask("planning limit") }
+
+        assertEquals(listOf(512),provider.requests.map { it.maxOutputTokens })
+        assertEquals(listOf("planning limit"),agent.conversation.context().pendingQuestions)
+    }
+
+    @Test
+    fun `propagates a low answer token limit without converting it to citation failure`() {
+        val provider=LowLimitProvider(512)
+        val agent=agent(provider)
+
+        assertThrows(ModelProviderException.RequestLimit::class.java) { agent.ask("answer limit") }
+
+        assertEquals(listOf(512,1024),provider.requests.map { it.maxOutputTokens })
+        assertEquals(listOf("answer limit"),agent.conversation.context().pendingQuestions)
+    }
+
     private fun agent(provider:ModelProvider,state:ConversationState=ConversationState(provider)):AskAgent {
         val repository=root.resolve("repository")
         repository.resolve("TeamCode").createDirectories()
@@ -186,6 +208,16 @@ class AskAgentTest {
                     ModelResponse("""{"claims":[{"kind":"code_observation","text":"invalid","citations":["CODE:C99"]}]}""")
                 else -> error("unexpected request")
             }
+        }
+    }
+
+    private class LowLimitProvider(private val limit:Int):ModelProvider {
+        val requests=mutableListOf<ModelRequest>()
+
+        override fun complete(request:ModelRequest):ModelResponse {
+            requests+=request
+            if (request.maxOutputTokens>limit) throw ModelProviderException.RequestLimit()
+            return ModelResponse(PLAN)
         }
     }
 

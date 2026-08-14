@@ -13,7 +13,7 @@ class SafeRepositoryWalker(root:Path,private val limits:RepositoryTraversalLimit
     private val root=root.toRealPath()
 
     fun walk():List<SafeTextFile> {
-        val ignoreRules=GitIgnoreRules.load(root)
+        val ignoreRules=GitIgnoreRules.load(root,limits)
         val files=mutableListOf<SafeTextFile>()
         var visitedFiles=0
         var visitedBytes=0L
@@ -54,7 +54,7 @@ class SafeRepositoryWalker(root:Path,private val limits:RepositoryTraversalLimit
         val file=root.resolve(relative).normalize()
         if (!file.startsWith(root) || hasSymbolicLinkComponent(relative)) return null
         if (!Files.isRegularFile(file,LinkOption.NOFOLLOW_LINKS)) return null
-        return readFile(file,GitIgnoreRules.load(root))
+        return readFile(file,GitIgnoreRules.load(root,limits))
     }
 
     private fun hasSymbolicLinkComponent(relative:Path):Boolean {

@@ -14,6 +14,7 @@ fun interface ModelProvider {
 sealed class ModelProviderException(message:String,cause:Throwable?=null):RuntimeException(message,cause) {
     class Authentication:ModelProviderException("model provider authentication failed")
     class RateLimited:ModelProviderException("model provider rate limit reached")
+    class RequestLimit:ModelProviderException("model provider profile cannot enforce the requested output limit")
     class Transport(cause:Throwable):ModelProviderException("model provider transport failed",cause)
     class Protocol(message:String):ModelProviderException(message)
 }
