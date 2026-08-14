@@ -31,7 +31,7 @@ class PedroTutorialAcceptanceTest {
         .findAll(java).map { it.groupValues[1] }.toSet()
 
     private fun gitOutput(root:Path,vararg arguments:String):String {
-        val command=listOf("git","-C",root.toRealPath().toString())+arguments
+        val command=listOf("git","-C",root.toAbsolutePath().normalize().toString())+arguments
         val process=ProcessBuilder(command).redirectErrorStream(true).start()
         val output=process.inputStream.bufferedReader().use { it.readText() }
         val exitCode=process.waitFor()
@@ -39,14 +39,34 @@ class PedroTutorialAcceptanceTest {
         return output
     }
 
-    private fun registeredGitWorktreeRoots(root:Path)=
-        gitOutput(root,"worktree","list","--porcelain","-z")
+    private fun lexicalAbsolute(path:Path,base:Path?=null):Path {
+        val resolved=if(path.isAbsolute) path else (base?:Path.of("").toAbsolutePath()).resolve(path)
+        return resolved.toAbsolutePath().normalize()
+    }
+
+    private fun registeredGitWorktreeRoots(root:Path):Set<Path> {
+        val lexicalRoot=lexicalAbsolute(root)
+        return gitOutput(lexicalRoot,"worktree","list","--porcelain","-z")
             .split('\u0000')
             .filter { it.startsWith("worktree ") }
             .map { Path.of(it.removePrefix("worktree ")) }
+            .map { lexicalAbsolute(it,lexicalRoot) }
             .filter(Files::isDirectory)
-            .map(Path::toRealPath)
             .toSet()
+    }
+
+    private fun isInNestedRegisteredWorktree(
+        candidate:Path,
+        currentRoot:Path,
+        registeredWorktreeRoots:Set<Path>
+    ):Boolean {
+        val lexicalRoot=lexicalAbsolute(currentRoot)
+        val lexicalCandidate=lexicalAbsolute(candidate,lexicalRoot)
+        return registeredWorktreeRoots
+            .map { lexicalAbsolute(it,lexicalRoot) }
+            .filter { it!=lexicalRoot }
+            .any(lexicalCandidate::startsWith)
+    }
 
     private fun trackedSafePedroSources(root:Path)=gitOutput(root,"ls-files","-z")
         .split('\u0000')
@@ -81,18 +101,12 @@ class PedroTutorialAcceptanceTest {
     }
 
     private fun safePedroSources(root:Path,registeredWorktreeRoots:Set<Path>):List<String> {
-        val realRoot=root.toRealPath()
-        val nestedWorktreeRoots=registeredWorktreeRoots
-            .map(Path::toRealPath)
-            .filter { it!=realRoot }
-        return Files.walk(realRoot).use { paths ->
+        val lexicalRoot=lexicalAbsolute(root)
+        return Files.walk(lexicalRoot).use { paths ->
             paths.filter(Files::isRegularFile)
                 .filter { it.fileName.toString()=="SafePedroAuto.java" }
-                .filter { candidate ->
-                    val realCandidate=candidate.toRealPath()
-                    nestedWorktreeRoots.none(realCandidate::startsWith)
-                }
-                .map { realRoot.relativize(it.toRealPath()).toString().replace('\\','/') }
+                .filter { !isInNestedRegisteredWorktree(it,lexicalRoot,registeredWorktreeRoots) }
+                .map { lexicalRoot.relativize(lexicalAbsolute(it)).toString().replace('\\','/') }
                 .toList()
         }
     }
@@ -610,6 +624,32 @@ class PedroTutorialAcceptanceTest {
             ),
             safePedroSources(root,emptySet()).toSet()
         )
+        assertEquals(
+            listOf(".worktrees/archive/SafePedroAuto.java"),
+            safePedroSources(root,setOf(registeredRoot))
+        )
+    }
+
+    @Test
+    fun `source uniqueness retains symlinks outside registered worktrees`(@TempDir root:Path) {
+        val registeredRoot=root.resolve(".worktrees/registered-checkout")
+        val registeredCopy=registeredRoot.resolve("knowledge/examples/pedro/SafePedroAuto.java")
+        val ordinaryAlias=root.resolve(".worktrees/archive/SafePedroAuto.java")
+        Files.createDirectories(registeredCopy.parent)
+        Files.createDirectories(ordinaryAlias.parent)
+        Files.writeString(registeredCopy,"registered worktree source")
+        assertFalse(isInNestedRegisteredWorktree(ordinaryAlias,root,setOf(registeredRoot)))
+        assertTrue(isInNestedRegisteredWorktree(registeredCopy,root,setOf(registeredRoot)))
+        try {
+            Files.createSymbolicLink(ordinaryAlias,registeredCopy)
+        } catch (_:UnsupportedOperationException) {
+            return
+        } catch (_:java.nio.file.FileSystemException) {
+            return
+        } catch (_:SecurityException) {
+            return
+        }
+
         assertEquals(
             listOf(".worktrees/archive/SafePedroAuto.java"),
             safePedroSources(root,setOf(registeredRoot))
