@@ -3,6 +3,7 @@ package org.ftckb.agent
 import java.nio.file.Path
 import java.nio.file.Files
 import java.time.Instant
+import java.util.concurrent.TimeUnit
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
 import org.ftckb.domain.Approval
@@ -18,6 +19,7 @@ import org.ftckb.repository.RepositoryIndex
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 
@@ -146,6 +148,25 @@ class AnswerGeneratorTest {
 
         assertEquals(listOf("guides/inside.md"),guides.map { it.path })
         assertTrue(guides.none { "outside-secret" in it.text })
+    }
+
+    @Test
+    fun `skips a named-pipe markdown entry before opening it`() {
+        val knowledgeRoot=Files.createDirectories(tempDir.resolve("fifo-knowledge"))
+        val guidesRoot=Files.createDirectories(knowledgeRoot.resolve("guides"))
+        guidesRoot.resolve("inside.md").writeText("# Safe\n\ninside-secret")
+        val fifo=guidesRoot.resolve("blocked.md")
+        val process=runCatching { ProcessBuilder("mkfifo",fifo.toString()).start() }.getOrNull()
+        val fifoProcess=process ?: run {
+            assumeTrue(false,"mkfifo is unavailable")
+            return
+        }
+        assumeTrue(fifoProcess.waitFor(5,TimeUnit.SECONDS) && fifoProcess.exitValue()==0,"mkfifo is unavailable")
+
+        val guides=KnowledgeRetriever(knowledgeRoot,null,null)
+            .retrieveGuides(RetrievalIntent(setOf("secret"),emptySet(),emptySet(),emptySet(),emptySet()))
+
+        assertEquals(listOf("guides/inside.md"),guides.map { it.path })
     }
 
     private fun context(index:RepositoryIndex,rule:KnowledgeRule=rule()):ContextPack {

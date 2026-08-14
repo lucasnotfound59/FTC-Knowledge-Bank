@@ -58,6 +58,7 @@ class KnowledgeRetriever(knowledgeRoot:Path,team:String?,season:String?) {
         if (!path.fileName.toString().endsWith(".md",true)) return null
         val realFile=try { path.toRealPath() } catch (_:Exception) { return null }
         if (!realFile.startsWith(root)) return null
+        if (!Files.isRegularFile(path,LinkOption.NOFOLLOW_LINKS)) return null
         val bytes=readGuideBytes(path) ?: return null
         if (bytes.any { it==0.toByte() }) return null
         val text=decodeUtf8(bytes) ?: return null
