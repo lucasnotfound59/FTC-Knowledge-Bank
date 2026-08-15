@@ -1,0 +1,13 @@
+{
+  "id": "chatcmpl-deepseek-fixture",
+  "object": "chat.completion",
+  "created": 1786665600,
+  "model": "deepseek-chat",
+  "choices": [{
+    "index": 0,
+    "message": {"role": "assistant", "content": "DeepSeek fixture answer", "reasoning_content": "ignored"},
+    "finish_reason": "stop"
+  }],
+  "usage": {"prompt_tokens": 34, "completion_tokens": 13, "total_tokens": 47},
+  "system_fingerprint": "fixture-only"
+}

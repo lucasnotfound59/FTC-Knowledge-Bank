@@ -24,7 +24,7 @@ class CredentialRedactorTest {
         assertFalse(redacted.contains(value))
         assertFalse(redacted.contains(quotedKey))
         assertFalse(redacted.contains(indexedKey))
-        assertTrue(redacted.contains("[REDACTED_API_KEY]"))
+        assertTrue(redacted.contains("[REDACTED]"))
     }
 
     @Test

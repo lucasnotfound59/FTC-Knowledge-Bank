@@ -1,0 +1,5 @@
+{
+  "id": "chatcmpl-openai-fixture",
+  "choices": [{"message": {"role": "assistant", "content": "OpenAI fixture answer"}}],
+  "usage": {"prompt_tokens": 21, "completion_tokens": 8}
+}

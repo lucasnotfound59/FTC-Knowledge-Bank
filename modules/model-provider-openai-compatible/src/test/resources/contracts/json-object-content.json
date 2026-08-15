@@ -1,0 +1,4 @@
+{
+  "choices": [{"message": {"role": "assistant", "content": {"answer": "structured fixture"}}}],
+  "usage": {"prompt_tokens": 5}
+}

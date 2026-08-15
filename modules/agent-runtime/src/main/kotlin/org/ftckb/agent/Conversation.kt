@@ -238,7 +238,7 @@ class ConversationState(
         if (turn.referencedIds.isNotEmpty()) append("References: ").append(turn.referencedIds.joinToString { redact(it) }).append('\n')
     }
 
-    private fun redact(text:String):String=CredentialRedactor.redact(text,exactSecrets)
+    private fun redact(text:String):String=SecretRedactor.redact(text,exactSecrets).text
 
     private fun sanitizeSavedText(text:String):String {
         val redacted=redact(text)
