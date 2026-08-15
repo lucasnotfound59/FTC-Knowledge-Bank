@@ -25,6 +25,9 @@ class EditHistory(root:Path,private val engine:FileEditEngine=FileEditEngine(roo
     private var scopes=linkedMapOf<String,EditScope>()
     private var batches=ArrayDeque<AppliedEditBatch>()
 
+    val hasTrackedPaths:Boolean
+        @Synchronized get()=firstTouch.isNotEmpty()
+
     @Synchronized
     fun applyAndRecord(batch:ValidatedEditBatch,authorizationGuard:()->Unit={}):AppliedEditBatch {
         val changes=Collections.unmodifiableList(ArrayList(batch.changes))

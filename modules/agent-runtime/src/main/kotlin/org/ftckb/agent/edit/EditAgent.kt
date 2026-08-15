@@ -25,7 +25,7 @@ import org.ftckb.repository.RepositoryIndex
 
 data class EditReport(
     val summary:String,val changedPaths:Set<String>,val projectLevelPaths:Set<String>,
-    val diff:String,val reasons:List<String>,val citations:Set<String>
+    val diff:String,val reasons:List<String>,val citations:Set<String>,val warnings:List<String>
 )
 
 class EditValidationException(message:String):RuntimeException(message)
@@ -71,13 +71,21 @@ class EditAgent(
         authorizationGuard()
         val applied=history.applyAndRecord(selected.preview,authorizationGuard)
         val changedPaths=applied.changes.mapTo(linkedSetOf()) { it.path }
-        repositoryIndex.refresh(changedPaths)
-        val report=report(selected.plan,applied)
-        conversation.record(
-            submission,
-            AgentAnswer(listOf(AnswerClaim(ClaimKind.MODEL_INFERENCE,compactSummary(report),emptyList())),selected.usage),
-            changedPaths
-        )
+        var report=report(selected.plan,applied)
+        try {
+            repositoryIndex.refresh(changedPaths)
+        } catch (_:Exception) {
+            report=report.copy(warnings=report.warnings+"Repository index refresh failed after files changed")
+        }
+        try {
+            conversation.record(
+                submission,
+                AgentAnswer(listOf(AnswerClaim(ClaimKind.MODEL_INFERENCE,compactSummary(report),emptyList())),selected.usage),
+                changedPaths
+            )
+        } catch (_:Exception) {
+            report=report.copy(warnings=report.warnings+"Conversation recording failed after files changed")
+        }
         return report
     }
 
@@ -139,7 +147,8 @@ class EditAgent(
                 )
             }),
             plan.operations.map(EditOperation::reason).distinct(),
-            plan.operations.flatMapTo(linkedSetOf(),EditOperation::citations)
+            plan.operations.flatMapTo(linkedSetOf(),EditOperation::citations),
+            emptyList()
         )
     }
 

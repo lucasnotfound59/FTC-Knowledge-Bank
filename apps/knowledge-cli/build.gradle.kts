@@ -14,6 +14,8 @@ dependencies {
     implementation(project(":modules:model-provider"))
     implementation(project(":modules:model-provider-openai-compatible"))
     implementation(project(":modules:repository-analysis"))
+    implementation(project(":modules:tooling-git"))
+    testImplementation(libs.jgit)
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")

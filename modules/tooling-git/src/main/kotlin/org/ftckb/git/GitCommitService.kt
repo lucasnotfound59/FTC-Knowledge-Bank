@@ -1,9 +1,15 @@
 package org.ftckb.git
 
+import java.io.ByteArrayOutputStream
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
 import java.nio.file.Files
 import java.nio.file.LinkOption
+import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
+import java.nio.charset.StandardCharsets
+import java.nio.file.attribute.BasicFileAttributes
 import java.util.Locale
 import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.dircache.DirCache
@@ -11,6 +17,7 @@ import org.eclipse.jgit.dircache.DirCacheEditor
 import org.eclipse.jgit.dircache.DirCacheEntry
 import org.eclipse.jgit.lib.CommitBuilder
 import org.eclipse.jgit.lib.Constants
+import org.eclipse.jgit.lib.FileMode
 import org.eclipse.jgit.lib.ObjectId
 import org.eclipse.jgit.lib.PersonIdent
 import org.eclipse.jgit.lib.RefUpdate
@@ -19,13 +26,17 @@ import org.eclipse.jgit.lib.RepositoryState
 import org.eclipse.jgit.revwalk.RevWalk
 
 data class CommitRequest(
-    val repositoryRoot:Path,val paths:Set<String>,val baselineDirtyPaths:Set<String>,val message:String
+    val repositoryRoot:Path,val paths:Set<String>,val baselineDirtyPaths:Set<String>,val message:String,
+    val authorizedBranch:String,val expectedContents:Map<String,String?>
 )
 
 object GitCommitService {
-    fun commit(request:CommitRequest):String {
+    fun commit(request:CommitRequest):String=commit(request) { }
+
+    internal fun commit(request:CommitRequest,afterIndexVerified:(Repository)->Unit):String {
         require(request.message.isNotBlank()) { "commit message must not be blank" }
         require(request.paths.isNotEmpty()) { "commit paths must not be empty" }
+        require(request.expectedContents.keys==request.paths) { "commit expectations must match exact paths" }
         val overlap=request.paths.intersect(request.baselineDirtyPaths).toSortedSet()
         require(overlap.isEmpty()) {
             "cannot commit paths that were dirty before Agent edits: ${overlap.joinToString(", ")}"
@@ -35,6 +46,9 @@ object GitCommitService {
             require(fullBranch!=null && fullBranch.startsWith(Constants.R_HEADS)) {
                 "cannot commit from detached HEAD"
             }
+            require(fullBranch==Constants.R_HEADS+request.authorizedBranch) {
+                "cannot commit outside the authorized branch"
+            }
             require(repository.repositoryState==RepositoryState.SAFE) {
                 "cannot commit while a repository operation is in progress"
             }
@@ -42,6 +56,7 @@ object GitCommitService {
             val paths=request.paths.toSortedSet()
             val resolved=paths.map { path->validatePath(root,path) }
             require(resolved.toSet().size==resolved.size) { "commit paths contain aliases" }
+            requireExpectedWorktree(root,request.expectedContents)
             Git.wrap(repository).use { git->
                 val dirty=git.status().call().let { status->
                     status.added+status.changed+status.modified+status.removed+status.missing+
@@ -62,7 +77,9 @@ object GitCommitService {
                             git.add().setUpdate(true).addFilepattern(path).call()
                         }
                     }
-                    return createCommit(repository,fullBranch,paths,request.message)
+                    val verified=requireExpectedIndex(repository,request.expectedContents)
+                    afterIndexVerified(repository)
+                    return createCommit(repository,fullBranch,verified,request.message)
                 } catch (failure:Throwable) {
                     if (repository.resolve(Constants.HEAD)?.name==headBefore) {
                         if (indexBefore==null) Files.deleteIfExists(indexPath)
@@ -77,24 +94,87 @@ object GitCommitService {
         }
     }
 
-    private fun createCommit(repository:Repository,branch:String,paths:Set<String>,message:String):String {
+    private fun requireExpectedWorktree(root:Path,expected:Map<String,String?>) {
+        expected.forEach { (path,content)->
+            val absolute=root.resolve(path)
+            val actual=readStrictTextOrMissing(absolute)
+            require(actual==content) { "commit path changed after Agent diff: $path" }
+        }
+    }
+
+    private fun readStrictTextOrMissing(path:Path):String?=try {
+        val attributes=Files.readAttributes(
+            path,BasicFileAttributes::class.java,LinkOption.NOFOLLOW_LINKS
+        )
+        require(attributes.isRegularFile && !attributes.isSymbolicLink) {
+            "commit path must identify a regular file"
+        }
+        val bytes=Files.newByteChannel(
+            path,setOf(StandardOpenOption.READ,LinkOption.NOFOLLOW_LINKS)
+        ).use { channel->
+            val output=ByteArrayOutputStream()
+            val buffer=ByteBuffer.allocate(8_192)
+            var total=0
+            while (true) {
+                buffer.clear()
+                val count=channel.read(buffer)
+                if (count<0) break
+                if (count==0) continue
+                total+=count
+                require(total<=MAX_TEXT_BYTES) { "commit path exceeds text size limit" }
+                output.write(buffer.array(),0,count)
+            }
+            output.toByteArray()
+        }
+        StandardCharsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+            .decode(ByteBuffer.wrap(bytes))
+            .toString()
+    } catch (_:NoSuchFileException) {
+        null
+    }
+
+    private data class VerifiedCommitEntry(val objectId:ObjectId,val fileMode:FileMode)
+
+    private fun requireExpectedIndex(
+        repository:Repository,expected:Map<String,String?>
+    ):Map<String,VerifiedCommitEntry?> {
+        val staged=DirCache.read(repository)
+        return expected.mapValues { (path,content)->
+            val entry=staged.getEntry(path)
+            if (content==null) {
+                require(entry==null) { "commit path changed while staging: $path" }
+                null
+            } else {
+                require(entry!=null && entry.stage==DirCacheEntry.STAGE_0) {
+                    "commit path changed while staging: $path"
+                }
+                val bytes=repository.open(entry.objectId).bytes
+                require(bytes.contentEquals(content.toByteArray(StandardCharsets.UTF_8))) {
+                    "commit path changed while staging: $path"
+                }
+                VerifiedCommitEntry(entry.objectId.copy(),entry.fileMode)
+            }
+        }
+    }
+
+    private fun createCommit(
+        repository:Repository,branch:String,verified:Map<String,VerifiedCommitEntry?>,message:String
+    ):String {
         val head=repository.resolve(Constants.HEAD)
         val commitIndex=repository.newObjectReader().use { reader->
             if (head==null) DirCache.newInCore()
             else RevWalk(repository).use { walk->DirCache.read(reader,walk.parseCommit(head).tree) }
         }
-        val staged=DirCache.read(repository)
         val editor=commitIndex.editor()
-        paths.forEach { path->
-            val stagedEntry=staged.getEntry(path)
-            if (stagedEntry==null) editor.add(DirCacheEditor.DeletePath(path))
+        verified.forEach { (path,verifiedEntry)->
+            if (verifiedEntry==null) editor.add(DirCacheEditor.DeletePath(path))
             else {
-                require(stagedEntry.stage==DirCacheEntry.STAGE_0) { "commit path remains conflicted: $path" }
                 editor.add(object:DirCacheEditor.PathEdit(path) {
                     override fun apply(entry:DirCacheEntry) {
-                        entry.copyMetaData(stagedEntry)
-                        entry.setObjectId(stagedEntry.objectId)
-                        entry.fileMode=stagedEntry.fileMode
+                        entry.setObjectId(verifiedEntry.objectId)
+                        entry.fileMode=verifiedEntry.fileMode
                         entry.stage=DirCacheEntry.STAGE_0
                     }
                 })
@@ -116,6 +196,7 @@ object GitCommitService {
             id
         }
         val update=repository.updateRef(branch).apply {
+            require(repository.fullBranch==branch) { "authorized branch changed before commit" }
             setExpectedOldObjectId(head?:ObjectId.zeroId())
             setNewObjectId(commitId)
             refLogIdent=PersonIdent(repository)
@@ -157,6 +238,7 @@ object GitCommitService {
     }
 
     private const val MAX_PATH_LENGTH=512
+    private const val MAX_TEXT_BYTES=1_048_576
     private val WINDOWS_ABSOLUTE=Regex("^[A-Za-z]:")
     private val TEXT_EXTENSIONS=setOf("java","kt","kts","gradle","xml","yaml","yml","properties","md","txt","json","toml")
     private val PROTECTED_EXTENSIONS=setOf("jks","keystore","p12","pfx","pem","key","der","crt")

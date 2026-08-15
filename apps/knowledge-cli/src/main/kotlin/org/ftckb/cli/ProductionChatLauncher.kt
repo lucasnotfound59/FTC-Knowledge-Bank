@@ -13,11 +13,17 @@ import org.ftckb.agent.AskAgent
 import org.ftckb.agent.ContextRetriever
 import org.ftckb.agent.ConversationSaver
 import org.ftckb.agent.ConversationState
+import org.ftckb.agent.CredentialRedactor
+import org.ftckb.agent.SessionController
 import org.ftckb.agent.KnowledgeRetriever
 import org.ftckb.agent.KnowledgeAccessException
 import org.ftckb.agent.GuideTraversalException
 import org.ftckb.agent.RetrievalPlanner
 import org.ftckb.agent.RedactingModelProvider
+import org.ftckb.agent.edit.EditAgent
+import org.ftckb.agent.edit.EditHistory
+import org.ftckb.agent.edit.FileEditEngine
+import org.ftckb.git.GitWorkspace
 import org.ftckb.model.ModelProvider
 import org.ftckb.model.ProviderConfigLoader
 import org.ftckb.model.ProviderProfile
@@ -61,6 +67,7 @@ class ProductionChatLauncher(
             out.println("error starting chat: unsupported FTC repository")
             return 2
         }
+        val baselineDirtyPaths=runCatching { GitWorkspace.inspect(snapshot.root).dirtyPaths }.getOrNull()
         val knowledgeRetriever=try {
             KnowledgeRetriever(options.knowledge,options.team,options.season)
         } catch (_:Exception) {
@@ -75,17 +82,27 @@ class ProductionChatLauncher(
         }
         val outboundProvider=RedactingModelProvider(provider,setOf(secret))
         val conversation=ConversationState(outboundProvider,setOf(secret))
+        val retrievalPlanner=RetrievalPlanner(outboundProvider)
+        val contextRetriever=ContextRetriever(repositoryIndex,knowledgeRetriever)
+        val summary=repositorySummary(
+            snapshot.profile.sourceModules,
+            snapshot.profile.markers.size,
+            snapshot.documents.size
+        )
         val agent=AskAgent(
-            RetrievalPlanner(outboundProvider),
-            ContextRetriever(repositoryIndex,knowledgeRetriever),
+            retrievalPlanner,
+            contextRetriever,
             AnswerGenerator(outboundProvider,repositoryIndex),
             conversation,
-            repositorySummary(
-                snapshot.profile.sourceModules,
-                snapshot.profile.markers.size,
-                snapshot.documents.size
-            )
+            summary
         )
+        val editEngine=FileEditEngine(snapshot.root)
+        val history=EditHistory(snapshot.root,editEngine)
+        val editAgent=EditAgent(
+            retrievalPlanner,contextRetriever,outboundProvider,repositoryIndex,
+            editEngine,history,conversation,summary
+        )
+        val controller=SessionController(agent,editAgent,history,snapshot.root,repositoryIndex)
         val session=ProductionAskChatSession(
             agent,
             ConversationSaver(profile.name,profile.model),
@@ -93,7 +110,10 @@ class ProductionChatLauncher(
             sessionsDirectory,
             repositoryIndex
         )
-        return ChatRepl(session,input,out).run()
+        return ChatRepl(
+            session,input,out,controller,snapshot.root,baselineDirtyPaths,
+            { text -> CredentialRedactor.redact(text,setOf(secret)) }
+        ).run()
     }
 
     private fun repositorySummary(sourceModules:Set<String>,markerCount:Int,documentCount:Int):String=buildString {

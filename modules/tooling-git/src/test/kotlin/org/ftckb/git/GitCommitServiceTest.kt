@@ -1,9 +1,13 @@
 package org.ftckb.git
 
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.Path
+import java.nio.charset.CharacterCodingException
 import java.nio.file.attribute.PosixFilePermission
 import org.eclipse.jgit.api.Git
+import org.eclipse.jgit.lib.FileMode
+import org.eclipse.jgit.lib.Constants
 import org.eclipse.jgit.revwalk.RevWalk
 import org.eclipse.jgit.treewalk.TreeWalk
 import org.junit.jupiter.api.Assertions.assertArrayEquals
@@ -223,12 +227,105 @@ class GitCommitServiceTest {
         }
     }
 
+    @Test
+    fun `commit refuses a branch switch after index verification and restores unrelated staged state`() {
+        val root=tempDir.resolve("branch-race")
+        Git.init().setDirectory(root.toFile()).setInitialBranch("main").call().use { git->
+            commitFixture(git,root,"TeamCode/Drive.kt","baseline")
+            git.branchCreate().setName("other").call()
+            Files.writeString(root.resolve("outside.txt"),"user staged")
+            git.add().addFilepattern("outside.txt").call()
+            Files.writeString(root.resolve("TeamCode/Drive.kt"),"agent edit")
+            val request=CommitRequest(root,setOf("TeamCode/Drive.kt"),emptySet(),"agent edit")
+            val headBefore=git.repository.resolve(Constants.HEAD).name
+            val indexBefore=Files.readAllBytes(git.repository.indexFile.toPath())
+
+            assertThrows(IllegalArgumentException::class.java) {
+                GitCommitService.commit(request) { repository->
+                    repository.updateRef(Constants.HEAD).link(Constants.R_HEADS+"other")
+                }
+            }
+
+            assertEquals("other",git.repository.branch)
+            assertEquals(headBefore,git.repository.resolve(Constants.R_HEADS+"main").name)
+            assertEquals(headBefore,git.repository.resolve(Constants.R_HEADS+"other").name)
+            assertArrayEquals(indexBefore,Files.readAllBytes(git.repository.indexFile.toPath()))
+            assertEquals(1,git.log().all().call().count())
+        }
+    }
+
+    @Test
+    fun `commit tree uses the immutable verified index snapshot`() {
+        val root=tempDir.resolve("index-race")
+        Git.init().setDirectory(root.toFile()).setInitialBranch("main").call().use { git->
+            commitFixture(git,root,"TeamCode/Drive.kt","baseline")
+            Files.writeString(root.resolve("outside.txt"),"user staged")
+            git.add().addFilepattern("outside.txt").call()
+            val drive=root.resolve("TeamCode/Drive.kt")
+            Files.writeString(drive,"agent edit")
+            val request=CommitRequest(root,setOf("TeamCode/Drive.kt"),emptySet(),"agent edit")
+
+            val sha=GitCommitService.commit(request) {
+                Files.writeString(drive,"unverified IDE bytes")
+                makeExecutable(drive)
+                git.add().addFilepattern("TeamCode/Drive.kt").call()
+            }
+
+            RevWalk(git.repository).use { walk->
+                val commit=walk.parseCommit(git.repository.resolve(sha))
+                assertEquals("agent edit",blobText(git,commit.tree,"TeamCode/Drive.kt"))
+                TreeWalk.forPath(git.repository,"TeamCode/Drive.kt",commit.tree).use { tree->
+                    assertEquals(FileMode.REGULAR_FILE,requireNotNull(tree).getFileMode(0))
+                }
+                assertEquals(null,TreeWalk.forPath(git.repository,"outside.txt",commit.tree))
+            }
+            val status=git.status().call()
+            assertEquals(setOf("TeamCode/Drive.kt"),status.changed)
+            assertEquals(setOf("outside.txt"),status.added)
+        }
+    }
+
+    @Test
+    fun `commit never treats malformed UTF8 as expected absence`() {
+        val root=tempDir.resolve("malformed")
+        Git.init().setDirectory(root.toFile()).setInitialBranch("main").call().use { git->
+            commitFixture(git,root,"TeamCode/Drive.kt","baseline")
+            Files.write(root.resolve("TeamCode/Drive.kt"),byteArrayOf(0xff.toByte()))
+            val request=org.ftckb.git.CommitRequest(
+                root,setOf("TeamCode/Drive.kt"),emptySet(),"delete malformed","main",
+                mapOf("TeamCode/Drive.kt" to null)
+            )
+
+            val headBefore=git.repository.resolve("HEAD").name
+            val indexBefore=Files.readAllBytes(git.repository.indexFile.toPath())
+            assertThrows(CharacterCodingException::class.java) { GitCommitService.commit(request) }
+            assertEquals(headBefore,git.repository.resolve("HEAD").name)
+            assertArrayEquals(indexBefore,Files.readAllBytes(git.repository.indexFile.toPath()))
+        }
+    }
+
     private fun commitFixture(git:Git,root:Path,path:String,content:String) {
         val file=root.resolve(path)
         Files.createDirectories(file.parent)
         Files.writeString(file,content)
         git.add().addFilepattern(path).call()
         git.commit().setMessage("fixture").setAuthor("Test","test@example.com").call()
+    }
+
+    private fun CommitRequest(
+        root:Path,paths:Set<String>,baselineDirtyPaths:Set<String>,message:String
+    ):org.ftckb.git.CommitRequest {
+        val branch=when (val state=GitWorkspace.currentBranch(root)) {
+            is GitBranchState.Named -> state.branch
+            is GitBranchState.Detached -> "main"
+        }
+        val expected=paths.associateWith { path->
+            val file=root.resolve(path).normalize()
+            if (Files.notExists(file,LinkOption.NOFOLLOW_LINKS)) null
+            else if (Files.isRegularFile(file,LinkOption.NOFOLLOW_LINKS)) Files.readString(file)
+            else null
+        }
+        return CommitRequest(root,paths,baselineDirtyPaths,message,branch,expected)
     }
 
     private fun blobText(git:Git,tree:org.eclipse.jgit.revwalk.RevTree,path:String):String {
