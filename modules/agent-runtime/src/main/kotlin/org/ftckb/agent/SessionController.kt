@@ -8,8 +8,8 @@ import org.ftckb.agent.edit.EditValidationException
 import org.ftckb.agent.edit.FileEditApplyException
 import org.ftckb.agent.edit.HistoryResult
 import org.ftckb.git.AgentDiffRenderer
+import org.ftckb.git.GitBranchState
 import org.ftckb.git.GitWorkspace
-import org.ftckb.git.GitWorkspaceState
 import org.ftckb.git.TextChange
 import org.ftckb.repository.RepositoryIndex
 
@@ -30,7 +30,7 @@ class SessionController(
     private val history:EditHistory,
     repositoryRoot:Path,
     private val repositoryIndex:RepositoryIndex,
-    private val workspaceInspector:(Path)->GitWorkspaceState=GitWorkspace::inspect
+    private val branchInspector:(Path)->GitBranchState=GitWorkspace::currentBranch
 ) {
     private val repositoryRoot=repositoryRoot.toRealPath()
     private var currentMode=AgentMode.ASK
@@ -125,10 +125,14 @@ class SessionController(
     private fun FileEditApplyException.isRolledBackAuthorizationAbort():Boolean=
         originalFailure is EditAuthorizationException && rollbackFailures.isEmpty() && cleanupFailures.isEmpty()
 
-    private fun currentNamedBranch():String?=runCatching {
-        val workspace=workspaceInspector(repositoryRoot)
-        workspace.branch.takeIf {
-            workspace.repositoryRoot==repositoryRoot && !workspace.detached && !it.isNullOrBlank()
+    private fun currentNamedBranch():String? {
+        val state=branchInspector(repositoryRoot)
+        require(state.repositoryRoot==repositoryRoot) { "Git branch inspection escaped the selected repository" }
+        return when (state) {
+            is GitBranchState.Detached -> null
+            is GitBranchState.Named -> state.branch.also {
+                require(it.isNotBlank()) { "Git branch inspection returned a blank branch" }
+            }
         }
-    }.getOrNull()
+    }
 }

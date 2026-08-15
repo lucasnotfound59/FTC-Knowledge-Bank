@@ -1,5 +1,6 @@
 package org.ftckb.git
 
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -12,7 +13,33 @@ data class GitWorkspaceState(
     val repositoryRoot:Path,val branch:String?,val detached:Boolean,val dirtyPaths:Set<String>
 )
 
+sealed interface GitBranchState {
+    val repositoryRoot:Path
+
+    data class Named(override val repositoryRoot:Path,val branch:String):GitBranchState
+    data class Detached(override val repositoryRoot:Path):GitBranchState
+}
+
+class GitBranchReadException(message:String,cause:Throwable?=null):IOException(message,cause)
+
 object GitWorkspace {
+    fun currentBranch(repositoryRoot:Path):GitBranchState=try {
+        openSelectedRepository(repositoryRoot).use { repository->
+            val root=repository.workTree.toPath().toRealPath()
+            val fullBranch=repository.fullBranch
+                ?:throw GitBranchReadException("Git HEAD is unavailable")
+            if (fullBranch.startsWith(Constants.R_HEADS)) {
+                GitBranchState.Named(root,Repository.shortenRefName(fullBranch))
+            } else {
+                GitBranchState.Detached(root)
+            }
+        }
+    } catch (failure:GitBranchReadException) {
+        throw failure
+    } catch (failure:Exception) {
+        throw GitBranchReadException("Could not read the current Git branch",failure)
+    }
+
     fun inspect(repositoryRoot:Path):GitWorkspaceState {
         openSelectedRepository(repositoryRoot).use { repository->
             val root=repository.workTree.toPath().toRealPath()

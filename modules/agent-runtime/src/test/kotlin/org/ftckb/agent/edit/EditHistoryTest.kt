@@ -1,5 +1,6 @@
 package org.ftckb.agent.edit
 
+import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
@@ -169,6 +170,111 @@ class EditHistoryTest {
     }
 
     @Test
+    fun `undo rethrows a transactional failure when rollback is incomplete`(@TempDir root:Path) {
+        val teamCode=root.resolve("TeamCode")
+        Files.createDirectories(teamCode)
+        val first=teamCode.resolve("First.java")
+        val second=teamCode.resolve("Second.java")
+        Files.writeString(first,"first\n")
+        Files.writeString(second,"second\n")
+        var failUndo=false
+        val engine=FileEditEngine(root,beforeMutation={ _,mutationNumber ->
+            if (failUndo && mutationNumber==2) {
+                Files.writeString(first,"external after reverse\n")
+                throw IOException("abort second reverse")
+            }
+        })
+        val history=EditHistory(root,engine)
+        history.applyAndRecord(engine.preview(EditPlan("both",listOf(
+            ReplaceText("TeamCode/First.java",sha256("first\n"),"first","agent first","reason",emptyList()),
+            ReplaceText("TeamCode/Second.java",sha256("second\n"),"second","agent second","reason",emptyList())
+        ))))
+        failUndo=true
+
+        val failure=assertThrows(FileEditApplyException::class.java) { history.undo() }
+
+        assertEquals("abort second reverse",failure.originalFailure.message)
+        assertTrue(failure.rollbackFailures.isNotEmpty())
+        assertEquals(2,history.changes().size)
+    }
+
+    @Test
+    fun `discard rethrows a transactional failure when temporary cleanup is incomplete`(@TempDir root:Path) {
+        val teamCode=root.resolve("TeamCode")
+        Files.createDirectories(teamCode)
+        val first=teamCode.resolve("First.java")
+        val second=teamCode.resolve("Second.java")
+        Files.writeString(first,"first\n")
+        Files.writeString(second,"second\n")
+        var failDiscard=false
+        val engine=FileEditEngine(root,beforeMutation={ path,mutationNumber ->
+            if (failDiscard && mutationNumber==2) {
+                val temporary=Files.list(path.parent).use { files ->
+                    files.filter { it.fileName.toString().startsWith(".${path.fileName}.ftckb-write-") }
+                        .findFirst().orElseThrow()
+                }
+                Files.delete(temporary)
+                Files.createDirectory(temporary)
+                Files.writeString(second,"external during discard\n")
+                throw IOException("abort second discard")
+            }
+        })
+        val history=EditHistory(root,engine)
+        history.applyAndRecord(engine.preview(EditPlan("both",listOf(
+            ReplaceText("TeamCode/First.java",sha256("first\n"),"first","agent first","reason",emptyList()),
+            ReplaceText("TeamCode/Second.java",sha256("second\n"),"second","agent second","reason",emptyList())
+        ))))
+        failDiscard=true
+
+        val failure=assertThrows(FileEditApplyException::class.java) { history.discard() }
+
+        assertEquals("abort second discard",failure.originalFailure.message)
+        assertTrue(failure.cleanupFailures.isNotEmpty())
+        assertEquals(2,history.changes().size)
+    }
+
+    @Test
+    fun `authorization abort without a byte conflict propagates and retains history`(@TempDir root:Path) {
+        val file=root.resolve("TeamCode/Drive.java")
+        Files.createDirectories(file.parent)
+        Files.writeString(file,"baseline\n")
+        val engine=FileEditEngine(root)
+        val history=EditHistory(root,engine)
+        history.applyAndRecord(replaceBatch(engine,"baseline\n","agent\n"))
+
+        val failure=assertThrows(FileEditApplyException::class.java) {
+            history.undo { throw TestAuthorizationException() }
+        }
+
+        assertTrue(failure.originalFailure is TestAuthorizationException)
+        assertTrue(failure.rollbackFailures.isEmpty())
+        assertTrue(failure.cleanupFailures.isEmpty())
+        assertEquals("agent\n",Files.readString(file))
+        assertEquals("agent\n",history.changes().single().after)
+    }
+
+    @Test
+    fun `authorization abort is not converted into an ordinary conflict when bytes also change`(@TempDir root:Path) {
+        val file=root.resolve("TeamCode/Drive.java")
+        Files.createDirectories(file.parent)
+        Files.writeString(file,"baseline\n")
+        val engine=FileEditEngine(root)
+        val history=EditHistory(root,engine)
+        history.applyAndRecord(replaceBatch(engine,"baseline\n","agent\n"))
+
+        val failure=assertThrows(FileEditApplyException::class.java) {
+            history.undo {
+                Files.writeString(file,"external during authorization\n")
+                throw TestAuthorizationException()
+            }
+        }
+
+        assertTrue(failure.originalFailure is TestAuthorizationException)
+        assertEquals("external during authorization\n",Files.readString(file))
+        assertEquals("agent\n",history.changes().single().after)
+    }
+
+    @Test
     fun `external IDE change between batches causes zero untracked writes and leaves coherent retry state`(@TempDir root:Path) {
         val file=root.resolve("TeamCode/Drive.java")
         Files.createDirectories(file.parent)
@@ -267,4 +373,6 @@ class EditHistoryTest {
     private fun sha256(value:String):String=MessageDigest.getInstance("SHA-256")
         .digest(value.toByteArray(StandardCharsets.UTF_8))
         .joinToString("") { "%02x".format(it) }
+
+    private class TestAuthorizationException:RuntimeException()
 }

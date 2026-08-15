@@ -1,11 +1,13 @@
 package org.ftckb.agent
 
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 import org.ftckb.agent.edit.EditAgent
 import org.ftckb.agent.edit.EditHistory
+import org.ftckb.agent.edit.FileEditApplyException
 import org.ftckb.agent.edit.FileEditEngine
-import org.ftckb.git.GitWorkspaceState
+import org.ftckb.git.GitBranchState
 import org.ftckb.model.ModelProvider
 import org.ftckb.model.ModelRequest
 import org.ftckb.model.ModelResponse
@@ -16,6 +18,7 @@ import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.io.TempDir
 
 class SessionControllerTest {
@@ -40,7 +43,7 @@ class SessionControllerTest {
     @Test
     fun `Edit mode requires a named current branch`(@TempDir root:Path) {
         val fixture=fixture(root,ScriptedProvider()) { repository ->
-            GitWorkspaceState(repository,null,detached=true,dirtyPaths=emptySet())
+            GitBranchState.Detached(repository.toRealPath())
         }
 
         val rejection=fixture.controller.setMode(AgentMode.EDIT)
@@ -74,9 +77,9 @@ class SessionControllerTest {
         val fixture=fixture(root,ScriptedProvider()) { repository ->
             inspections++
             if (inspections==1) {
-                GitWorkspaceState(repository.toRealPath(),"team-work",detached=false,dirtyPaths=emptySet())
+                GitBranchState.Named(repository.toRealPath(),"team-work")
             } else {
-                GitWorkspaceState(repository.toRealPath(),null,detached=true,dirtyPaths=emptySet())
+                GitBranchState.Detached(repository.toRealPath())
             }
         }
 
@@ -86,6 +89,52 @@ class SessionControllerTest {
         assertTrue(rejected is RejectedResult)
         assertTrue(fixture.provider.requests.isEmpty())
         assertEquals(AgentMode.EDIT,fixture.controller.mode)
+    }
+
+    @Test
+    fun `Git branch inspection failure is not converted to a branch rejection`(@TempDir root:Path) {
+        var inspections=0
+        val fixture=fixture(root,ScriptedProvider()) { repository ->
+            inspections++
+            if (inspections==1) {
+                GitBranchState.Named(repository.toRealPath(),"team-work")
+            } else {
+                throw IOException("corrupt Git metadata")
+            }
+        }
+        assertNull(fixture.controller.setMode(AgentMode.EDIT))
+
+        val failure=assertThrows<IOException> {
+            fixture.controller.submit("Must surface the operational failure")
+        }
+
+        assertEquals("corrupt Git metadata",failure.message)
+        assertTrue(fixture.provider.requests.isEmpty())
+    }
+
+    @Test
+    fun `Git branch read failure at mutation time propagates after rollback without model retry`(@TempDir root:Path) {
+        var inspections=0
+        val provider=ScriptedProvider(
+            retrievalPlan(),
+            """{"summary":"operational failure","operations":[{"kind":"create","path":"TeamCode/Operational.java","expectedAbsent":true,"content":"class Operational {}\n","reason":"requested","citations":[]}]}"""
+        )
+        val fixture=fixture(root,provider) { repository ->
+            inspections++
+            if (inspections==4) throw IOException("cannot read Git HEAD")
+            GitBranchState.Named(repository.toRealPath(),"team-work")
+        }
+        assertNull(fixture.controller.setMode(AgentMode.EDIT))
+
+        val failure=assertThrows<FileEditApplyException> {
+            fixture.controller.submit("Create Operational")
+        }
+
+        assertEquals("cannot read Git HEAD",failure.originalFailure.message)
+        assertTrue(failure.rollbackFailures.isEmpty())
+        assertTrue(Files.notExists(fixture.repository.resolve("TeamCode/Operational.java")))
+        assertTrue(fixture.controller.changes().isEmpty())
+        assertEquals(2,provider.requests.size)
     }
 
     @Test
@@ -117,7 +166,7 @@ class SessionControllerTest {
                 """{"summary":"authorized","operations":[{"kind":"create","path":"TeamCode/Agent.java","expectedAbsent":true,"content":"class Agent {}\n","reason":"requested","citations":[]}]}"""
             )
         ) { repository ->
-            GitWorkspaceState(repository.toRealPath(),currentBranch,detached=false,dirtyPaths=emptySet())
+            GitBranchState.Named(repository.toRealPath(),currentBranch)
         }
         assertNull(fixture.controller.setMode(AgentMode.EDIT))
         assertTrue(fixture.controller.submit("Create Agent") is EditResult)
@@ -143,7 +192,7 @@ class SessionControllerTest {
             }
         }
         val fixture=fixture(root,provider) { repository ->
-            GitWorkspaceState(repository.toRealPath(),currentBranch,detached=false,dirtyPaths=emptySet())
+            GitBranchState.Named(repository.toRealPath(),currentBranch)
         }
         assertNull(fixture.controller.setMode(AgentMode.EDIT))
 
@@ -164,8 +213,9 @@ class SessionControllerTest {
         )
         val fixture=fixture(
             root,provider,
-            inspector={ repository ->
-                GitWorkspaceState(repository.toRealPath(),currentBranch,detached,dirtyPaths=emptySet())
+            branchInspector={ repository ->
+                if (detached) GitBranchState.Detached(repository.toRealPath())
+                else GitBranchState.Named(repository.toRealPath(),requireNotNull(currentBranch))
             },
             beforeWrite={ _,_->
                 currentBranch=null
@@ -192,7 +242,7 @@ class SessionControllerTest {
                 if (mutationNumber==2) currentBranch="other-work"
             }
         ) { repository ->
-            GitWorkspaceState(repository.toRealPath(),currentBranch,detached=false,dirtyPaths=emptySet())
+            GitBranchState.Named(repository.toRealPath(),currentBranch)
         }
         assertNull(fixture.controller.setMode(AgentMode.EDIT))
 
@@ -215,7 +265,7 @@ class SessionControllerTest {
                 if (switchDuringUndo && mutationNumber==2) currentBranch="other-work"
             }
         ) { repository ->
-            GitWorkspaceState(repository.toRealPath(),currentBranch,detached=false,dirtyPaths=emptySet())
+            GitBranchState.Named(repository.toRealPath(),currentBranch)
         }
         assertNull(fixture.controller.setMode(AgentMode.EDIT))
         assertTrue(fixture.controller.submit("Create both files") is EditResult)
@@ -251,7 +301,8 @@ class SessionControllerTest {
                 }
             }
         ) { repository ->
-            GitWorkspaceState(repository.toRealPath(),currentBranch,detached,dirtyPaths=emptySet())
+            if (detached) GitBranchState.Detached(repository.toRealPath())
+            else GitBranchState.Named(repository.toRealPath(),requireNotNull(currentBranch))
         }
         assertNull(fixture.controller.setMode(AgentMode.EDIT))
         assertTrue(fixture.controller.submit("Create both files") is EditResult)
@@ -279,8 +330,8 @@ class SessionControllerTest {
         provider:ScriptedProvider,
         beforeMutation:(Path,Int)->Unit={ _,_-> },
         beforeWrite:(Path,Int)->Unit={ _,_-> },
-        inspector:(Path)->GitWorkspaceState={ repository ->
-            GitWorkspaceState(repository.toRealPath(),"team-work",detached=false,dirtyPaths=emptySet())
+        branchInspector:(Path)->GitBranchState={ repository ->
+            GitBranchState.Named(repository.toRealPath(),"team-work")
         }
     ):Fixture {
         val repository=root.resolve("repository")
@@ -300,7 +351,7 @@ class SessionControllerTest {
         )
         return Fixture(
             repository,provider,
-            SessionController(ask,edit,history,repository,index) { inspector(repository) }
+            SessionController(ask,edit,history,repository,index) { branchInspector(repository) }
         )
     }
 

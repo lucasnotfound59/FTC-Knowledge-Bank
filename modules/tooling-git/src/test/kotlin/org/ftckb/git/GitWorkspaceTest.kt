@@ -31,6 +31,33 @@ class GitWorkspaceTest {
     }
 
     @Test
+    fun `narrow branch read observes live branch after an older inspect snapshot becomes stale`() {
+        val root=tempDir.resolve("live-branch")
+        Git.init().setDirectory(root.toFile()).setInitialBranch("main").call().use { git->
+            commit(git,root,"tracked.txt","identical")
+            git.branchCreate().setName("other").call()
+            val stale=GitWorkspace.inspect(root)
+            git.checkout().setName("other").call()
+
+            val live=GitWorkspace.currentBranch(root)
+
+            assertEquals("main",stale.branch)
+            assertEquals(GitBranchState.Named(root.toRealPath(),"other"),live)
+        }
+    }
+
+    @Test
+    fun `narrow branch read surfaces a corrupt HEAD as an operational failure`() {
+        val root=tempDir.resolve("corrupt-head")
+        Git.init().setDirectory(root.toFile()).setInitialBranch("main").call().use { git->
+            commit(git,root,"tracked.txt","baseline")
+        }
+        Files.writeString(root.resolve(".git/HEAD"),"")
+
+        assertThrows(GitBranchReadException::class.java) { GitWorkspace.currentBranch(root) }
+    }
+
+    @Test
     fun `inspect reports detached head without inventing a branch`() {
         val root=tempDir.resolve("detached")
         Git.init().setDirectory(root.toFile()).setInitialBranch("main").call().use { git->
@@ -39,9 +66,11 @@ class GitWorkspaceTest {
             val branchesBefore=git.branchList().call().map { it.name }
 
             val state=GitWorkspace.inspect(root)
+            val branchState=GitWorkspace.currentBranch(root)
 
             assertEquals(null,state.branch)
             assertEquals(true,state.detached)
+            assertEquals(GitBranchState.Detached(root.toRealPath()),branchState)
             assertEquals(branchesBefore,git.branchList().call().map { it.name })
         }
     }
@@ -96,6 +125,7 @@ class GitWorkspaceTest {
         val nested=Files.createDirectories(root.resolve("nested/project"))
 
         assertThrows(IllegalArgumentException::class.java) { GitWorkspace.inspect(nested) }
+        assertThrows(GitBranchReadException::class.java) { GitWorkspace.currentBranch(nested) }
     }
 
     @Test

@@ -62,6 +62,7 @@ class EditHistory(root:Path,private val engine:FileEditEngine=FileEditEngine(roo
         try {
             engine.apply(ValidatedEditBatch("undo ${batch.summary}",reverse),authorizationGuard)
         } catch (failure:Exception) {
+            if (!failure.isCleanLiveConflict()) throw failure
             val raced=conflicts(batch.changes.associate { it.path to it.after })
             if (raced.isNotEmpty()) return HistoryResult(emptySet(),raced)
             throw failure
@@ -82,6 +83,7 @@ class EditHistory(root:Path,private val engine:FileEditEngine=FileEditEngine(roo
         if (reverse.isNotEmpty()) try {
             engine.apply(ValidatedEditBatch("discard Agent edits",reverse),authorizationGuard)
         } catch (failure:Exception) {
+            if (!failure.isCleanLiveConflict()) throw failure
             val raced=conflicts(expected)
             if (raced.isNotEmpty()) return HistoryResult(emptySet(),raced)
             throw failure
@@ -103,6 +105,13 @@ class EditHistory(root:Path,private val engine:FileEditEngine=FileEditEngine(roo
         .filter { (path,snapshot) -> runCatching { current(path) }.getOrNull()!=snapshot }
         .keys
         .toCollection(linkedSetOf())
+
+    private fun Exception.isCleanLiveConflict():Boolean=when (this) {
+        is FileEditApplyException ->
+            rollbackFailures.isEmpty() && cleanupFailures.isEmpty() && originalFailure is IllegalArgumentException
+        is IllegalArgumentException -> true
+        else -> false
+    }
 
     private fun current(path:String):FileSnapshot {
         val absolute=paths.resolve(path).absolute
