@@ -10,6 +10,7 @@ import org.ftckb.agent.AgentAnswer
 import org.ftckb.agent.AnswerClaim
 import org.ftckb.agent.CitationValidationException
 import org.ftckb.agent.ClaimKind
+import org.ftckb.agent.CredentialRedactor
 import org.ftckb.model.ModelMessage
 import org.ftckb.model.ModelProvider
 import org.ftckb.model.ModelProviderException
@@ -53,6 +54,39 @@ class ChatReplTest {
         assertTrue(text.contains("saved=$savePath"))
         assertEquals(1,text.lineSequence().count { it.startsWith("saved=") })
         assertFalse(text.contains("automatic"))
+    }
+
+    @Test
+    fun `Ask claim and citation rendering removes secrets and terminal controls`(@TempDir root:Path) {
+        val exact=listOf("exact","render","credential").joinToString("-")
+        val common=listOf("sk","render","credential").joinToString("-")
+        val supplementaryFormat=String(Character.toChars(0xE0001))
+        val controls="\u001b[31mred\u001b[0m\u001b]0;owned\u0007\u202ereversed\u2066isolated\u200d$supplementaryFormat"
+        val session=FakeAskChatSession(
+            AgentAnswer(listOf(AnswerClaim(
+                ClaimKind.CODE_OBSERVATION,
+                "answer $exact $common $controls",
+                listOf("CODE:C1$exact$common$controls")
+            )),null),
+            ChatStatus(Path.of("fixture-repo"),"20827","2025-2026","fake","offline-model"),
+            root.resolve("unused.md")
+        )
+        val output=ByteArrayOutputStream()
+
+        val code=ChatRepl(
+            session,
+            BufferedReader(StringReader("question\n/exit\n")),
+            PrintStream(output),
+            null,null,emptySet(),
+            { text->CredentialRedactor.redact(text,setOf(exact)) }
+        ).run()
+
+        assertEquals(0,code)
+        val text=output.toString()
+        assertTrue(text.contains("[REDACTED"))
+        listOf(exact,common,"\u001b","\u0007","\u202e","\u2066","\u200d",supplementaryFormat).forEach { unsafe->
+            assertFalse(text.contains(unsafe),unsafe)
+        }
     }
 
     @Test
@@ -146,7 +180,7 @@ class ChatReplTest {
         )
         val config=root.resolve("config.yaml")
         writeFakeConfig(config,"FTC_KB_FAKE_KEY")
-        val provider=SecretEvidenceProvider(secretPath)
+        val provider=SecretEvidenceProvider()
         val launcher=ProductionChatLauncher(
             environment={ secret },
             providerCreator={ _,_ -> provider }
@@ -371,7 +405,7 @@ class ChatReplTest {
         Files.writeString(guides.resolve("drive.md"),"# Drive guide\nSafe drive context.\n")
         val config=root.resolve("config.yaml")
         writeFakeConfig(config,"FTC_KB_FAKE_KEY")
-        val provider=SecretEvidenceProvider("TeamCode/src/main/java/example/SampleTeleOp.java")
+        val provider=SecretEvidenceProvider()
         val launcher=ProductionChatLauncher(
             environment={ "fake-secret" },
             providerCreator={ _,_ -> provider }
@@ -561,7 +595,7 @@ class ChatReplTest {
         }
     }
 
-    private class SecretEvidenceProvider(private val secretPath:String):ModelProvider {
+    private class SecretEvidenceProvider:ModelProvider {
         val requests=mutableListOf<ModelRequest>()
 
         override fun complete(request:ModelRequest):ModelResponse {
@@ -571,7 +605,7 @@ class ChatReplTest {
                     {
                       "concepts":[],
                       "symbols":[],
-                      "pathGlobs":["$secretPath"],
+                      "pathGlobs":["**/*TeleOp.java"],
                       "ruleTopics":[],
                       "guideTopics":["drive"]
                     }

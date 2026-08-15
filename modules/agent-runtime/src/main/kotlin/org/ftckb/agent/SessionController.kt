@@ -19,7 +19,9 @@ sealed interface SessionResult
 data class AskResult(val answer:AgentAnswer):SessionResult
 data class EditResult(val report:EditReport):SessionResult
 sealed interface HistoryCommandResult
-data class HistoryAppliedResult(val result:HistoryResult):HistoryCommandResult
+data class HistoryAppliedResult(
+    val result:HistoryResult,val warnings:List<String> =emptyList()
+):HistoryCommandResult
 data class RejectedResult(val message:String):SessionResult,HistoryCommandResult
 
 private class EditAuthorizationException:RuntimeException()
@@ -30,7 +32,8 @@ class SessionController(
     private val history:EditHistory,
     repositoryRoot:Path,
     private val repositoryIndex:RepositoryIndex,
-    private val branchInspector:(Path)->GitBranchState=GitWorkspace::currentBranch
+    private val branchInspector:(Path)->GitBranchState=GitWorkspace::currentBranch,
+    private val indexRefresher:(Set<String>)->Unit=repositoryIndex::refresh
 ) {
     private val repositoryRoot=repositoryRoot.toRealPath()
     private var currentMode=AgentMode.ASK
@@ -42,6 +45,9 @@ class SessionController(
 
     val authorizedEditBranch:String?
         @Synchronized get()=if (currentMode==AgentMode.EDIT) authorizedBranch else null
+
+    val firstTouchDirtyPaths:Set<String>
+        @Synchronized get()=history.firstTouchDirtyPaths
 
     @Synchronized
     fun setMode(requested:AgentMode):RejectedResult? {
@@ -93,7 +99,7 @@ class SessionController(
         if (currentMode!=AgentMode.EDIT) return RejectedResult("Undo requires Edit mode")
         if (!isAuthorizedBranchCurrent()) return RejectedResult("Undo requires the authorized named current branch")
         return try {
-            HistoryAppliedResult(history.undo(::requireAuthorizedBranchAtWriteBoundary).also(::finishHistoryCommand))
+            historyResult(history.undo(::requireAuthorizedBranchAtWriteBoundary))
         } catch (failure:FileEditApplyException) {
             if (failure.isRolledBackAuthorizationAbort()) {
                 RejectedResult("Undo requires the authorized named current branch")
@@ -108,7 +114,7 @@ class SessionController(
         if (currentMode!=AgentMode.EDIT) return RejectedResult("Discard requires Edit mode")
         if (!isAuthorizedBranchCurrent()) return RejectedResult("Discard requires the authorized named current branch")
         return try {
-            HistoryAppliedResult(history.discard(::requireAuthorizedBranchAtWriteBoundary).also(::finishHistoryCommand))
+            historyResult(history.discard(::requireAuthorizedBranchAtWriteBoundary))
         } catch (failure:FileEditApplyException) {
             if (failure.isRolledBackAuthorizationAbort()) {
                 RejectedResult("Discard requires the authorized named current branch")
@@ -124,12 +130,15 @@ class SessionController(
     @Synchronized
     fun diff():String=AgentDiffRenderer.render(history.changes())
 
-    private fun refreshAfterHistory(result:HistoryResult) {
-        if (result.succeeded && result.changedPaths.isNotEmpty()) repositoryIndex.refresh(result.changedPaths)
-    }
-
-    private fun finishHistoryCommand(result:HistoryResult) {
-        refreshAfterHistory(result)
+    private fun historyResult(result:HistoryResult):HistoryAppliedResult {
+        if (!result.succeeded || result.changedPaths.isEmpty()) return HistoryAppliedResult(result)
+        val warnings=try {
+            indexRefresher(result.changedPaths)
+            emptyList()
+        } catch (_:Exception) {
+            listOf("Repository index refresh failed after files changed")
+        }
+        return HistoryAppliedResult(result,warnings)
     }
 
     private fun isAuthorizedBranchCurrent():Boolean=currentNamedBranch()==authorizedBranch

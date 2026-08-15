@@ -29,7 +29,7 @@ class EditHistoryTest {
         assertEquals(setOf("TeamCode/Drive.java"),result.changedPaths)
         assertEquals("agent one\n",Files.readString(file))
         assertEquals(
-            listOf(org.ftckb.git.TextChange("TeamCode/Drive.java","user dirty\n","agent one\n",false)),
+            listOf(org.ftckb.git.TextChange("TeamCode/Drive.java","user dirty\n","agent one\n",false,false)),
             history.changes()
         )
     }
@@ -49,6 +49,100 @@ class EditHistoryTest {
 
         assertTrue(result.succeeded)
         assertEquals("user dirty\r\nwith spacing  \n",Files.readString(file))
+        assertTrue(history.changes().isEmpty())
+    }
+
+    @Test
+    fun `undo restores executable permission after an Agent deletion`(@TempDir root:Path) {
+        val file=root.resolve("TeamCode/Executable.java")
+        Files.createDirectories(file.parent)
+        Files.writeString(file,"executable\n")
+        assertTrue(file.toFile().setExecutable(true,false))
+        val engine=FileEditEngine(root)
+        val history=EditHistory(root,engine)
+
+        history.applyAndRecord(engine.preview(EditPlan("delete",listOf(
+            DeleteText("TeamCode/Executable.java",sha256("executable\n"),"delete",emptyList())
+        ))))
+        assertTrue(Files.notExists(file))
+
+        assertTrue(history.undo().succeeded)
+
+        assertEquals("executable\n",Files.readString(file))
+        assertTrue(Files.isExecutable(file))
+        assertTrue(history.changes().isEmpty())
+    }
+
+    @Test
+    fun `discard restores executable permission after an Agent move`(@TempDir root:Path) {
+        val source=root.resolve("TeamCode/Executable.java")
+        val destination=root.resolve("TeamCode/Moved.java")
+        Files.createDirectories(source.parent)
+        Files.writeString(source,"executable\n")
+        assertTrue(source.toFile().setExecutable(true,false))
+        val engine=FileEditEngine(root)
+        val history=EditHistory(root,engine)
+
+        history.applyAndRecord(engine.preview(EditPlan("move",listOf(
+            MoveText(
+                "TeamCode/Executable.java","TeamCode/Moved.java",sha256("executable\n"),true,
+                "move",emptyList()
+            )
+        ))))
+        assertTrue(Files.isExecutable(destination))
+
+        assertTrue(history.discard().succeeded)
+
+        assertEquals("executable\n",Files.readString(source))
+        assertTrue(Files.isExecutable(source))
+        assertTrue(Files.notExists(destination))
+        assertTrue(history.changes().isEmpty())
+    }
+
+    @Test
+    fun `undo reports a concurrent chmod without overwriting bytes or mode`(@TempDir root:Path) {
+        val file=root.resolve("TeamCode/Drive.java")
+        Files.createDirectories(file.parent)
+        Files.writeString(file,"baseline\n")
+        assertTrue(file.toFile().setExecutable(false,false))
+        val engine=FileEditEngine(root)
+        val history=EditHistory(root,engine)
+        history.applyAndRecord(replaceBatch(engine,"baseline\n","agent\n"))
+        assertTrue(file.toFile().setExecutable(true,false))
+
+        val result=history.undo()
+
+        assertEquals(setOf("TeamCode/Drive.java"),result.conflicts)
+        assertEquals("agent\n",Files.readString(file))
+        assertTrue(Files.isExecutable(file))
+        assertEquals("agent\n",history.changes().single().after)
+    }
+
+    @Test
+    fun `mode-only delete and recreate remains visible and discard restores executable mode`(@TempDir root:Path) {
+        val file=root.resolve("TeamCode/Executable.java")
+        Files.createDirectories(file.parent)
+        Files.writeString(file,"same\n")
+        assertTrue(file.toFile().setExecutable(true,false))
+        val engine=FileEditEngine(root)
+        val history=EditHistory(root,engine)
+        history.applyAndRecord(engine.preview(EditPlan("delete",listOf(
+            DeleteText("TeamCode/Executable.java",sha256("same\n"),"delete",emptyList())
+        ))))
+        history.applyAndRecord(engine.preview(EditPlan("recreate",listOf(
+            CreateText("TeamCode/Executable.java",true,"same\n","recreate",emptyList())
+        ))))
+
+        val modeOnly=history.changes().single()
+        assertEquals("same\n",modeOnly.before)
+        assertEquals("same\n",modeOnly.after)
+        assertEquals(false,modeOnly.expectedExecutable)
+        assertTrue(Files.exists(file))
+        assertTrue(!Files.isExecutable(file))
+
+        assertTrue(history.discard().succeeded)
+        assertEquals("same\n",Files.readString(file))
+        assertTrue(Files.isExecutable(file))
         assertTrue(history.changes().isEmpty())
     }
 
@@ -459,7 +553,7 @@ class EditHistoryTest {
         assertTrue(Files.notExists(root.resolve("TeamCode/Other.java")))
         assertEquals("agent one\n",Files.readString(drive))
         assertEquals(
-            listOf(org.ftckb.git.TextChange("TeamCode/Drive.java","baseline\n","agent one\n",false)),
+            listOf(org.ftckb.git.TextChange("TeamCode/Drive.java","baseline\n","agent one\n",false,false)),
             history.changes()
         )
     }

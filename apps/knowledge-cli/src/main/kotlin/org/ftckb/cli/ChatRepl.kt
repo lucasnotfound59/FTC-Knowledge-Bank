@@ -111,8 +111,8 @@ class ChatRepl(
     private fun render(answer:AgentAnswer) {
         answer.claims.forEach { claim ->
             out.print(label(claim.kind))
-            claim.citations.forEach { citation -> out.print(" [$citation]") }
-            out.println(": ${claim.text}")
+            claim.citations.forEach { citation -> out.print(" [${safeLine(citation)}]") }
+            out.println(": ${safeLine(claim.text)}")
         }
     }
 
@@ -164,6 +164,7 @@ class ChatRepl(
                     } else {
                         out.println("$name=ok")
                         printPaths("paths",result.result.changedPaths.sorted())
+                        if (result.warnings.isNotEmpty()) printValues("warnings",result.warnings,MAX_WARNINGS)
                     }
                 }
             }
@@ -223,6 +224,12 @@ class ChatRepl(
             printPaths("baseline-dirty paths",overlap)
             return
         }
+        val firstTouchOverlap=paths.intersect(active.firstTouchDirtyPaths).toSortedSet()
+        if (firstTouchOverlap.isNotEmpty()) {
+            out.println("commit refused: Agent-touched paths were dirty at first touch")
+            printPaths("first-touch-dirty paths",firstTouchOverlap)
+            return
+        }
         out.println("type yes to create this local commit:")
         if (input.readLine()!="yes") {
             out.println("commit canceled")
@@ -234,8 +241,12 @@ class ChatRepl(
         }
         try {
             val expected=changes.associate { it.path to it.after }
+            val expectedExecutable=changes.associate { it.path to it.expectedExecutable }
+            val refusedDirtyPaths=baseline+active.firstTouchDirtyPaths
             val commit=GitCommitService.commit(
-                CommitRequest(root,paths,baseline,COMMIT_MESSAGE,authorizedBranch,expected)
+                CommitRequest(
+                    root,paths,refusedDirtyPaths,COMMIT_MESSAGE,authorizedBranch,expected,expectedExecutable
+                )
             )
             out.println("commit=$commit")
         } catch (_:Exception) {
@@ -285,15 +296,21 @@ class ChatRepl(
         return if (clean.length<sanitized.length) clean+"\n... diff truncated\n" else clean
     }
 
-    private fun safeCharacters(value:String,multiline:Boolean):String=sanitize(value)
-        .map { character->
-            when {
-                multiline && (character=='\n'||character=='\t') -> character
-                character.isISOControl()||Character.getType(character)==Character.FORMAT.toInt() -> ' '
-                else -> character
+    private fun safeCharacters(value:String,multiline:Boolean):String {
+        val sanitized=sanitize(value)
+        return buildString {
+            var offset=0
+            while (offset<sanitized.length) {
+                val codePoint=sanitized.codePointAt(offset)
+                when {
+                    multiline && (codePoint=='\n'.code||codePoint=='\t'.code) -> appendCodePoint(codePoint)
+                    Character.isISOControl(codePoint)||Character.getType(codePoint)==Character.FORMAT.toInt() -> append(' ')
+                    else -> appendCodePoint(codePoint)
+                }
+                offset+=Character.charCount(codePoint)
             }
         }
-        .joinToString("")
+    }
 
     private fun currentNamedBranch():String {
         return when (val state=GitWorkspace.currentBranch(requireNotNull(repositoryRoot))) {

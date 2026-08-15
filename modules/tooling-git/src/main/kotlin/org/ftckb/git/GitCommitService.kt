@@ -11,10 +11,11 @@ import java.nio.file.StandardOpenOption
 import java.nio.charset.StandardCharsets
 import java.nio.file.attribute.BasicFileAttributes
 import java.util.Locale
-import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.dircache.DirCache
 import org.eclipse.jgit.dircache.DirCacheEditor
 import org.eclipse.jgit.dircache.DirCacheEntry
+import org.eclipse.jgit.errors.LockFailedException
+import org.eclipse.jgit.internal.storage.file.LockFile
 import org.eclipse.jgit.lib.CommitBuilder
 import org.eclipse.jgit.lib.Constants
 import org.eclipse.jgit.lib.FileMode
@@ -24,19 +25,33 @@ import org.eclipse.jgit.lib.RefUpdate
 import org.eclipse.jgit.lib.Repository
 import org.eclipse.jgit.lib.RepositoryState
 import org.eclipse.jgit.revwalk.RevWalk
+import org.eclipse.jgit.treewalk.TreeWalk
 
 data class CommitRequest(
     val repositoryRoot:Path,val paths:Set<String>,val baselineDirtyPaths:Set<String>,val message:String,
-    val authorizedBranch:String,val expectedContents:Map<String,String?>
+    val authorizedBranch:String,val expectedContents:Map<String,String?>,
+    val expectedExecutable:Map<String,Boolean?>
 )
 
 object GitCommitService {
-    fun commit(request:CommitRequest):String=commit(request) { }
+    fun commit(request:CommitRequest):String=commit(request,{})
 
-    internal fun commit(request:CommitRequest,afterIndexVerified:(Repository)->Unit):String {
+    internal fun commit(
+        request:CommitRequest,afterIndexVerified:(Repository)->Unit
+    ):String=commit(request,afterIndexVerified,{})
+
+    internal fun commit(
+        request:CommitRequest,
+        afterIndexVerified:(Repository)->Unit,
+        beforeIndexPublish:(Repository)->Unit
+    ):String {
         require(request.message.isNotBlank()) { "commit message must not be blank" }
         require(request.paths.isNotEmpty()) { "commit paths must not be empty" }
         require(request.expectedContents.keys==request.paths) { "commit expectations must match exact paths" }
+        require(request.expectedExecutable.keys==request.paths) { "commit mode expectations must match exact paths" }
+        require(request.paths.all { path->
+            (request.expectedContents.getValue(path)==null)==(request.expectedExecutable.getValue(path)==null)
+        }) { "commit content and mode expectations must agree" }
         val overlap=request.paths.intersect(request.baselineDirtyPaths).toSortedSet()
         require(overlap.isEmpty()) {
             "cannot commit paths that were dirty before Agent edits: ${overlap.joinToString(", ")}"
@@ -57,39 +72,36 @@ object GitCommitService {
             val resolved=paths.map { path->validatePath(root,path) }
             require(resolved.toSet().size==resolved.size) { "commit paths contain aliases" }
             requireExpectedWorktree(root,request.expectedContents)
-            Git.wrap(repository).use { git->
-                val dirty=git.status().call().let { status->
-                    status.added+status.changed+status.modified+status.removed+status.missing+
-                        status.untracked+status.conflicting
+            val index=repository.lockDirCache()
+            var indexPublished=false
+            var commitId:ObjectId?=null
+            val head=repository.resolve(Constants.HEAD)
+            try {
+                require(repository.fullBranch==fullBranch) { "authorized branch changed before commit" }
+                val verified=prepareExpectedEntries(
+                    repository,root,head,request.expectedContents,request.expectedExecutable
+                )
+                stageExactPaths(index,verified)
+                requireExpectedIndex(repository,index,request.expectedContents)
+                afterIndexVerified(repository)
+                commitId=createCommit(repository,fullBranch,head,verified,request.message)
+                beforeIndexPublish(repository)
+                require(
+                    repository.fullBranch==fullBranch && repository.resolve(Constants.HEAD)==commitId
+                ) { "authorized branch changed before index publication" }
+                index.write()
+                check(index.commit()) { "commit index update failed" }
+                indexPublished=true
+                return commitId.name
+            } catch (failure:Throwable) {
+                commitId?.let { created->
+                    runCatching { rollbackRef(repository,fullBranch,head,created) }
+                        .exceptionOrNull()
+                        ?.let(failure::addSuppressed)
                 }
-                require(paths.all { it in dirty }) { "every commit path must contain a change" }
-                val indexPath=repository.indexFile.toPath()
-                val indexBefore=if (Files.exists(indexPath,LinkOption.NOFOLLOW_LINKS)) {
-                    Files.readAllBytes(indexPath)
-                } else null
-                val headBefore=repository.resolve(Constants.HEAD)?.name
-                try {
-                    paths.forEach { path->
-                        val absolute=root.resolve(path)
-                        if (Files.exists(absolute,LinkOption.NOFOLLOW_LINKS)) {
-                            git.add().addFilepattern(path).call()
-                        } else {
-                            git.add().setUpdate(true).addFilepattern(path).call()
-                        }
-                    }
-                    val verified=requireExpectedIndex(repository,request.expectedContents)
-                    afterIndexVerified(repository)
-                    return createCommit(repository,fullBranch,verified,request.message)
-                } catch (failure:Throwable) {
-                    if (repository.resolve(Constants.HEAD)?.name==headBefore) {
-                        if (indexBefore==null) Files.deleteIfExists(indexPath)
-                        else Files.write(
-                            indexPath,indexBefore,
-                            StandardOpenOption.CREATE,StandardOpenOption.TRUNCATE_EXISTING,StandardOpenOption.WRITE
-                        )
-                    }
-                    throw failure
-                }
+                throw failure
+            } finally {
+                if (!indexPublished) index.unlock()
             }
         }
     }
@@ -135,17 +147,96 @@ object GitCommitService {
         null
     }
 
-    private data class VerifiedCommitEntry(val objectId:ObjectId,val fileMode:FileMode)
+    private data class VerifiedCommitEntry(
+        val objectId:ObjectId,
+        val fileMode:FileMode,
+        val length:Long,
+        val lastModified:java.time.Instant
+    )
+
+    private fun prepareExpectedEntries(
+        repository:Repository,
+        root:Path,
+        head:ObjectId?,
+        expected:Map<String,String?>,
+        expectedExecutable:Map<String,Boolean?>
+    ):Map<String,VerifiedCommitEntry?> =repository.newObjectInserter().use { inserter->
+        val headEntries=expected.keys.associateWith { path->headEntry(repository,head,path) }
+        val entries=expected.mapValues { (path,content)->
+            if (content==null) {
+                require(readStrictTextOrMissing(root.resolve(path))==null) {
+                    "commit path changed after Agent diff: $path"
+                }
+                null
+            } else {
+                val absolute=root.resolve(path)
+                val attributes=Files.readAttributes(
+                    absolute,BasicFileAttributes::class.java,LinkOption.NOFOLLOW_LINKS
+                )
+                require(attributes.isRegularFile && !attributes.isSymbolicLink) {
+                    "commit path must identify a regular file"
+                }
+                val bytes=content.toByteArray(StandardCharsets.UTF_8)
+                require(readStrictTextOrMissing(absolute)==content) {
+                    "commit path changed after Agent diff: $path"
+                }
+                val executable=requireNotNull(expectedExecutable[path])
+                require(repository.fs.canExecute(absolute.toFile())==executable) {
+                    "commit path mode changed after Agent diff: $path"
+                }
+                val mode=if (executable) FileMode.EXECUTABLE_FILE else FileMode.REGULAR_FILE
+                VerifiedCommitEntry(
+                    inserter.insert(Constants.OBJ_BLOB,bytes),mode,bytes.size.toLong(),attributes.lastModifiedTime().toInstant()
+                )
+            }
+        }
+        entries.forEach { (path,entry)->
+            val headEntry=headEntries[path]
+            require(
+                if (entry==null) headEntry!=null
+                else headEntry==null||headEntry.objectId!=entry.objectId||headEntry.fileMode!=entry.fileMode
+            ) { "every commit path must contain a change" }
+        }
+        inserter.flush()
+        entries
+    }
+
+    private fun headEntry(repository:Repository,head:ObjectId?,path:String):VerifiedCommitEntry? {
+        if (head==null) return null
+        RevWalk(repository).use { walk->
+            TreeWalk.forPath(repository,path,walk.parseCommit(head).tree)?.use { tree->
+                return VerifiedCommitEntry(
+                    tree.getObjectId(0).copy(),tree.getFileMode(0),0,java.time.Instant.EPOCH
+                )
+            }
+        }
+        return null
+    }
+
+    private fun stageExactPaths(index:DirCache,verified:Map<String,VerifiedCommitEntry?>) {
+        val editor=index.editor()
+        verified.forEach { (path,entry)->
+            if (entry==null) editor.add(DirCacheEditor.DeletePath(path))
+            else editor.add(object:DirCacheEditor.PathEdit(path) {
+                override fun apply(indexEntry:DirCacheEntry) {
+                    indexEntry.setObjectId(entry.objectId)
+                    indexEntry.fileMode=entry.fileMode
+                    indexEntry.stage=DirCacheEntry.STAGE_0
+                    indexEntry.setLength(entry.length)
+                    indexEntry.setLastModified(entry.lastModified)
+                }
+            })
+        }
+        editor.finish()
+    }
 
     private fun requireExpectedIndex(
-        repository:Repository,expected:Map<String,String?>
-    ):Map<String,VerifiedCommitEntry?> {
-        val staged=DirCache.read(repository)
-        return expected.mapValues { (path,content)->
-            val entry=staged.getEntry(path)
+        repository:Repository,index:DirCache,expected:Map<String,String?>
+    ) {
+        expected.forEach { (path,content)->
+            val entry=index.getEntry(path)
             if (content==null) {
                 require(entry==null) { "commit path changed while staging: $path" }
-                null
             } else {
                 require(entry!=null && entry.stage==DirCacheEntry.STAGE_0) {
                     "commit path changed while staging: $path"
@@ -154,15 +245,13 @@ object GitCommitService {
                 require(bytes.contentEquals(content.toByteArray(StandardCharsets.UTF_8))) {
                     "commit path changed while staging: $path"
                 }
-                VerifiedCommitEntry(entry.objectId.copy(),entry.fileMode)
             }
         }
     }
 
     private fun createCommit(
-        repository:Repository,branch:String,verified:Map<String,VerifiedCommitEntry?>,message:String
-    ):String {
-        val head=repository.resolve(Constants.HEAD)
+        repository:Repository,branch:String,head:ObjectId?,verified:Map<String,VerifiedCommitEntry?>,message:String
+    ):ObjectId {
         val commitIndex=repository.newObjectReader().use { reader->
             if (head==null) DirCache.newInCore()
             else RevWalk(repository).use { walk->DirCache.read(reader,walk.parseCommit(head).tree) }
@@ -206,7 +295,43 @@ object GitCommitService {
         require(result==RefUpdate.Result.NEW||result==RefUpdate.Result.FAST_FORWARD) {
             "commit ref update failed: $result"
         }
-        return commitId.name
+        return commitId
+    }
+
+    private fun rollbackRef(repository:Repository,branch:String,head:ObjectId?,commitId:ObjectId) {
+        if (head==null) {
+            deleteNewCurrentBranchRef(repository,branch,commitId)
+            return
+        }
+        val update=repository.updateRef(branch).apply {
+            setExpectedOldObjectId(commitId)
+            isForceUpdate=true
+            setNewObjectId(head)
+        }
+        val result=update.update()
+        require(
+            result==RefUpdate.Result.FORCED||result==RefUpdate.Result.FAST_FORWARD||
+                result==RefUpdate.Result.NO_CHANGE
+        ) { "commit ref rollback failed: $result" }
+    }
+
+    private fun deleteNewCurrentBranchRef(repository:Repository,branch:String,commitId:ObjectId) {
+        val refPath=repository.commonDirectory.toPath().resolve(branch)
+        val lock=LockFile(refPath.toFile())
+        if (!lock.lock()) throw LockFailedException(refPath.toFile())
+        try {
+            require(Files.isRegularFile(refPath,LinkOption.NOFOLLOW_LINKS)) {
+                "initial commit ref is not a loose ref"
+            }
+            val stored=Files.readString(refPath,StandardCharsets.US_ASCII).trim()
+            require(ObjectId.isId(stored) && ObjectId.fromString(stored)==commitId) {
+                "initial commit ref changed before rollback"
+            }
+            Files.delete(refPath)
+            repository.refDatabase.refresh()
+        } finally {
+            lock.unlock()
+        }
     }
 
     private fun validatePath(root:Path,value:String):Path {

@@ -43,11 +43,18 @@ class ConversationTest {
         val bearer=listOf("Bear","er").joinToString("")
         val apiKeyName=listOf("API","KEY").joinToString("_")
         val bearerValue="synthetic-bearer-value"
+        val secretShaped=listOf("sk","saved","credential").joinToString("-")
+        val supplementaryFormat=String(Character.toChars(0xE0001))
+        val terminalControls="\u001b[31mred\u001b[0m\u001b]0;owned\u0007\u202ereversed\u2066isolated\u200d$supplementaryFormat"
         val state=ConversationState(ScriptedProvider(),exactSecrets=setOf(secret))
         state.record(
-            "How does $secret work? $authorizationLabel: $bearer $bearerValue $apiKeyName=$secret",
-            AgentAnswer(listOf(AnswerClaim(ClaimKind.CODE_OBSERVATION,"Drive uses $secret.",listOf("CODE:$secret"))),null),
-            setOf("TeamCode/$secret.java")
+            "How does $secret work? $authorizationLabel: $bearer $bearerValue $apiKeyName=$secret $secretShaped",
+            AgentAnswer(listOf(AnswerClaim(
+                ClaimKind.CODE_OBSERVATION,
+                "Drive uses $secret $secretShaped $terminalControls.",
+                listOf("CODE:$secret:$secretShaped:$terminalControls")
+            )),null),
+            setOf("TeamCode/$secret-$secretShaped-$terminalControls.java")
         )
         val saver=ConversationSaver(
             "deepseek","deepseek-chat",
@@ -61,6 +68,10 @@ class ConversationTest {
         assertFalse(text.contains(secret))
         assertFalse(text.contains("$authorizationLabel:"))
         assertFalse(text.contains(bearerValue))
+        assertFalse(text.contains(secretShaped))
+        listOf("\u001b","\u0007","\u202e","\u2066","\u200d",supplementaryFormat).forEach { unsafe->
+            assertFalse(text.contains(unsafe),unsafe)
+        }
         assertFalse(text.contains("class Drive"))
         assertThrows(FileAlreadyExistsException::class.java) { saver.save(state,saved) }
     }

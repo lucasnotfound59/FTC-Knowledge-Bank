@@ -4,6 +4,10 @@ import java.nio.file.Files
 import java.nio.file.Path
 import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.api.MergeResult.MergeStatus.CONFLICTING
+import org.eclipse.jgit.api.ResetCommand.ResetType
+import org.eclipse.jgit.dircache.DirCacheEditor
+import org.eclipse.jgit.dircache.DirCacheEntry
+import org.eclipse.jgit.lib.Constants
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertThrows
@@ -174,6 +178,77 @@ class GitWorkspaceTest {
         assertEquals(selected.toRealPath(),state.repositoryRoot)
         assertEquals("linked",state.branch)
         assertFalse(state.detached)
+    }
+
+    @Test
+    fun `first-touch inspection conservatively marks paths when HEAD moves during the action`() {
+        val root=tempDir.resolve("first-touch-head-move")
+        Git.init().setDirectory(root.toFile()).setInitialBranch("main").call().use { git->
+            val original=commit(git,root,"tracked.txt","baseline")
+            val newer=commit(git,root,"tracked.txt","new head")
+            git.reset().setMode(ResetType.HARD).setRef(original.name).call()
+            val result=GitWorkspace.withFirstTouchDirtyPaths(root,mapOf("tracked.txt" to "baseline")) {
+                val update=git.repository.updateRef(Constants.R_HEADS+"main").apply {
+                    setExpectedOldObjectId(original)
+                    setNewObjectId(newer)
+                }
+                assertEquals(org.eclipse.jgit.lib.RefUpdate.Result.FAST_FORWARD,update.update())
+            }
+
+            assertEquals(setOf("tracked.txt"),result.dirtyPaths)
+        }
+    }
+
+    @Test
+    fun `first-touch inspection detects worktree changes hidden by assume valid`() {
+        val root=tempDir.resolve("first-touch-assume-valid")
+        Git.init().setDirectory(root.toFile()).setInitialBranch("main").call().use { git->
+            commit(git,root,"tracked.txt","baseline")
+            val index=git.repository.lockDirCache()
+            var published=false
+            try {
+                index.editor().apply {
+                    add(object:DirCacheEditor.PathEdit("tracked.txt") {
+                        override fun apply(entry:DirCacheEntry) {
+                            entry.setAssumeValid(true)
+                        }
+                    })
+                    finish()
+                }
+                index.write()
+                check(index.commit())
+                published=true
+            } finally {
+                if (!published) index.unlock()
+            }
+            Files.writeString(root.resolve("tracked.txt"),"user change")
+            assertEquals(emptySet<String>(),git.status().call().modified)
+
+            val result=GitWorkspace.withFirstTouchDirtyPaths(root,mapOf("tracked.txt" to "user change")) { }
+
+            assertEquals(setOf("tracked.txt"),result.dirtyPaths)
+        }
+    }
+
+    @Test
+    fun `first-touch inspection preserves a successful action when the post-action HEAD read fails`() {
+        val root=tempDir.resolve("first-touch-head-read-failure")
+        Git.init().setDirectory(root.toFile()).setInitialBranch("main").call().use { git->
+            commit(git,root,"tracked.txt","baseline")
+
+            val result=GitWorkspace.withFirstTouchDirtyPaths(
+                root,mapOf("tracked.txt" to "baseline"),
+                action={
+                    Files.writeString(root.resolve("tracked.txt"),"agent edit")
+                    "applied"
+                },
+                afterActionHeadState={ throw java.io.IOException("synthetic post-write HEAD failure") }
+            )
+
+            assertEquals("applied",result.value)
+            assertEquals(setOf("tracked.txt"),result.dirtyPaths)
+            assertEquals("agent edit",Files.readString(root.resolve("tracked.txt")))
+        }
     }
 
     private fun commit(git:Git,root:Path,path:String,content:String)=run {

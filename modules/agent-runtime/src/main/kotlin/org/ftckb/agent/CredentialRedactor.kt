@@ -37,5 +37,7 @@ class RedactingModelProvider(
         messages=request.messages.map { message ->
             message.copy(content=CredentialRedactor.redact(message.content,exactSecrets))
         }
-    ))
+    )).let { response->
+        response.copy(content=CredentialRedactor.redact(response.content,exactSecrets))
+    }
 }

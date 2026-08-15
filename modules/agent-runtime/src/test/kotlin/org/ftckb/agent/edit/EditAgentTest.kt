@@ -60,7 +60,7 @@ class EditAgentTest {
         val repository=repository(root)
         val provider=ScriptedProvider(
             retrievalPlan(),"not json",
-            """{"summary":"repaired","operations":[{"kind":"create","path":"TeamCode/Repaired.java","expectedAbsent":true,"content":"class Repaired {}\n","reason":"repair","citations":[]}]}"""
+            """{"summary":"repaired","operations":[{"kind":"create","path":"TeamCode/Repaired.java","expectedAbsent":true,"content":"class Repaired {}\n","reason":"repair","citations":["CODE:C1"]}]}"""
         )
         val agent=agent(root,repository,provider)
 
@@ -90,7 +90,7 @@ class EditAgentTest {
     @Test
     fun `preview failures receive one repair then reject protected paths with zero writes`(@TempDir root:Path) {
         val repository=repository(root)
-        val invalid="""{"summary":"invalid","operations":[{"kind":"create","path":".env","expectedAbsent":true,"content":"secret=value\n","reason":"unsafe","citations":[]}]}"""
+        val invalid="""{"summary":"invalid","operations":[{"kind":"create","path":".env","expectedAbsent":true,"content":"secret=value\n","reason":"unsafe","citations":["CODE:C1"]}]}"""
         val provider=ScriptedProvider(retrievalPlan(),invalid,invalid)
         val agent=agent(root,repository,provider)
 
@@ -102,11 +102,33 @@ class EditAgentTest {
     }
 
     @Test
+    fun `net zero previews receive exactly one repair then reject without history`(@TempDir root:Path) {
+        val repository=repository(root)
+        val unchanged="""{"summary":"unchanged","operations":[{"kind":"replace","path":"TeamCode/Drive.java","expectedSha256":"${sha256("class Drive {}\n")}","oldText":"class Drive {}","newText":"class Drive {}","reason":"No effective change.","citations":["CODE:C1"]}]}"""
+        val provider=ScriptedProvider(retrievalPlan(),unchanged,unchanged)
+        val index=RepositoryIndex().also { it.build(repository) }
+        val engine=FileEditEngine(repository)
+        val history=EditHistory(repository,engine)
+        val agent=EditAgent(
+            RetrievalPlanner(provider),
+            ContextRetriever(index,KnowledgeRetriever(knowledge(root),null,null)),
+            provider,index,engine,history,ConversationState(provider),"supported FTC repository"
+        )
+
+        assertThrows(EditValidationException::class.java) { agent.edit("Make no effective change") }
+
+        assertEquals("class Drive {}\n",Files.readString(repository.resolve("TeamCode/Drive.java")))
+        assertTrue(history.changes().isEmpty())
+        assertEquals(3,provider.requests.size)
+        assertTrue(provider.requests.last().messages.last().content.contains("edit plan produces no file changes"))
+    }
+
+    @Test
     fun `apply failure is never sent back to the model for retry`(@TempDir root:Path) {
         val repository=repository(root)
         val provider=ScriptedProvider(
             retrievalPlan(),
-            """{"summary":"write once","operations":[{"kind":"create","path":"TeamCode/Once.java","expectedAbsent":true,"content":"class Once {}\n","reason":"once","citations":[]}]}"""
+            """{"summary":"write once","operations":[{"kind":"create","path":"TeamCode/Once.java","expectedAbsent":true,"content":"class Once {}\n","reason":"once","citations":["CODE:C1"]}]}"""
         )
         val index=RepositoryIndex().also { it.build(repository) }
         val engine=FileEditEngine(repository,beforeMutation={ _,_->throw IOException("synthetic write failure") })
@@ -162,9 +184,10 @@ class EditAgentTest {
             )
         ))))
         Files.writeString(file,"class Drive { int ideChange; }\n")
+        index.refresh(setOf("TeamCode/Drive.java"))
         val provider=ScriptedProvider(
             retrievalPlan(),
-            """{"summary":"second","operations":[{"kind":"replace","path":"TeamCode/Drive.java","expectedSha256":"${sha256("class Drive { int ideChange; }\n")}","oldText":"int ideChange","newText":"int agentTwo","reason":"second","citations":[]}]}"""
+            """{"summary":"second","operations":[{"kind":"replace","path":"TeamCode/Drive.java","expectedSha256":"${sha256("class Drive { int ideChange; }\n")}","oldText":"int ideChange","newText":"int agentTwo","reason":"second","citations":["CODE:C1"]}]}"""
         )
         val agent=EditAgent(
             RetrievalPlanner(provider),

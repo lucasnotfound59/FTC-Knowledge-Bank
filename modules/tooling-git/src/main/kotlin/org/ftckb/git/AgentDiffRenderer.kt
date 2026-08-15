@@ -3,7 +3,10 @@ package org.ftckb.git
 import com.github.difflib.DiffUtils
 import com.github.difflib.UnifiedDiffUtils
 
-data class TextChange(val path:String,val before:String?,val after:String?,val projectLevel:Boolean)
+data class TextChange(
+    val path:String,val before:String?,val after:String?,val projectLevel:Boolean,
+    val expectedExecutable:Boolean?=null
+)
 
 object AgentDiffRenderer {
     fun render(changes:List<TextChange>):String=changes

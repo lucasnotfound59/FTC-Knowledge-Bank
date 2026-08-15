@@ -51,7 +51,79 @@ class FileEditEngineTest {
 
         assertEquals("user + agent\n",Files.readString(file))
         assertEquals(batch.summary,applied.summary)
-        assertEquals(batch.changes,applied.changes)
+        assertEquals(batch.changes.map { it.copy(expectedExecutable=false) },applied.changes)
+    }
+
+    @Test
+    fun `permission change during apply is rejected without overwriting bytes or mode`(@TempDir root:Path) {
+        val file=root.resolve("TeamCode/Test.java")
+        Files.createDirectories(file.parent)
+        Files.writeString(file,"before\n")
+        assertFalse(Files.isExecutable(file))
+        val engine=FileEditEngine(root,beforeWrite={ _,_->
+            assertTrue(file.toFile().setExecutable(true,false))
+        })
+        val batch=engine.preview(EditPlan("edit",listOf(
+            ReplaceText("TeamCode/Test.java",sha256("before\n"),"before","after","reason",emptyList())
+        )))
+
+        val failure=assertThrows<FileEditApplyException> { engine.apply(batch) }
+
+        assertTrue(failure.originalFailure.message.orEmpty().contains("permission"))
+        assertTrue(failure.rollbackFailures.isEmpty())
+        assertEquals("before\n",Files.readString(file))
+        assertTrue(Files.isExecutable(file))
+    }
+
+    @Test
+    fun `permission change after mutation is preserved while Agent bytes roll back`(@TempDir root:Path) {
+        val file=root.resolve("TeamCode/Test.java")
+        Files.createDirectories(file.parent)
+        Files.writeString(file,"before\n")
+        assertFalse(Files.isExecutable(file))
+        val engine=FileEditEngine(root,afterMutation={ _,_->
+            assertTrue(file.toFile().setExecutable(true,false))
+        })
+        val batch=engine.preview(EditPlan("edit",listOf(
+            ReplaceText("TeamCode/Test.java",sha256("before\n"),"before","after","reason",emptyList())
+        )))
+
+        val failure=assertThrows<FileEditApplyException> { engine.apply(batch) }
+
+        assertTrue(failure.originalFailure.message.orEmpty().contains("permission"))
+        assertTrue(failure.rollbackFailures.isEmpty())
+        assertEquals("before\n",Files.readString(file))
+        assertTrue(Files.isExecutable(file))
+    }
+
+    @Test
+    fun `IDE mutation during rollback preparation is never overwritten`(@TempDir root:Path) {
+        val first=root.resolve("TeamCode/First.java")
+        val second=root.resolve("TeamCode/Second.java")
+        Files.createDirectories(first.parent)
+        Files.writeString(first,"first\n")
+        Files.writeString(second,"second\n")
+        val engine=FileEditEngine(
+            root,
+            beforeRollbackReplace={ path->
+                Files.writeString(path,"IDE during rollback\n")
+                assertTrue(path.toFile().setExecutable(true,false))
+            },
+            beforeMutation={ _,mutationNumber->
+                if (mutationNumber==2) throw IOException("force rollback")
+            }
+        )
+        val batch=engine.preview(EditPlan("two",listOf(
+            ReplaceText("TeamCode/First.java",sha256("first\n"),"first","agent first","reason",emptyList()),
+            ReplaceText("TeamCode/Second.java",sha256("second\n"),"second","agent second","reason",emptyList())
+        )))
+
+        val failure=assertThrows<FileEditApplyException> { engine.apply(batch) }
+
+        assertTrue(failure.rollbackFailures.isNotEmpty())
+        assertEquals("IDE during rollback\n",Files.readString(first))
+        assertTrue(Files.isExecutable(first))
+        assertEquals("second\n",Files.readString(second))
     }
 
     @Test

@@ -105,26 +105,28 @@ class ConversationState(
         val savedTranscript=transcript.toList()
         return buildString {
             append("# FTC Knowledge Bank session\n\n")
-            append("Provider: ").append(redact(providerName)).append(" / ").append(redact(modelName)).append('\n')
+            append("Provider: ").append(sanitizeSavedText(providerName)).append(" / ").append(sanitizeSavedText(modelName)).append('\n')
             append("Saved: ").append(DateTimeFormatter.ISO_INSTANT.format(savedAt)).append("\n\n")
             context.rollingSummary?.let {
                 append("## Untrusted compact summary\n\n")
-                append(redact(it)).append("\n\n")
+                append(sanitizeSavedText(it)).append("\n\n")
             }
             append("## Conversation\n\n")
             savedTranscript.forEachIndexed { index,entry ->
                 append("### Turn ").append(index+1).append("\n\n")
-                append("User: ").append(redact(entry.question)).append("\n\n")
+                append("User: ").append(sanitizeSavedText(entry.question)).append("\n\n")
                 if (entry.answer==null) {
                     append("Status: pending or failed; no validated assistant answer.\n\n")
                 } else {
                     entry.answer.claims.forEach { claim ->
-                        append("- ").append(claim.kind.name.lowercase()).append(": ").append(redact(claim.text))
-                        if (claim.citations.isNotEmpty()) append(" (citations: ").append(claim.citations.joinToString { redact(it) }).append(')')
+                        append("- ").append(claim.kind.name.lowercase()).append(": ").append(sanitizeSavedText(claim.text))
+                        if (claim.citations.isNotEmpty()) {
+                            append(" (citations: ").append(claim.citations.joinToString { sanitizeSavedText(it) }).append(')')
+                        }
                         append('\n')
                     }
                     if (entry.referencedIds.isNotEmpty()) {
-                        append("References: ").append(entry.referencedIds.joinToString { redact(it) }).append("\n\n")
+                        append("References: ").append(entry.referencedIds.joinToString { sanitizeSavedText(it) }).append("\n\n")
                     }
                 }
             }
@@ -237,6 +239,22 @@ class ConversationState(
     }
 
     private fun redact(text:String):String=CredentialRedactor.redact(text,exactSecrets)
+
+    private fun sanitizeSavedText(text:String):String {
+        val redacted=redact(text)
+        return buildString {
+            var offset=0
+            while (offset<redacted.length) {
+                val codePoint=redacted.codePointAt(offset)
+                when {
+                    codePoint=='\n'.code||codePoint=='\t'.code -> appendCodePoint(codePoint)
+                    Character.isISOControl(codePoint)||Character.getType(codePoint)==Character.FORMAT.toInt() -> append(' ')
+                    else -> appendCodePoint(codePoint)
+                }
+                offset+=Character.charCount(codePoint)
+            }
+        }
+    }
 
     private companion object { const val maximumSummaryCharacters=4_000 }
 

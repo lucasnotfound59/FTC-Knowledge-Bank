@@ -59,7 +59,7 @@ class SessionControllerTest {
             root,
             ScriptedProvider(
                 retrievalPlan(),
-                """{"summary":"authorized","operations":[{"kind":"create","path":"TeamCode/Authorized.java","expectedAbsent":true,"content":"class Authorized {}\n","reason":"requested","citations":[]}]}"""
+                """{"summary":"authorized","operations":[{"kind":"create","path":"TeamCode/Authorized.java","expectedAbsent":true,"content":"class Authorized {}\n","reason":"requested","citations":["CODE:C1"]}]}"""
             )
         )
 
@@ -117,7 +117,7 @@ class SessionControllerTest {
         var inspections=0
         val provider=ScriptedProvider(
             retrievalPlan(),
-            """{"summary":"operational failure","operations":[{"kind":"create","path":"TeamCode/Operational.java","expectedAbsent":true,"content":"class Operational {}\n","reason":"requested","citations":[]}]}"""
+            """{"summary":"operational failure","operations":[{"kind":"create","path":"TeamCode/Operational.java","expectedAbsent":true,"content":"class Operational {}\n","reason":"requested","citations":["CODE:C1"]}]}"""
         )
         val fixture=fixture(root,provider) { repository ->
             inspections++
@@ -143,7 +143,7 @@ class SessionControllerTest {
             root,
             ScriptedProvider(
                 retrievalPlan(),
-                """{"summary":"authorized","operations":[{"kind":"create","path":"TeamCode/Agent.java","expectedAbsent":true,"content":"class Agent {}\n","reason":"requested","citations":[]}]}"""
+                """{"summary":"authorized","operations":[{"kind":"create","path":"TeamCode/Agent.java","expectedAbsent":true,"content":"class Agent {}\n","reason":"requested","citations":["CODE:C1"]}]}"""
             )
         )
         assertNull(fixture.controller.setMode(AgentMode.EDIT))
@@ -163,7 +163,7 @@ class SessionControllerTest {
             root,
             ScriptedProvider(
                 retrievalPlan(),
-                """{"summary":"authorized","operations":[{"kind":"create","path":"TeamCode/Agent.java","expectedAbsent":true,"content":"class Agent {}\n","reason":"requested","citations":[]}]}"""
+                """{"summary":"authorized","operations":[{"kind":"create","path":"TeamCode/Agent.java","expectedAbsent":true,"content":"class Agent {}\n","reason":"requested","citations":["CODE:C1"]}]}"""
             )
         ) { repository ->
             GitBranchState.Named(repository.toRealPath(),currentBranch)
@@ -185,7 +185,7 @@ class SessionControllerTest {
         var currentBranch="team-work"
         val provider=ScriptedProvider(
             retrievalPlan(),
-            """{"summary":"late","operations":[{"kind":"create","path":"TeamCode/Late.java","expectedAbsent":true,"content":"class Late {}\n","reason":"requested","citations":[]}]}"""
+            """{"summary":"late","operations":[{"kind":"create","path":"TeamCode/Late.java","expectedAbsent":true,"content":"class Late {}\n","reason":"requested","citations":["CODE:C1"]}]}"""
         ).also { scripted ->
             scripted.beforeResponse={ responseNumber ->
                 if (responseNumber==2) currentBranch="other-work"
@@ -209,7 +209,7 @@ class SessionControllerTest {
         var detached=false
         val provider=ScriptedProvider(
             retrievalPlan(),
-            """{"summary":"guarded","operations":[{"kind":"create","path":"TeamCode/Guarded.java","expectedAbsent":true,"content":"class Guarded {}\n","reason":"requested","citations":[]}]}"""
+            """{"summary":"guarded","operations":[{"kind":"create","path":"TeamCode/Guarded.java","expectedAbsent":true,"content":"class Guarded {}\n","reason":"requested","citations":["CODE:C1"]}]}"""
         )
         val fixture=fixture(
             root,provider,
@@ -325,11 +325,36 @@ class SessionControllerTest {
         assertTrue(fixture.controller.changes().isEmpty())
     }
 
+    @Test
+    fun `undo remains successful with a generic warning when index refresh fails`(@TempDir root:Path) {
+        val fixture=fixture(
+            root,
+            ScriptedProvider(
+                retrievalPlan(),
+                """{"summary":"authorized","operations":[{"kind":"create","path":"TeamCode/Agent.java","expectedAbsent":true,"content":"class Agent {}\n","reason":"requested","citations":["CODE:C1"]}]}"""
+            ),
+            historyIndexRefresher={ throw IOException("sensitive index detail") }
+        )
+        assertNull(fixture.controller.setMode(AgentMode.EDIT))
+        assertTrue(fixture.controller.submit("Create Agent") is EditResult)
+
+        val result=fixture.controller.undo()
+
+        assertTrue(result is HistoryAppliedResult)
+        result as HistoryAppliedResult
+        assertTrue(result.result.succeeded)
+        assertEquals(setOf("TeamCode/Agent.java"),result.result.changedPaths)
+        assertEquals(listOf("Repository index refresh failed after files changed"),result.warnings)
+        assertTrue(Files.notExists(fixture.repository.resolve("TeamCode/Agent.java")))
+        assertTrue(fixture.controller.changes().isEmpty())
+    }
+
     private fun fixture(
         root:Path,
         provider:ScriptedProvider,
         beforeMutation:(Path,Int)->Unit={ _,_-> },
         beforeWrite:(Path,Int)->Unit={ _,_-> },
+        historyIndexRefresher:((Set<String>)->Unit)?=null,
         branchInspector:(Path)->GitBranchState={ repository ->
             GitBranchState.Named(repository.toRealPath(),"team-work")
         }
@@ -344,14 +369,20 @@ class SessionControllerTest {
         val ask=AskAgent(
             RetrievalPlanner(provider),contextRetriever,AnswerGenerator(provider,index),conversation,"supported FTC repository"
         )
-        val engine=FileEditEngine(repository,beforeMutation,beforeWrite)
+        val engine=FileEditEngine(repository,beforeMutation=beforeMutation,beforeWrite=beforeWrite)
         val history=EditHistory(repository,engine)
         val edit=EditAgent(
             RetrievalPlanner(provider),contextRetriever,provider,index,engine,history,conversation,"supported FTC repository"
         )
         return Fixture(
             repository,provider,
-            SessionController(ask,edit,history,repository,index) { branchInspector(repository) }
+            SessionController(
+                ask,edit,history,repository,index,
+                branchInspector={ branchInspector(repository) },
+                indexRefresher={ paths->
+                    if (historyIndexRefresher!=null) historyIndexRefresher(paths) else index.refresh(paths)
+                }
+            )
         )
     }
 
@@ -359,7 +390,7 @@ class SessionControllerTest {
         """{"concepts":["Drive"],"symbols":[],"pathGlobs":["TeamCode/**"],"ruleTopics":[],"guideTopics":[]}"""
 
     private fun twoCreatesPlan()=
-        """{"summary":"two files","operations":[{"kind":"create","path":"TeamCode/First.java","expectedAbsent":true,"content":"class First {}\n","reason":"requested","citations":[]},{"kind":"create","path":"TeamCode/Second.java","expectedAbsent":true,"content":"class Second {}\n","reason":"requested","citations":[]}]}"""
+        """{"summary":"two files","operations":[{"kind":"create","path":"TeamCode/First.java","expectedAbsent":true,"content":"class First {}\n","reason":"requested","citations":["CODE:C1"]},{"kind":"create","path":"TeamCode/Second.java","expectedAbsent":true,"content":"class Second {}\n","reason":"requested","citations":["CODE:C1"]}]}"""
 
     private data class Fixture(
         val repository:Path,val provider:ScriptedProvider,val controller:SessionController

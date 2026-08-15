@@ -13,6 +13,7 @@ object EditPlanParser {
         val summary=nonBlankString(node,"summary","edit plan")
         val operationNodes=node["operations"]
         require(operationNodes.isArray) { "operations must be an array" }
+        require(!operationNodes.isEmpty) { "operations must not be empty" }
         require(operationNodes.size()<=MAX_OPERATIONS) { "operations must contain at most $MAX_OPERATIONS items" }
         val destinations=mutableSetOf<String>()
         val operations=operationNodes.mapIndexed { index,operationNode ->
@@ -120,6 +121,8 @@ object EditPlanParser {
 
     private fun citations(node:JsonNode,name:String):List<String> {
         val values=ModelJson.stringArray(node["citations"],"$name.citations")
+        require(values.isNotEmpty()) { "$name.citations must not be empty" }
+        require(values.all(String::isNotBlank)) { "$name.citations must contain non-blank IDs" }
         require(values.size<=MAX_CITATIONS) { "$name.citations must contain at most $MAX_CITATIONS items" }
         return values
     }

@@ -2,6 +2,7 @@ package org.ftckb.cli
 
 import java.io.BufferedReader
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.io.PrintStream
 import java.io.StringReader
 import java.nio.file.Files
@@ -9,6 +10,9 @@ import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import org.eclipse.jgit.api.Git
+import org.eclipse.jgit.lib.FileMode
+import org.eclipse.jgit.revwalk.RevWalk
+import org.eclipse.jgit.treewalk.TreeWalk
 import org.ftckb.model.ModelMessage
 import org.ftckb.model.ModelProvider
 import org.ftckb.model.ModelRequest
@@ -124,6 +128,113 @@ class EditReplAcceptanceTest {
     }
 
     @Test
+    fun `commit preserves executable move provenance when core filemode is disabled`(@TempDir root:Path) {
+        val repository=copyFixture(root.resolve("executable-move"))
+        val source=repository.resolve(VISION_PATH)
+        assertTrue(source.toFile().setExecutable(true,false))
+        val git=initializeRepository(repository)
+        git.repository.config.apply {
+            setBoolean("core",null,"filemode",false)
+            save()
+        }
+        val destination=VISION_PATH.substringBeforeLast('/')+"/MovedVision.java"
+        val provider=MoveEditProvider(sha256(Files.readAllBytes(source)),VISION_PATH,destination)
+        val config=writeConfig(root.resolve("config.yaml"))
+        val output=ByteArrayOutputStream()
+
+        val code=ProductionChatLauncher(
+            environment={ "fixture-secret" },providerCreator={ _,_ -> provider }
+        ).run(
+            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config),
+            BufferedReader(StringReader("/mode edit\nmove Vision\n/commit\nyes\n/exit\n")),
+            PrintStream(output)
+        )
+
+        assertEquals(0,code)
+        assertFalse(Files.exists(source))
+        assertTrue(Files.isExecutable(repository.resolve(destination)))
+        RevWalk(git.repository).use { walk->
+            val commit=walk.parseCommit(git.repository.resolve("HEAD"))
+            assertEquals(null,TreeWalk.forPath(git.repository,VISION_PATH,commit.tree))
+            TreeWalk.forPath(git.repository,destination,commit.tree).use { tree->
+                assertEquals(FileMode.EXECUTABLE_FILE,requireNotNull(tree).getFileMode(0))
+            }
+        }
+        assertTrue(output.toString().contains("commit="),output.toString())
+        git.close()
+    }
+
+    @Test
+    fun `first-touch chmod between Git inspection and edit is conservatively dirty`(@TempDir root:Path) {
+        val repository=copyFixture(root.resolve("first-touch-mode-race"))
+        val git=initializeRepository(repository)
+        val source=repository.resolve(VISION_PATH)
+        val baseline=Files.readString(source)
+        assertFalse(Files.isExecutable(source))
+        var injectRace=true
+        val engine=org.ftckb.agent.edit.FileEditEngine(repository,beforeVerification={
+            if (injectRace) {
+                injectRace=false
+                assertTrue(source.toFile().setExecutable(true,false))
+            }
+        })
+        val history=org.ftckb.agent.edit.EditHistory(repository,engine,repository)
+        val plan=org.ftckb.agent.edit.EditPlan("edit",listOf(
+            org.ftckb.agent.edit.ReplaceText(
+                VISION_PATH,sha256(baseline.toByteArray()),"consume(result);",
+                "if(result!=null) consume(result);","guard",emptyList()
+            )
+        ))
+
+        history.applyAndRecord(engine.preview(plan))
+
+        assertTrue(Files.isExecutable(source))
+        assertEquals(setOf(VISION_PATH),history.firstTouchDirtyPaths)
+        git.close()
+    }
+
+    @Test
+    fun `commit preserves executable provenance after undoing a move and editing again`(@TempDir root:Path) {
+        val repository=copyFixture(root.resolve("executable-move-undo"))
+        val source=repository.resolve(VISION_PATH)
+        assertTrue(source.toFile().setExecutable(true,false))
+        val git=initializeRepository(repository)
+        git.repository.config.apply {
+            setBoolean("core",null,"filemode",false)
+            save()
+        }
+        val baseline=Files.readString(source)
+        val destination=VISION_PATH.substringBeforeLast('/')+"/MovedVision.java"
+        val provider=MoveThenEditProvider(sha256(baseline.toByteArray()),VISION_PATH,destination)
+        val config=writeConfig(root.resolve("config.yaml"))
+        val output=ByteArrayOutputStream()
+
+        val code=ProductionChatLauncher(
+            environment={ "fixture-secret" },providerCreator={ _,_ -> provider }
+        ).run(
+            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config),
+            BufferedReader(StringReader(
+                "/mode edit\nmove Vision\n/undo\nguard Vision\n/commit\nyes\n/exit\n"
+            )),
+            PrintStream(output)
+        )
+
+        assertEquals(0,code)
+        assertTrue(Files.exists(source))
+        assertTrue(Files.notExists(repository.resolve(destination)))
+        assertTrue(Files.isExecutable(source))
+        RevWalk(git.repository).use { walk->
+            val commit=walk.parseCommit(git.repository.resolve("HEAD"))
+            TreeWalk.forPath(git.repository,VISION_PATH,commit.tree).use { tree->
+                assertEquals(FileMode.EXECUTABLE_FILE,requireNotNull(tree).getFileMode(0))
+            }
+        }
+        assertTrue(output.toString().contains("undo=ok"),output.toString())
+        assertTrue(output.toString().contains("commit="),output.toString())
+        git.close()
+    }
+
+    @Test
     fun `commit refuses concurrent IDE bytes after showing the Agent diff`(@TempDir root:Path) {
         val repository=copyFixture(root.resolve("repository"))
         val git=initializeRepository(repository)
@@ -162,6 +273,104 @@ class EditReplAcceptanceTest {
         assertEquals(1,git.log().call().count())
         assertEquals(ideText,Files.readString(source))
         assertTrue(output.toString().contains("commit refused:"))
+        git.close()
+    }
+
+    @Test
+    fun `commit refuses a path made dirty after startup but before its first Agent touch`(@TempDir root:Path) {
+        val repository=copyFixture(root.resolve("first-touch-dirty"))
+        val git=initializeRepository(repository)
+        val source=repository.resolve(VISION_PATH)
+        val baseline=Files.readString(source)
+        val ideText=baseline+"// IDE change after startup\n"
+        val provider=EditProvider(
+            sha256(ideText.toByteArray()),"fixture-secret",
+            citation="RULE:R1",ruleTopic="limelight-result-validity"
+        )
+        val config=writeConfig(root.resolve("config.yaml"))
+        val output=ByteArrayOutputStream()
+        val input=object:BufferedReader(StringReader("")) {
+            private var next=0
+
+            override fun readLine():String?=when (next++) {
+                0 -> "/mode edit"
+                1 -> {
+                    Files.writeString(source,ideText)
+                    "guard Vision"
+                }
+                2 -> "/undo"
+                3 -> "guard Vision again"
+                4 -> "/commit"
+                5 -> "/discard"
+                6 -> "/exit"
+                else -> null
+            }
+        }
+
+        val code=ProductionChatLauncher(
+            environment={ "fixture-secret" },providerCreator={ _,_ -> provider }
+        ).run(
+            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config),
+            input,PrintStream(output)
+        )
+
+        assertEquals(0,code)
+        assertEquals(ideText,Files.readString(source))
+        assertEquals(1,git.log().call().count())
+        val text=output.toString()
+        assertEquals(1,text.lineSequence().count { it=="undo=ok" })
+        assertEquals(1,text.lineSequence().count { it=="discard=ok" })
+        assertTrue(text.contains("commit refused: Agent-touched paths were dirty at first touch"),text)
+        assertTrue(text.contains("first-touch-dirty paths:\n- $VISION_PATH"))
+        assertFalse(text.contains("type yes to create this local commit"))
+        git.close()
+    }
+
+    @Test
+    fun `commit refuses an ignored untracked path that existed at first Agent touch`(@TempDir root:Path) {
+        val repository=copyFixture(root.resolve("ignored-first-touch"))
+        val ignoredPath=VISION_PATH.substringBeforeLast('/')+"/IgnoredVision.java"
+        Files.writeString(repository.resolve(".gitignore"),"/$ignoredPath\n")
+        val git=initializeRepository(repository)
+        val source=repository.resolve(ignoredPath)
+        val ideText="class IgnoredVision { void guard(){ consume(result); } }\n"
+        val provider=EditProvider(
+            sha256(ideText.toByteArray()),"fixture-secret",path=ignoredPath,
+            citation="RULE:R1",ruleTopic="limelight-result-validity"
+        )
+        val config=writeConfig(root.resolve("config.yaml"))
+        val output=ByteArrayOutputStream()
+        val input=object:BufferedReader(StringReader("")) {
+            private var next=0
+
+            override fun readLine():String?=when (next++) {
+                0 -> "/mode edit"
+                1 -> {
+                    Files.writeString(source,ideText)
+                    "guard ignored Vision"
+                }
+                2 -> "/commit"
+                3 -> "/discard"
+                4 -> "/exit"
+                else -> null
+            }
+        }
+
+        val code=ProductionChatLauncher(
+            environment={ "fixture-secret" },providerCreator={ _,_ -> provider }
+        ).run(
+            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config),
+            input,PrintStream(output)
+        )
+
+        assertEquals(0,code)
+        assertEquals(ideText,Files.readString(source))
+        assertEquals(1,git.log().call().count())
+        val text=output.toString()
+        assertTrue(text.contains("commit refused: Agent-touched paths were dirty at first touch"),text)
+        assertTrue(text.contains("first-touch-dirty paths:\n- $ignoredPath"))
+        assertFalse(text.contains("type yes to create this local commit"))
+        assertTrue(text.contains("discard=ok"))
         git.close()
     }
 
@@ -364,6 +573,43 @@ class EditReplAcceptanceTest {
     }
 
     @Test
+    fun `undo and discard stay successful when their index refresh fails`(@TempDir root:Path) {
+        val repository=copyFixture(root.resolve("history-refresh-warning"))
+        val git=initializeRepository(repository)
+        val source=repository.resolve(VISION_PATH)
+        val baseline=Files.readString(source)
+        val provider=EditProvider(
+            sha256(baseline.toByteArray()),"fixture-secret",
+            citation="RULE:R1",ruleTopic="limelight-result-validity"
+        )
+        val config=writeConfig(root.resolve("config.yaml"))
+        val output=ByteArrayOutputStream()
+
+        val code=ProductionChatLauncher(
+            environment={ "fixture-secret" },
+            providerCreator={ _,_ -> provider },
+            historyIndexRefresher={ { throw IOException("sensitive refresh detail") } }
+        ).run(
+            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config),
+            BufferedReader(StringReader("/mode edit\nguard Vision\n/undo\nguard Vision again\n/discard\n/exit\n")),
+            PrintStream(output)
+        )
+
+        assertEquals(0,code)
+        assertEquals(baseline,Files.readString(source))
+        val text=output.toString()
+        assertEquals(1,text.lineSequence().count { it=="undo=ok" })
+        assertEquals(1,text.lineSequence().count { it=="discard=ok" })
+        assertEquals(2,text.lineSequence().count { it=="warnings:" },text)
+        assertEquals(2,text.lineSequence().count {
+            it=="- Repository index refresh failed after files changed"
+        })
+        assertFalse(text.contains("request did not complete"))
+        assertFalse(text.contains("sensitive refresh detail"))
+        git.close()
+    }
+
+    @Test
     fun `project level edits print a visible warning and Agent only diff`(@TempDir root:Path) {
         val repository=copyFixture(root.resolve("repository"))
         val git=initializeRepository(repository)
@@ -476,7 +722,9 @@ class EditReplAcceptanceTest {
         private val secret:String,
         private val path:String=VISION_PATH,
         private val oldText:String="consume(result);",
-        private val newText:String="if(result!=null && result.isValid()) consume(result);"
+        private val newText:String="if(result!=null && result.isValid()) consume(result);",
+        private val citation:String="CODE:C1",
+        private val ruleTopic:String?=null
     ):ModelProvider {
         var editPlanCount=0
             private set
@@ -490,7 +738,7 @@ class EditReplAcceptanceTest {
                       "concepts":["Vision"],
                       "symbols":["Vision"],
                       "pathGlobs":["$path"],
-                      "ruleTopics":[],
+                      "ruleTopics":[${ruleTopic?.let(::jsonString)?:""}],
                       "guideTopics":[]
                     }
                 """.trimIndent())
@@ -506,7 +754,7 @@ class EditReplAcceptanceTest {
                             "oldText":${jsonString(oldText)},
                             "newText":${jsonString(newText)},
                             "reason":"Avoid using an invalid result $secret",
-                            "citations":["CODE:C1"]
+                            "citations":["$citation"]
                           }]
                         }
                     """.trimIndent())
@@ -528,6 +776,97 @@ class EditReplAcceptanceTest {
                 }
             }
             append('\"')
+        }
+    }
+
+    private class MoveEditProvider(
+        private val expectedSha:String,
+        private val source:String,
+        private val destination:String
+    ):ModelProvider {
+        override fun complete(request:ModelRequest):ModelResponse {
+            val system=request.messages.first().content
+            return when {
+                system.startsWith("Return exactly one JSON object") -> ModelResponse("""
+                    {
+                      "concepts":["Vision"],
+                      "symbols":["Vision"],
+                      "pathGlobs":["$source"],
+                      "ruleTopics":["limelight-result-validity"],
+                      "guideTopics":[]
+                    }
+                """.trimIndent())
+                system.startsWith("Return exactly one JSON edit plan") -> ModelResponse("""
+                    {
+                      "summary":"Move the executable Vision source.",
+                      "operations":[{
+                        "kind":"move",
+                        "sourcePath":"$source",
+                        "destinationPath":"$destination",
+                        "expectedSha256":"$expectedSha",
+                        "destinationExpectedAbsent":true,
+                        "reason":"Move the requested source.",
+                        "citations":["RULE:R1"]
+                      }]
+                    }
+                """.trimIndent())
+                else -> error("unexpected fake provider request")
+            }
+        }
+    }
+
+    private class MoveThenEditProvider(
+        private val expectedSha:String,
+        private val source:String,
+        private val destination:String
+    ):ModelProvider {
+        private var editPlanCount=0
+
+        override fun complete(request:ModelRequest):ModelResponse {
+            val system=request.messages.first().content
+            return when {
+                system.startsWith("Return exactly one JSON object") -> ModelResponse("""
+                    {
+                      "concepts":["Vision"],
+                      "symbols":["Vision"],
+                      "pathGlobs":["$source"],
+                      "ruleTopics":["limelight-result-validity"],
+                      "guideTopics":[]
+                    }
+                """.trimIndent())
+                system.startsWith("Return exactly one JSON edit plan") -> when (editPlanCount++) {
+                    0 -> ModelResponse("""
+                        {
+                          "summary":"Move the executable Vision source.",
+                          "operations":[{
+                            "kind":"move",
+                            "sourcePath":"$source",
+                            "destinationPath":"$destination",
+                            "expectedSha256":"$expectedSha",
+                            "destinationExpectedAbsent":true,
+                            "reason":"Move the requested source.",
+                            "citations":["RULE:R1"]
+                          }]
+                        }
+                    """.trimIndent())
+                    1 -> ModelResponse("""
+                        {
+                          "summary":"Guard the restored executable Vision source.",
+                          "operations":[{
+                            "kind":"replace",
+                            "path":"$source",
+                            "expectedSha256":"$expectedSha",
+                            "oldText":"consume(result);",
+                            "newText":"if(result!=null && result.isValid()) consume(result);",
+                            "reason":"Require a valid result.",
+                            "citations":["RULE:R1"]
+                          }]
+                        }
+                    """.trimIndent())
+                    else -> error("unexpected edit-plan request")
+                }
+                else -> error("unexpected fake provider request")
+            }
         }
     }
 

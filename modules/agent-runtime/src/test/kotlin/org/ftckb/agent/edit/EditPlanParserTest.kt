@@ -79,6 +79,13 @@ class EditPlanParserTest {
     }
 
     @Test
+    fun `rejects empty operations and operations without a nonblank citation`() {
+        assertInvalid("""{"summary":"No changes.","operations":[]}""")
+        assertInvalid(plan(create("TeamCode/Uncited.java",citations="")))
+        assertInvalid(plan(create("TeamCode/Blank.java",citations="\" \"")))
+    }
+
+    @Test
     fun `rejects unsafe and oversized paths`() {
         listOf(
             "/tmp/Test.java",
@@ -105,20 +112,20 @@ class EditPlanParserTest {
         suffix:String="",
         expectedAbsent:String="true",
         reason:String="Create the file.",
-        citations:String=""
+        citations:String="\"CODE:C1\""
     )="""{"kind":"create","path":"$path","expectedAbsent":$expectedAbsent,"content":"new",
         "reason":"$reason","citations":[$citations]$suffix}""".replace("\n","")
 
     private fun replace(path:String,hash:String=HASH)=
         """{"kind":"replace","path":"$path","expectedSha256":"$hash","oldText":"old","newText":"new",
-        "reason":"Replace it.","citations":[]}""".replace("\n","")
+        "reason":"Replace it.","citations":["CODE:C1"]}""".replace("\n","")
 
     private fun delete(path:String)=
-        """{"kind":"delete","path":"$path","expectedSha256":"$HASH","reason":"Delete it.","citations":[]}"""
+        """{"kind":"delete","path":"$path","expectedSha256":"$HASH","reason":"Delete it.","citations":["CODE:C1"]}"""
 
     private fun move(path:String,destination:String,expectedAbsent:String="true")=
         """{"kind":"move","sourcePath":"$path","destinationPath":"$destination","expectedSha256":"$HASH",
-        "destinationExpectedAbsent":$expectedAbsent,"reason":"Move it.","citations":[]}""".replace("\n","")
+        "destinationExpectedAbsent":$expectedAbsent,"reason":"Move it.","citations":["CODE:C1"]}""".replace("\n","")
 
     private companion object {
         const val HASH="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"

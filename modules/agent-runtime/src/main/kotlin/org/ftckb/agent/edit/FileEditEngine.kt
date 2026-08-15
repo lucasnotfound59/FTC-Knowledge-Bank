@@ -33,17 +33,32 @@ data class PlannedFileChange internal constructor(
     val before:FileSnapshot,
     val after:FileSnapshot,
     val scope:EditScope,
-    internal val permissionSourcePath:String?
+    internal val permissionSourcePath:String?,
+    val expectedExecutable:Boolean?
 ) {
     constructor(path:String,before:FileSnapshot,after:FileSnapshot,scope:EditScope):
-        this(path,before,after,scope,null)
+        this(path,before,after,scope,null,null)
 }
 
-data class ValidatedEditBatch(val summary:String,val changes:List<PlannedFileChange>)
+data class ValidatedEditBatch(
+    val summary:String,
+    val changes:List<PlannedFileChange>,
+    internal val desiredPermissions:Map<String,Set<PosixFilePermission>?> =emptyMap(),
+    internal val expectedPermissions:Map<String,Set<PosixFilePermission>?> =emptyMap()
+)
 
-data class AppliedEditBatch(val summary:String,val changes:List<PlannedFileChange>)
+data class AppliedEditBatch(
+    val summary:String,
+    val changes:List<PlannedFileChange>,
+    internal val beforePermissions:Map<String,Set<PosixFilePermission>?> =emptyMap(),
+    internal val afterPermissions:Map<String,Set<PosixFilePermission>?> =emptyMap(),
+    internal val beforeExecutable:Map<String,Boolean?> =emptyMap(),
+    internal val afterExecutable:Map<String,Boolean?> =emptyMap()
+)
 
 internal class EditContentRaceException(val path:String):IOException("edit content changed during apply: $path")
+
+internal class EditPermissionRaceException(val path:String):IOException("edit permission changed during apply: $path")
 
 internal fun readSnapshotOrMissing(path:Path,readExisting:(Path)->FileSnapshot):FileSnapshot=try {
     readExisting(path)
@@ -71,6 +86,9 @@ class FileEditApplyException(
 
 class FileEditEngine(
     root:Path,
+    private val beforeVerification:()->Unit={},
+    private val afterMutation:(Path,Int)->Unit={ _,_-> },
+    private val beforeRollbackReplace:(Path)->Unit={},
     private val beforeMutation:(Path,Int)->Unit={ _,_-> },
     private val beforeWrite:(Path,Int)->Unit={ _,_-> }
 ) {
@@ -144,9 +162,11 @@ class FileEditEngine(
             val after=afterState.snapshot
             if (before==after) null else PlannedFileChange(
                 path,before,after,scopes.getValue(path),
-                if (after is FileSnapshot.Text) afterState.permissionSourcePath else null
+                if (after is FileSnapshot.Text) afterState.permissionSourcePath else null,
+                null
             )
         }
+        require(changes.isNotEmpty()) { "edit plan produces no file changes" }
         validateLimits(changes)
         return ValidatedEditBatch(plan.summary,Collections.unmodifiableList(java.util.ArrayList(changes)))
     }
@@ -155,6 +175,15 @@ class FileEditEngine(
         val changes=Collections.unmodifiableList(java.util.ArrayList(batch.changes))
         require(changes.map { it.path }.toSet().size==changes.size) { "edit batch contains duplicate files" }
         require(changes.size<=MAX_FILES) { "edit batch contains too many files" }
+        require(batch.desiredPermissions.keys.all { desired->changes.any { it.path==desired } }) {
+            "edit permission override contains an unrelated path"
+        }
+        require(batch.expectedPermissions.keys.all { expected->changes.any { it.path==expected } }) {
+            "edit permission expectation contains an unrelated path"
+        }
+        val desiredPermissions=immutablePermissionMap(batch.desiredPermissions)
+        val expectedPermissions=immutablePermissionMap(batch.expectedPermissions)
+        beforeVerification()
         val resolved=changes.associateWith { change -> paths.resolve(change.path) }
         resolved.forEach { (change,path) ->
             require(path.relative==change.path) { "edit path is not canonical: ${change.path}" }
@@ -175,27 +204,48 @@ class FileEditEngine(
         val originalPermissions=verified.mapValues { (change,path) ->
             if (change.before is FileSnapshot.Text) path.permissions() else null
         }
-        val writePermissions=permissionMap(changes,originalPermissions)
+        val originalExecutable=verified.mapValues { (change,path)->
+            if (change.before is FileSnapshot.Text) path.executable(originalPermissions[change]) else null
+        }
+        try {
+            changes.forEach { change->
+                if (expectedPermissions.containsKey(change.path)) {
+                    checkExpectedPermissions(change,originalPermissions[change],expectedPermissions[change.path])
+                }
+            }
+        } catch (failure:EditPermissionRaceException) {
+            throw FileEditApplyException(failure,emptyList())
+        }
+        val writePermissions=permissionMap(changes,originalPermissions,desiredPermissions)
         val applied=mutableListOf<PlannedFileChange>()
+        val resultingPermissions=linkedMapOf<PlannedFileChange,Set<PosixFilePermission>?>()
+        val resultingExecutable=linkedMapOf<PlannedFileChange,Boolean?>()
         val temporaryFiles=mutableMapOf<PlannedFileChange,Path>()
         try {
             changes.forEachIndexed { index,change ->
                 val path=verified.getValue(change)
                 path.verifyBoundary()
                 path.requireSnapshot(change.before)
+                path.requirePermissions(change,originalPermissions[change])
                 beforeWrite(path.absolute,index+1)
                 path.verifyBoundary()
                 path.requireSnapshot(change.before)
+                path.requirePermissions(change,originalPermissions[change])
                 val after=change.after
                 if (after is FileSnapshot.Text) {
                     temporaryFiles[change]=path.prepare(after,writePermissions[change])
                 }
                 path.verifyBoundary()
                 path.requireSnapshot(change.before)
+                path.requirePermissions(change,originalPermissions[change])
                 beforeMutation(path.absolute,index+1)
                 path.verifyBoundary()
                 path.requireSnapshot(change.before)
+                path.requirePermissions(change,originalPermissions[change])
                 authorizationGuard()
+                path.verifyBoundary()
+                path.requireSnapshot(change.before)
+                path.requirePermissions(change,originalPermissions[change])
                 when (after) {
                     FileSnapshot.Missing -> Files.delete(path.absolute)
                     is FileSnapshot.Text -> {
@@ -206,20 +256,38 @@ class FileEditEngine(
                     }
                 }
                 applied+=change
+                afterMutation(path.absolute,index+1)
                 path.verifyBoundary()
                 path.requireSnapshot(after)
+                resultingPermissions[change]=path.permissionsAfter(change,writePermissions[change],after)
+                resultingExecutable[change]=if (after is FileSnapshot.Text) {
+                    path.executable(resultingPermissions[change])
+                } else null
             }
         } catch (failure:Throwable) {
-            val rollbackFailures=rollback(applied,verified,originalPermissions)
+            val rollbackFailures=rollback(applied,verified,originalPermissions,writePermissions)
             val cleanupFailures=cleanup(temporaryFiles,verified)
             throw FileEditApplyException(failure,rollbackFailures,cleanupFailures)
         }
-        return AppliedEditBatch(batch.summary,changes)
+        val committedChanges=changes.map { change->
+            change.copy(expectedExecutable=if (change.after is FileSnapshot.Text) {
+                resultingExecutable[change]==true
+            } else null)
+        }
+        return AppliedEditBatch(
+            batch.summary,
+            Collections.unmodifiableList(java.util.ArrayList(committedChanges)),
+            immutablePermissionMap(changes.associate { it.path to originalPermissions[it] }),
+            immutablePermissionMap(changes.associate { it.path to resultingPermissions[it] }),
+            Collections.unmodifiableMap(changes.associate { it.path to originalExecutable[it] }),
+            Collections.unmodifiableMap(changes.associate { it.path to resultingExecutable[it] })
+        )
     }
 
     private fun permissionMap(
         changes:List<PlannedFileChange>,
-        originalPermissions:Map<PlannedFileChange,Set<PosixFilePermission>?>
+        originalPermissions:Map<PlannedFileChange,Set<PosixFilePermission>?>,
+        desiredPermissions:Map<String,Set<PosixFilePermission>?>
     ):Map<PlannedFileChange,Set<PosixFilePermission>?> {
         val changesByPath=changes.associateBy(PlannedFileChange::path)
         val permissionOrigins=changes.associateWith { change ->
@@ -230,6 +298,9 @@ class FileEditEngine(
         val permissionSourcePaths=permissionOrigins.values.filterNotNull()
         require(permissionSourcePaths.toSet().size==permissionSourcePaths.size) { "edit batch reuses a permission source" }
         return changes.associateWith { change ->
+            if (desiredPermissions.containsKey(change.path)) {
+                return@associateWith desiredPermissions[change.path]
+            }
             permissionOrigins.getValue(change)?.let { sourcePath ->
                 if (sourcePath==change.path) {
                     require(change.before is FileSnapshot.Text) { "edit permission provenance is invalid: ${change.path}" }
@@ -245,15 +316,32 @@ class FileEditEngine(
         }
     }
 
+    private fun immutablePermissionMap(
+        permissions:Map<String,Set<PosixFilePermission>?>
+    ):Map<String,Set<PosixFilePermission>?> {
+        return Collections.unmodifiableMap(
+            permissions.mapValues { (_,value)->value?.let { Collections.unmodifiableSet(HashSet(it)) } }
+        )
+    }
+
+    private fun Set<PosixFilePermission>?.isExecutable():Boolean=this?.any { permission->
+        permission==PosixFilePermission.OWNER_EXECUTE||
+            permission==PosixFilePermission.GROUP_EXECUTE||
+            permission==PosixFilePermission.OTHERS_EXECUTE
+    }==true
+
     private fun rollback(
         applied:List<PlannedFileChange>,
         verified:Map<PlannedFileChange,VerifiedEditPath>,
-        permissions:Map<PlannedFileChange,Set<PosixFilePermission>?>
+        beforePermissions:Map<PlannedFileChange,Set<PosixFilePermission>?>,
+        afterPermissions:Map<PlannedFileChange,Set<PosixFilePermission>?>
     ):MutableList<Throwable> {
         val failures=mutableListOf<Throwable>()
         applied.asReversed().forEach { change ->
             try {
-                verified.getValue(change).rollback(change,permissions[change])
+                verified.getValue(change).rollback(
+                    change,beforePermissions[change],afterPermissions[change]
+                )
             } catch (failure:Throwable) {
                 failures+=failure
             }
@@ -278,6 +366,37 @@ class FileEditEngine(
 
     private fun VerifiedEditPath.requireSnapshot(expected:FileSnapshot) {
         if (snapshot()!=expected) throw EditContentRaceException(resolved.relative)
+    }
+
+    private fun VerifiedEditPath.requirePermissions(
+        change:PlannedFileChange,
+        expected:Set<PosixFilePermission>?,
+        snapshot:FileSnapshot=change.before
+    ) {
+        if (snapshot is FileSnapshot.Text && expected!=null && permissions()!=expected) {
+            throw EditPermissionRaceException(change.path)
+        }
+    }
+
+    private fun VerifiedEditPath.permissionsAfter(
+        change:PlannedFileChange,
+        expected:Set<PosixFilePermission>?,
+        snapshot:FileSnapshot
+    ):Set<PosixFilePermission>? {
+        if (snapshot !is FileSnapshot.Text) return null
+        val actual=permissions()
+        if (expected!=null && actual!=expected) throw EditPermissionRaceException(change.path)
+        return actual
+    }
+
+    private fun checkExpectedPermissions(
+        change:PlannedFileChange,
+        actual:Set<PosixFilePermission>?,
+        expected:Set<PosixFilePermission>?
+    ) {
+        if (change.before is FileSnapshot.Text && expected!=null && actual!=expected) {
+            throw EditPermissionRaceException(change.path)
+        }
     }
 
     private data class DirectoryIdentity(val path:Path,val fileKey:Any)
@@ -309,24 +428,52 @@ class FileEditEngine(
 
         fun snapshot():FileSnapshot=readSnapshot(absolute)
 
-        fun permissions():Set<PosixFilePermission>?=try {
-            Collections.unmodifiableSet(HashSet(Files.getPosixFilePermissions(absolute,LinkOption.NOFOLLOW_LINKS)))
+        fun permissions():Set<PosixFilePermission>?=permissionsAt(absolute)
+
+        private fun permissionsAt(path:Path):Set<PosixFilePermission>?=try {
+            Collections.unmodifiableSet(HashSet(Files.getPosixFilePermissions(path,LinkOption.NOFOLLOW_LINKS)))
         } catch (_:UnsupportedOperationException) {
             null
         }
 
+        fun executable(permissions:Set<PosixFilePermission>?):Boolean=
+            permissions?.isExecutable() ?: Files.isExecutable(absolute)
+
         fun prepare(snapshot:FileSnapshot.Text,permissions:Set<PosixFilePermission>?):Path=
             prepareAt(absolute,snapshot,permissions,::verifyBoundary)
 
-        fun rollback(change:PlannedFileChange,permissions:Set<PosixFilePermission>?) {
+        fun rollback(
+            change:PlannedFileChange,
+            beforePermissions:Set<PosixFilePermission>?,
+            agentAfterPermissions:Set<PosixFilePermission>?
+        ) {
             val target=locateCapturedTarget()
-            require(readSnapshot(target)==change.after) { "edit result changed before rollback: ${change.path}" }
+            val observedSnapshot=readSnapshot(target)
+            require(observedSnapshot==change.after) { "edit result changed before rollback: ${change.path}" }
             val verify={ require(locateCapturedTarget()==target) { "edit directory changed during rollback: ${change.path}" } }
             when (val before=change.before) {
                 FileSnapshot.Missing -> Files.delete(target)
                 is FileSnapshot.Text -> {
-                    val temporary=prepareAt(target,before,permissions,verify)
+                    val observedPermissions=if (change.after is FileSnapshot.Text) {
+                        permissionsAt(target)
+                    } else null
+                    val restorePermissions=if (change.after is FileSnapshot.Text) {
+                        if (agentAfterPermissions!=null && observedPermissions!=agentAfterPermissions) {
+                            observedPermissions
+                        } else beforePermissions
+                    } else beforePermissions
+                    val temporary=prepareAt(target,before,restorePermissions,verify)
                     try {
+                        beforeRollbackReplace(target)
+                        verify()
+                        require(readSnapshot(target)==observedSnapshot) {
+                            "edit result changed during rollback: ${change.path}"
+                        }
+                        if (observedPermissions!=null) {
+                            require(permissionsAt(target)==observedPermissions) {
+                                "edit permission changed during rollback: ${change.path}"
+                            }
+                        }
                         replace(temporary,target)
                     } finally {
                         Files.deleteIfExists(temporary)

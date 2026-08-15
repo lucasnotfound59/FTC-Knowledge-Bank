@@ -36,7 +36,10 @@ class ProductionChatLauncher(
     private val providerCreator:(ProviderProfile,SecretResolver)->ModelProvider={ profile,resolver ->
         ProviderFactory.create(profile,resolver)
     },
-    private val sessionsDirectory:()->Path={ Path.of(System.getProperty("user.home"),".ftckb","sessions") }
+    private val sessionsDirectory:()->Path={ Path.of(System.getProperty("user.home"),".ftckb","sessions") },
+    private val historyIndexRefresher:(RepositoryIndex)->(Set<String>)->Unit={ index->
+        { paths->index.refresh(paths) }
+    }
 ):ChatLauncher {
     override fun run(options:ChatOptions,input:BufferedReader,out:PrintStream):Int {
         val config=try {
@@ -97,12 +100,15 @@ class ProductionChatLauncher(
             summary
         )
         val editEngine=FileEditEngine(snapshot.root)
-        val history=EditHistory(snapshot.root,editEngine)
+        val history=EditHistory(snapshot.root,editEngine,snapshot.root)
         val editAgent=EditAgent(
             retrievalPlanner,contextRetriever,outboundProvider,repositoryIndex,
             editEngine,history,conversation,summary
         )
-        val controller=SessionController(agent,editAgent,history,snapshot.root,repositoryIndex)
+        val controller=SessionController(
+            agent,editAgent,history,snapshot.root,repositoryIndex,
+            indexRefresher=historyIndexRefresher(repositoryIndex)
+        )
         val session=ProductionAskChatSession(
             agent,
             ConversationSaver(profile.name,profile.model),
