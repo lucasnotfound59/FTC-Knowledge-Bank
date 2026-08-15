@@ -105,7 +105,11 @@ class KnowledgeRetriever(
         } catch (_:IOException) {
             throw KnowledgeAccessException()
         }
-        return guides.sortedWith(compareBy({ it.path },{ it.heading }))
+        val headingMatches=guides.filter { section -> terms.any { it in section.heading.lowercase() } }
+        val textOnly=guides.filterNot { section -> section in headingMatches }
+        return (headingMatches+textOnly)
+            .take(MAX_GUIDE_SECTIONS)
+            .sortedWith(compareBy({ it.path },{ it.heading }))
     }
 
     private fun readGuide(path:Path,root:Path):GuideFile? {
@@ -165,6 +169,7 @@ class KnowledgeRetriever(
 
     private companion object {
         const val maxGuideBytes=1_048_576L
+        const val MAX_GUIDE_SECTIONS=2
         val heading=Regex("^#{1,6}\\s+(.+?)\\s*$")
     }
 }

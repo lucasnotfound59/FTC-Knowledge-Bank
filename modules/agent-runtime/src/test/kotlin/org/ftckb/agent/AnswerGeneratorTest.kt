@@ -18,6 +18,7 @@ import org.ftckb.model.ModelRequest
 import org.ftckb.model.ModelResponse
 import org.ftckb.repository.RepositoryIndex
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assumptions.assumeTrue
@@ -262,6 +263,22 @@ class AnswerGeneratorTest {
         RuleStatus.APPROVED,RuleAuthority.SHARED,RuleApplicability(),emptyList(),
         Approval("overall-lead",ApproverRole.OVERALL_SOFTWARE_LEAD,null,Instant.EPOCH)
     )
+
+    @Test
+    fun `answer prompt never hardcodes a concrete citation id`() {
+        val provider=ScriptedProvider(
+            """{"claims":[{"kind":"model_inference","text":"No evidence here.","citations":[]}]}"""
+        )
+
+        AnswerGenerator(provider,RepositoryIndex()).generate(AnswerInput("question",null,ContextPack(emptyList(),0)))
+
+        val system=provider.requests.single().messages.first().content
+        assertTrue(system.startsWith("Answer only as JSON"))
+        assertFalse(system.contains("\"citations\":[\"CODE:C1\"]"))
+        assertTrue(system.contains("Copy citation IDs verbatim"))
+        val user=provider.requests.single().messages.last().content
+        assertTrue(user.contains("Available citation IDs:"))
+    }
 
     private class ScriptedProvider(vararg responses:String):ModelProvider {
         private val queue=ArrayDeque(responses.toList())

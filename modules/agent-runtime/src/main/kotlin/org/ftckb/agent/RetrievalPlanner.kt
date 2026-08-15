@@ -25,6 +25,7 @@ class RetrievalPlanner(private val provider:ModelProvider) {
         listOf(
             ModelMessage(MessageRole.SYSTEM,"""
                 Return exactly one JSON object with the arrays concepts, symbols, pathGlobs, ruleTopics, and guideTopics.
+                symbols must list every concrete class, method, or identifier mentioned in the question; pathGlobs should name likely source files; concepts holds only general topic words; ruleTopics names rule topics relevant to the question.
                 Each array is host-validated. Do not request files or tools.
             """.trimIndent()),
             ModelMessage(MessageRole.USER,buildString {

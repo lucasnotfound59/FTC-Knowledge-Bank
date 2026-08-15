@@ -139,6 +139,19 @@ class RetrievalPlannerTest {
         assertEquals(EvidenceSerialization.payload(context.evidence).length,context.estimatedCharacters)
     }
 
+    @Test
+    fun `planner prompt requires concrete symbols and paths`() {
+        val provider=ScriptedProvider(
+            """{"concepts":[],"symbols":[],"pathGlobs":[],"ruleTopics":[],"guideTopics":[]}"""
+        )
+
+        RetrievalPlanner(provider).plan(input())
+
+        val system=provider.requests.first().messages.first().content
+        assertTrue(system.startsWith("Return exactly one JSON object"))
+        assertTrue(system.contains("symbols must list every concrete class"))
+    }
+
     private fun input(question:String="How does Drive work?",references:Set<String> =emptySet())=
         PlanningInput(question,null,references,"FTC repository")
 
