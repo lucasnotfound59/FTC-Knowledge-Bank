@@ -1,8 +1,10 @@
 package org.ftckb.agent.edit
 
 import java.io.IOException
+import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import java.security.MessageDigest
 import org.ftckb.agent.ContextRetriever
 import org.ftckb.agent.ConversationState
 import org.ftckb.agent.KnowledgeRetriever
@@ -146,6 +148,37 @@ class EditAgentTest {
         assertEquals(3,provider.requests.size)
     }
 
+    @Test
+    fun `history precondition failure cannot occur after a successful write`(@TempDir root:Path) {
+        val repository=repository(root)
+        val file=repository.resolve("TeamCode/Drive.java")
+        val index=RepositoryIndex().also { it.build(repository) }
+        val engine=FileEditEngine(repository)
+        val history=EditHistory(repository,engine)
+        history.applyAndRecord(engine.preview(EditPlan("first",listOf(
+            ReplaceText(
+                "TeamCode/Drive.java",sha256("class Drive {}\n"),
+                "class Drive {}","class Drive { int agentOne; }","first",emptyList()
+            )
+        ))))
+        Files.writeString(file,"class Drive { int ideChange; }\n")
+        val provider=ScriptedProvider(
+            retrievalPlan(),
+            """{"summary":"second","operations":[{"kind":"replace","path":"TeamCode/Drive.java","expectedSha256":"${sha256("class Drive { int ideChange; }\n")}","oldText":"int ideChange","newText":"int agentTwo","reason":"second","citations":[]}]}"""
+        )
+        val agent=EditAgent(
+            RetrievalPlanner(provider),
+            ContextRetriever(index,KnowledgeRetriever(knowledge(root),null,null)),
+            provider,index,engine,history,ConversationState(provider),"supported FTC repository"
+        )
+
+        assertThrows(IllegalArgumentException::class.java) { agent.edit("Apply second batch") }
+
+        assertEquals("class Drive { int ideChange; }\n",Files.readString(file))
+        assertEquals("class Drive { int agentOne; }\n",history.changes().single().after)
+        assertEquals(2,provider.requests.size)
+    }
+
     private fun repository(root:Path):Path=root.resolve("repository").also { repository ->
         Files.createDirectories(repository.resolve("TeamCode"))
         Files.writeString(repository.resolve("TeamCode/Drive.java"),"class Drive {}\n")
@@ -192,6 +225,10 @@ class EditAgentTest {
               - {repository: example/repo, commit: abcdef2, file: Source.java, symbol: Source}
             approval: {approver: lead, role: overall_software_lead, approvedAt: 2026-08-15T00:00:00Z}
     """.trimIndent()
+
+    private fun sha256(value:String):String=MessageDigest.getInstance("SHA-256")
+        .digest(value.toByteArray(StandardCharsets.UTF_8))
+        .joinToString("") { "%02x".format(it) }
 
     private class ScriptedProvider(vararg responses:String):ModelProvider {
         private val responses=ArrayDeque(responses.toList())

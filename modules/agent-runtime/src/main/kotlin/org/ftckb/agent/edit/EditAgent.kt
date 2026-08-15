@@ -40,7 +40,7 @@ class EditAgent(
     val conversation:ConversationState,
     private val repositorySummary:String
 ) {
-    internal fun edit(request:String):EditReport {
+    internal fun edit(request:String,beforeApply:()->Unit={}):EditReport {
         require(request.isNotBlank()) { "edit request must not be blank" }
         val safeRequest=conversation.redactForPrompt(request)
         val conversationContext=conversation.context()
@@ -68,8 +68,8 @@ class EditAgent(
             if (attempt==1) throw EditValidationException("edit plan rejected: $issue")
         }
         val selected=requireNotNull(accepted)
-        val applied=editEngine.apply(selected.preview)
-        history.record(applied)
+        beforeApply()
+        val applied=history.applyAndRecord(selected.preview)
         val changedPaths=applied.changes.mapTo(linkedSetOf()) { it.path }
         repositoryIndex.refresh(changedPaths)
         val report=report(selected.plan,applied)

@@ -88,6 +88,72 @@ class SessionControllerTest {
         assertEquals(AgentMode.EDIT,fixture.controller.mode)
     }
 
+    @Test
+    fun `Ask mode rejects undo and discard without writing`(@TempDir root:Path) {
+        val fixture=fixture(
+            root,
+            ScriptedProvider(
+                retrievalPlan(),
+                """{"summary":"authorized","operations":[{"kind":"create","path":"TeamCode/Agent.java","expectedAbsent":true,"content":"class Agent {}\n","reason":"requested","citations":[]}]}"""
+            )
+        )
+        assertNull(fixture.controller.setMode(AgentMode.EDIT))
+        assertTrue(fixture.controller.submit("Create Agent") is EditResult)
+        assertNull(fixture.controller.setMode(AgentMode.ASK))
+
+        fixture.controller.undo()
+        fixture.controller.discard()
+
+        assertEquals("class Agent {}\n",Files.readString(fixture.repository.resolve("TeamCode/Agent.java")))
+    }
+
+    @Test
+    fun `undo and discard reject a different current branch at their write boundary`(@TempDir root:Path) {
+        var currentBranch="team-work"
+        val fixture=fixture(
+            root,
+            ScriptedProvider(
+                retrievalPlan(),
+                """{"summary":"authorized","operations":[{"kind":"create","path":"TeamCode/Agent.java","expectedAbsent":true,"content":"class Agent {}\n","reason":"requested","citations":[]}]}"""
+            )
+        ) { repository ->
+            GitWorkspaceState(repository.toRealPath(),currentBranch,detached=false,dirtyPaths=emptySet())
+        }
+        assertNull(fixture.controller.setMode(AgentMode.EDIT))
+        assertTrue(fixture.controller.submit("Create Agent") is EditResult)
+        currentBranch="other-work"
+
+        val undo=fixture.controller.undo()
+        val discard=fixture.controller.discard()
+
+        assertTrue(undo is RejectedResult)
+        assertTrue(discard is RejectedResult)
+        assertEquals("class Agent {}\n",Files.readString(fixture.repository.resolve("TeamCode/Agent.java")))
+    }
+
+    @Test
+    fun `branch change during model latency is rejected at the apply boundary`(@TempDir root:Path) {
+        var currentBranch="team-work"
+        val provider=ScriptedProvider(
+            retrievalPlan(),
+            """{"summary":"late","operations":[{"kind":"create","path":"TeamCode/Late.java","expectedAbsent":true,"content":"class Late {}\n","reason":"requested","citations":[]}]}"""
+        ).also { scripted ->
+            scripted.beforeResponse={ responseNumber ->
+                if (responseNumber==2) currentBranch="other-work"
+            }
+        }
+        val fixture=fixture(root,provider) { repository ->
+            GitWorkspaceState(repository.toRealPath(),currentBranch,detached=false,dirtyPaths=emptySet())
+        }
+        assertNull(fixture.controller.setMode(AgentMode.EDIT))
+
+        val result=fixture.controller.submit("Create Late")
+
+        assertTrue(result is RejectedResult)
+        assertTrue(Files.notExists(fixture.repository.resolve("TeamCode/Late.java")))
+        assertEquals(2,provider.requests.size)
+    }
+
     private fun fixture(
         root:Path,
         provider:ScriptedProvider,
@@ -126,9 +192,11 @@ class SessionControllerTest {
     private class ScriptedProvider(vararg responses:String):ModelProvider {
         private val responses=ArrayDeque(responses.toList())
         val requests=mutableListOf<ModelRequest>()
+        var beforeResponse:(Int)->Unit={}
 
         override fun complete(request:ModelRequest):ModelResponse {
             requests+=request
+            beforeResponse(requests.size)
             return ModelResponse(responses.removeFirst())
         }
     }

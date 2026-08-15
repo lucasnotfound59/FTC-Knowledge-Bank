@@ -5,6 +5,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -18,8 +19,8 @@ class EditHistoryTest {
         val engine=FileEditEngine(root)
         val history=EditHistory(root,engine)
 
-        history.record(applyReplace(engine,"user dirty\n","agent one\n"))
-        history.record(applyReplace(engine,"agent one\n","agent two\n"))
+        history.applyAndRecord(replaceBatch(engine,"user dirty\n","agent one\n"))
+        history.applyAndRecord(replaceBatch(engine,"agent one\n","agent two\n"))
 
         val result=history.undo()
 
@@ -40,8 +41,8 @@ class EditHistoryTest {
         val engine=FileEditEngine(root)
         val history=EditHistory(root,engine)
 
-        history.record(applyReplace(engine,"user dirty\r\nwith spacing  \n","agent one\r\nwith spacing  \n"))
-        history.record(applyReplace(engine,"agent one\r\nwith spacing  \n","agent two\r\nwith spacing  \n"))
+        history.applyAndRecord(replaceBatch(engine,"user dirty\r\nwith spacing  \n","agent one\r\nwith spacing  \n"))
+        history.applyAndRecord(replaceBatch(engine,"agent one\r\nwith spacing  \n","agent two\r\nwith spacing  \n"))
 
         val result=history.discard()
 
@@ -58,13 +59,13 @@ class EditHistoryTest {
         Files.writeString(teamCode.resolve("Deleted.java"),"deleted\n")
         val engine=FileEditEngine(root)
         val history=EditHistory(root,engine)
-        val applied=engine.apply(engine.preview(EditPlan("mixed",listOf(
+        val candidate=engine.preview(EditPlan("mixed",listOf(
             CreateText("TeamCode/Created.java",true,"created\n","create",emptyList()),
             MoveText("TeamCode/Source.java","TeamCode/Moved.java",sha256("source\n"),true,"move",emptyList()),
             DeleteText("TeamCode/Deleted.java",sha256("deleted\n"),"delete",emptyList())
-        ))))
+        )))
 
-        history.record(applied)
+        history.applyAndRecord(candidate)
 
         val changes=history.changes().associateBy { it.path }
         assertEquals(null,changes.getValue("TeamCode/Created.java").before)
@@ -93,10 +94,10 @@ class EditHistoryTest {
         Files.writeString(second,"second\n")
         val engine=FileEditEngine(root)
         val history=EditHistory(root,engine)
-        history.record(engine.apply(engine.preview(EditPlan("both",listOf(
+        history.applyAndRecord(engine.preview(EditPlan("both",listOf(
             ReplaceText("TeamCode/First.java",sha256("first\n"),"first","agent first","reason",emptyList()),
             ReplaceText("TeamCode/Second.java",sha256("second\n"),"second","agent second","reason",emptyList())
-        )))))
+        ))))
         Files.writeString(second,"IDE change\n")
 
         val conflicted=history.undo()
@@ -121,10 +122,10 @@ class EditHistoryTest {
         Files.writeString(second,"second dirty\n")
         val engine=FileEditEngine(root)
         val history=EditHistory(root,engine)
-        history.record(engine.apply(engine.preview(EditPlan("both",listOf(
+        history.applyAndRecord(engine.preview(EditPlan("both",listOf(
             ReplaceText("TeamCode/First.java",sha256("first dirty\n"),"first dirty","agent first","reason",emptyList()),
             ReplaceText("TeamCode/Second.java",sha256("second dirty\n"),"second dirty","agent second","reason",emptyList())
-        )))))
+        ))))
         Files.writeString(second,"IDE change\n")
 
         val conflicted=history.discard()
@@ -148,16 +149,16 @@ class EditHistoryTest {
         val second=teamCode.resolve("Second.java")
         Files.writeString(first,"first\n")
         Files.writeString(second,"second\n")
-        val applyingEngine=FileEditEngine(root)
-        val applied=applyingEngine.apply(applyingEngine.preview(EditPlan("both",listOf(
+        var raceEnabled=false
+        val racingEngine=FileEditEngine(root,beforeWrite={ _,writeNumber ->
+            if (raceEnabled && writeNumber==2) Files.writeString(second,"IDE race\n")
+        })
+        val history=EditHistory(root,racingEngine)
+        history.applyAndRecord(racingEngine.preview(EditPlan("both",listOf(
             ReplaceText("TeamCode/First.java",sha256("first\n"),"first","agent first","reason",emptyList()),
             ReplaceText("TeamCode/Second.java",sha256("second\n"),"second","agent second","reason",emptyList())
         ))))
-        val racingEngine=FileEditEngine(root,beforeWrite={ _,writeNumber ->
-            if (writeNumber==2) Files.writeString(second,"IDE race\n")
-        })
-        val history=EditHistory(root,racingEngine)
-        history.record(applied)
+        raceEnabled=true
 
         val result=history.undo()
 
@@ -167,13 +168,101 @@ class EditHistoryTest {
         assertEquals(2,history.changes().size)
     }
 
-    private fun applyReplace(engine:FileEditEngine,before:String,after:String):AppliedEditBatch=engine.apply(
+    @Test
+    fun `external IDE change between batches causes zero untracked writes and leaves coherent retry state`(@TempDir root:Path) {
+        val file=root.resolve("TeamCode/Drive.java")
+        Files.createDirectories(file.parent)
+        Files.writeString(file,"baseline\n")
+        val engine=FileEditEngine(root)
+        val history=EditHistory(root,engine)
+        history.applyAndRecord(engine.preview(EditPlan("first",listOf(
+            ReplaceText("TeamCode/Drive.java",sha256("baseline\n"),"baseline","agent one","reason",emptyList())
+        ))))
+        Files.writeString(file,"IDE between batches\n")
+        val staleHistoryCandidate=engine.preview(EditPlan("second",listOf(
+            ReplaceText(
+                "TeamCode/Drive.java",sha256("IDE between batches\n"),
+                "IDE between batches","agent two","reason",emptyList()
+            )
+        )))
+
+        assertThrows(IllegalArgumentException::class.java) {
+            history.applyAndRecord(staleHistoryCandidate)
+        }
+
+        assertEquals("IDE between batches\n",Files.readString(file))
+        assertEquals("agent one\n",history.changes().single().after)
+
+        Files.writeString(file,"agent one\n")
+        history.applyAndRecord(engine.preview(EditPlan("retry",listOf(
+            ReplaceText("TeamCode/Drive.java",sha256("agent one\n"),"agent one","agent two","reason",emptyList())
+        ))))
+        assertEquals("agent two\n",Files.readString(file))
+        assertEquals("agent two\n",history.changes().single().after)
+    }
+
+    @Test
+    fun `caller mutation during apply cannot add a late history change`(@TempDir root:Path) {
+        Files.createDirectories(root.resolve("TeamCode"))
+        val stable=PlannedFileChange(
+            "TeamCode/Stable.java",FileSnapshot.Missing,
+            FileSnapshot.Text("class Stable {}\n",sha256("class Stable {}\n")),EditScope.NORMAL
+        )
+        val callerChanges=mutableListOf(stable)
+        val engine=FileEditEngine(root,beforeWrite={ _,_->
+            callerChanges+=PlannedFileChange(
+                ".env",FileSnapshot.Missing,
+                FileSnapshot.Text("late=value\n",sha256("late=value\n")),EditScope.PROJECT_LEVEL
+            )
+        })
+        val history=EditHistory(root,engine)
+
+        history.applyAndRecord(ValidatedEditBatch("mutable caller",callerChanges))
+
+        assertEquals(setOf("TeamCode/Stable.java"),history.changes().mapTo(linkedSetOf()) { it.path })
+        assertEquals("class Stable {}\n",Files.readString(root.resolve("TeamCode/Stable.java")))
+        assertTrue(Files.notExists(root.resolve(".env")))
+        assertEquals(2,callerChanges.size)
+    }
+
+    @Test
+    fun `invalid later change is rejected before filesystem or history mutation`(@TempDir root:Path) {
+        val drive=root.resolve("TeamCode/Drive.java")
+        Files.createDirectories(drive.parent)
+        Files.writeString(drive,"baseline\n")
+        val engine=FileEditEngine(root)
+        val history=EditHistory(root,engine)
+        history.applyAndRecord(engine.preview(EditPlan("first",listOf(
+            ReplaceText("TeamCode/Drive.java",sha256("baseline\n"),"baseline","agent one","reason",emptyList())
+        ))))
+        val candidate=ValidatedEditBatch("invalid later",listOf(
+            PlannedFileChange(
+                "TeamCode/Other.java",FileSnapshot.Missing,
+                FileSnapshot.Text("class Other {}\n",sha256("class Other {}\n")),EditScope.NORMAL
+            ),
+            PlannedFileChange(
+                "TeamCode/Drive.java",
+                FileSnapshot.Text("baseline\n",sha256("baseline\n")),
+                FileSnapshot.Text("agent two\n",sha256("agent two\n")),EditScope.NORMAL
+            )
+        ))
+
+        assertThrows(IllegalArgumentException::class.java) { history.applyAndRecord(candidate) }
+
+        assertTrue(Files.notExists(root.resolve("TeamCode/Other.java")))
+        assertEquals("agent one\n",Files.readString(drive))
+        assertEquals(
+            listOf(org.ftckb.git.TextChange("TeamCode/Drive.java","baseline\n","agent one\n",false)),
+            history.changes()
+        )
+    }
+
+    private fun replaceBatch(engine:FileEditEngine,before:String,after:String):ValidatedEditBatch=
         engine.preview(EditPlan("edit",listOf(
             ReplaceText(
                 "TeamCode/Drive.java",sha256(before),before.trimEnd(),after.trimEnd(),"reason",emptyList()
             )
         )))
-    )
 
     private fun sha256(value:String):String=MessageDigest.getInstance("SHA-256")
         .digest(value.toByteArray(StandardCharsets.UTF_8))

@@ -10,6 +10,7 @@ import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
 import java.security.MessageDigest
+import java.util.Collections
 import org.ftckb.git.TextChange
 
 data class HistoryResult(val changedPaths:Set<String>,val conflicts:Set<String>) {
@@ -18,21 +19,36 @@ data class HistoryResult(val changedPaths:Set<String>,val conflicts:Set<String>)
 
 class EditHistory(root:Path,private val engine:FileEditEngine=FileEditEngine(root)) {
     private val paths=SafeEditPath(root)
-    private val firstTouch=linkedMapOf<String,FileSnapshot>()
-    private val expected=linkedMapOf<String,FileSnapshot>()
-    private val scopes=linkedMapOf<String,EditScope>()
-    private val batches=ArrayDeque<AppliedEditBatch>()
+    private var firstTouch=linkedMapOf<String,FileSnapshot>()
+    private var expected=linkedMapOf<String,FileSnapshot>()
+    private var scopes=linkedMapOf<String,EditScope>()
+    private var batches=ArrayDeque<AppliedEditBatch>()
 
     @Synchronized
-    fun record(batch:AppliedEditBatch) {
-        batch.changes.forEach { change ->
-            val prior=expected[change.path]
+    fun applyAndRecord(batch:ValidatedEditBatch):AppliedEditBatch {
+        val changes=Collections.unmodifiableList(ArrayList(batch.changes))
+        require(changes.map { it.path }.toSet().size==changes.size) { "edit history batch contains duplicate files" }
+        val nextFirstTouch=LinkedHashMap(firstTouch)
+        val nextExpected=LinkedHashMap(expected)
+        val nextScopes=LinkedHashMap(scopes)
+        changes.forEach { change ->
+            val prior=nextExpected[change.path]
             require(prior==null || prior==change.before) { "edit history is out of sequence: ${change.path}" }
-            firstTouch.putIfAbsent(change.path,change.before)
-            scopes.putIfAbsent(change.path,change.scope)
-            expected[change.path]=change.after
+            require(nextScopes[change.path]?.let { it==change.scope }!=false) {
+                "edit history scope changed: ${change.path}"
+            }
+            nextFirstTouch.putIfAbsent(change.path,change.before)
+            nextScopes.putIfAbsent(change.path,change.scope)
+            nextExpected[change.path]=change.after
         }
-        batches.addLast(batch)
+        val recorded=AppliedEditBatch(batch.summary,changes)
+        val nextBatches=ArrayDeque(batches).apply { addLast(recorded) }
+        val applied=engine.apply(ValidatedEditBatch(batch.summary,changes))
+        firstTouch=nextFirstTouch
+        expected=nextExpected
+        scopes=nextScopes
+        batches=nextBatches
+        return applied
     }
 
     @Synchronized
