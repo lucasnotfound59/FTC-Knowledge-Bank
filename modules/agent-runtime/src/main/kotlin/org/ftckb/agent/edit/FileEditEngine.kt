@@ -11,6 +11,7 @@ import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
 import java.nio.file.LinkOption
+import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
@@ -43,6 +44,12 @@ data class ValidatedEditBatch(val summary:String,val changes:List<PlannedFileCha
 data class AppliedEditBatch(val summary:String,val changes:List<PlannedFileChange>)
 
 internal class EditContentRaceException(val path:String):IOException("edit content changed during apply: $path")
+
+internal fun readSnapshotOrMissing(path:Path,readExisting:(Path)->FileSnapshot):FileSnapshot=try {
+    readExisting(path)
+} catch (_:NoSuchFileException) {
+    FileSnapshot.Missing
+}
 
 class FileEditApplyException(
     val originalFailure:Throwable,
@@ -333,9 +340,14 @@ class FileEditEngine(
         fun cleanup(temporary:Path) {
             val parent=locateCapturedTarget().parent
             val relocated=parent.resolve(temporary.fileName)
-            if (Files.exists(relocated,LinkOption.NOFOLLOW_LINKS)) {
+            val attributes=try {
+                Files.readAttributes(relocated,BasicFileAttributes::class.java,LinkOption.NOFOLLOW_LINKS)
+            } catch (_:NoSuchFileException) {
+                null
+            }
+            if (attributes!=null) {
                 require(
-                    Files.isRegularFile(relocated,LinkOption.NOFOLLOW_LINKS) && !Files.isSymbolicLink(relocated)
+                    attributes.isRegularFile && !attributes.isSymbolicLink
                 ) { "edit temporary file changed during cleanup" }
                 Files.delete(relocated)
             }
@@ -474,10 +486,14 @@ class FileEditEngine(
         }
     }
 
-    private fun readSnapshot(path:Path):FileSnapshot {
-        if (!Files.exists(path,LinkOption.NOFOLLOW_LINKS)) return FileSnapshot.Missing
-        require(Files.isRegularFile(path,LinkOption.NOFOLLOW_LINKS) && !Files.isSymbolicLink(path)) { "edit path must identify a regular file" }
-        return snapshot(readBounded(path))
+    private fun readSnapshot(path:Path):FileSnapshot=readSnapshotOrMissing(path) { existing ->
+        val attributes=Files.readAttributes(
+            existing,BasicFileAttributes::class.java,LinkOption.NOFOLLOW_LINKS
+        )
+        require(attributes.isRegularFile && !attributes.isSymbolicLink) {
+            "edit path must identify a regular file"
+        }
+        snapshot(readBounded(existing))
     }
 
     private fun snapshot(bytes:ByteArray):FileSnapshot.Text {

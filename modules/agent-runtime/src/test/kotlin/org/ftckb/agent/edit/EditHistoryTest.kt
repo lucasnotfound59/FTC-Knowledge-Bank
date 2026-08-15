@@ -205,6 +205,40 @@ class EditHistoryTest {
     }
 
     @Test
+    fun `deletion race during undo rolls back prior reversals and remains retryable`(@TempDir root:Path) {
+        val teamCode=root.resolve("TeamCode")
+        Files.createDirectories(teamCode)
+        val first=teamCode.resolve("First.java")
+        val second=teamCode.resolve("Second.java")
+        Files.writeString(first,"first\n")
+        Files.writeString(second,"second\n")
+        var raceEnabled=false
+        val racingEngine=FileEditEngine(root,beforeWrite={ _,writeNumber ->
+            if (raceEnabled && writeNumber==2) Files.delete(second)
+        })
+        val history=EditHistory(root,racingEngine)
+        history.applyAndRecord(racingEngine.preview(EditPlan("both",listOf(
+            ReplaceText("TeamCode/First.java",sha256("first\n"),"first","agent first","reason",emptyList()),
+            ReplaceText("TeamCode/Second.java",sha256("second\n"),"second","agent second","reason",emptyList())
+        ))))
+        raceEnabled=true
+
+        val result=history.undo()
+
+        assertEquals(setOf("TeamCode/Second.java"),result.conflicts)
+        assertEquals("agent first\n",Files.readString(first))
+        assertTrue(Files.notExists(second))
+        assertEquals(2,history.changes().size)
+
+        raceEnabled=false
+        Files.writeString(second,"agent second\n")
+        assertTrue(history.undo().succeeded)
+        assertEquals("first\n",Files.readString(first))
+        assertEquals("second\n",Files.readString(second))
+        assertTrue(history.changes().isEmpty())
+    }
+
+    @Test
     fun `undo rethrows a transactional failure when rollback is incomplete`(@TempDir root:Path) {
         val teamCode=root.resolve("TeamCode")
         Files.createDirectories(teamCode)

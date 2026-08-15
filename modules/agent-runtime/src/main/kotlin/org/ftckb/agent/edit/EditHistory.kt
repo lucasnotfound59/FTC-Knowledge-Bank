@@ -9,6 +9,7 @@ import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
+import java.nio.file.attribute.BasicFileAttributes
 import java.security.MessageDigest
 import java.util.Collections
 import org.ftckb.git.TextChange
@@ -112,29 +113,33 @@ class EditHistory(root:Path,private val engine:FileEditEngine=FileEditEngine(roo
 
     private fun current(path:String):FileSnapshot {
         val absolute=paths.resolve(path).absolute
-        if (!Files.exists(absolute,LinkOption.NOFOLLOW_LINKS)) return FileSnapshot.Missing
-        require(Files.isRegularFile(absolute,LinkOption.NOFOLLOW_LINKS) && !Files.isSymbolicLink(absolute)) {
-            "edit history path is not a regular file"
-        }
-        val bytes=Files.newByteChannel(
-            absolute,setOf(StandardOpenOption.READ,LinkOption.NOFOLLOW_LINKS)
-        ).use { channel ->
-            val output=ByteArrayOutputStream()
-            val buffer=ByteBuffer.allocate(8_192)
-            var total=0
-            while (true) {
-                buffer.clear()
-                val count=channel.read(buffer)
-                if (count<0) break
-                if (count==0) continue
-                total+=count
-                require(total<=MAX_FILE_BYTES) { "edit history file exceeds size limit" }
-                output.write(buffer.array(),0,count)
+        return readSnapshotOrMissing(absolute) { existing ->
+            val attributes=Files.readAttributes(
+                existing,BasicFileAttributes::class.java,LinkOption.NOFOLLOW_LINKS
+            )
+            require(attributes.isRegularFile && !attributes.isSymbolicLink) {
+                "edit history path is not a regular file"
             }
-            output.toByteArray()
+            val bytes=Files.newByteChannel(
+                existing,setOf(StandardOpenOption.READ,LinkOption.NOFOLLOW_LINKS)
+            ).use { channel ->
+                val output=ByteArrayOutputStream()
+                val buffer=ByteBuffer.allocate(8_192)
+                var total=0
+                while (true) {
+                    buffer.clear()
+                    val count=channel.read(buffer)
+                    if (count<0) break
+                    if (count==0) continue
+                    total+=count
+                    require(total<=MAX_FILE_BYTES) { "edit history file exceeds size limit" }
+                    output.write(buffer.array(),0,count)
+                }
+                output.toByteArray()
+            }
+            val content=decodeUtf8(bytes)
+            FileSnapshot.Text(content,sha256(bytes))
         }
-        val content=decodeUtf8(bytes)
-        return FileSnapshot.Text(content,sha256(bytes))
     }
 
     private fun decodeUtf8(bytes:ByteArray):String=try {

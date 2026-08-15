@@ -9,7 +9,9 @@ import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.io.TempDir
 import java.io.IOException
 import java.nio.charset.StandardCharsets
+import java.nio.file.AccessDeniedException
 import java.nio.file.Files
+import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.attribute.PosixFilePermission
@@ -17,6 +19,22 @@ import java.security.MessageDigest
 import java.util.AbstractList
 
 class FileEditEngineTest {
+    @Test
+    fun `snapshot absence requires an explicit no such file failure`(@TempDir root:Path) {
+        val path=root.resolve("TeamCode/Test.java")
+
+        assertEquals(
+            FileSnapshot.Missing,
+            readSnapshotOrMissing(path) { throw NoSuchFileException(it.toString()) }
+        )
+        assertThrows<AccessDeniedException> {
+            readSnapshotOrMissing(path) { throw AccessDeniedException(it.toString()) }
+        }
+        assertThrows<IOException> {
+            readSnapshotOrMissing(path) { throw IOException("provider attribute failure") }
+        }
+    }
+
     @Test
     fun `edits a file that was already dirty`(@TempDir root:Path) {
         val file=root.resolve("TeamCode/Test.java")
