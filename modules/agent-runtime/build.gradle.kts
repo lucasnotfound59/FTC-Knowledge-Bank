@@ -7,6 +7,7 @@ dependencies {
     implementation(project(":modules:knowledge"))
     implementation(project(":modules:repository-analysis"))
     implementation(project(":modules:model-provider"))
+    implementation(project(":modules:tooling-git"))
     implementation(libs.jackson.databind)
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
