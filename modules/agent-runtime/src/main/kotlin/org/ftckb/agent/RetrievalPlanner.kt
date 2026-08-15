@@ -38,7 +38,7 @@ class RetrievalPlanner(private val provider:ModelProvider) {
                 append("Repository summary: ").append(ContextSafety.wrapUntrusted("REPOSITORY",input.repositorySummary))
                 issue?.let { append("\nRepair the previous response: ").append(it) }
             })
-        ),512
+        ),2048
     )
 
     private fun decode(text:String):RetrievalIntent {

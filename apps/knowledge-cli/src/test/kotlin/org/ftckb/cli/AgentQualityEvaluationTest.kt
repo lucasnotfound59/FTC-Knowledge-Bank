@@ -323,8 +323,12 @@ class AgentQualityEvaluationTest {
             val system=request.messages.first().content
             return when {
                 system.startsWith("Return exactly one JSON object") -> ModelResponse(entry.plan.toString())
-                system.startsWith("Return exactly one JSON edit plan") ->
-                    ModelResponse(entry.edit?.toString() ?: error("no edit script"))
+                system.startsWith("Return exactly one JSON edit plan") -> {
+                    val edit=entry.edit ?: error("no edit script")
+                    val sha=Regex("id=\"CODE:C1\" sha256=\"([0-9a-f]{64})\"").find(content)?.groupValues?.get(1)
+                        ?: error("no CODE:C1 sha in edit evidence")
+                    ModelResponse(edit.toString().replace("SHA_PLACEHOLDER",sha))
+                }
                 system.startsWith("Answer only as JSON") ->
                     ModelResponse(entry.answer?.toString() ?: error("no answer script"))
                 else -> error("unexpected scripted request type")

@@ -39,7 +39,7 @@ cases:
     turns:
       - mode: edit
         prompt: Add a cleanup helper for TeleOp stop.
-        requiredChangedPaths: [TeamCode/src/main/java/example/CleanupHelper.java]
+        requiredChangedPaths: [TeamCode/src/main/java/example/Vision.java]
         forbiddenPaths: [.env, local.properties]
   - id: follow-up-same-class
     repository: fixtures/agent/ask-repo

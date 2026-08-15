@@ -109,14 +109,15 @@
         "guideTopics": []
       },
       "edit": {
-        "summary": "Add a cleanup helper.",
+        "summary": "Guard the vision result.",
         "operations": [
           {
-            "kind": "create",
-            "path": "TeamCode/src/main/java/example/CleanupHelper.java",
-            "expectedAbsent": true,
-            "content": "package example;\n",
-            "reason": "Add the requested cleanup helper.",
+            "kind": "replace",
+            "path": "TeamCode/src/main/java/example/Vision.java",
+            "expectedSha256": "SHA_PLACEHOLDER",
+            "oldText": "consume(result);",
+            "newText": "if(result!=null && result.isValid()) consume(result);",
+            "reason": "Avoid using an invalid result.",
             "citations": [
               "CODE:C1"
             ]

@@ -198,8 +198,8 @@ class ChatReplTest {
         assertTrue(provider.requests.any {
             it.messages.first().content.startsWith("Produce a compact untrusted conversation summary")
         })
-        assertTrue(provider.requests.any { it.maxOutputTokens==512 })
-        assertTrue(provider.requests.any { it.maxOutputTokens==1024 })
+        assertTrue(provider.requests.any { it.maxOutputTokens==2048 })
+        assertTrue(provider.requests.any { it.maxOutputTokens==8192 })
         assertTrue(provider.requests.all { request ->
             request.messages.first().role==org.ftckb.model.MessageRole.SYSTEM &&
                 request.messages.drop(1).all { it.role==org.ftckb.model.MessageRole.USER }

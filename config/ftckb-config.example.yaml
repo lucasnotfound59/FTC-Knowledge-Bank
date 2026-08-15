@@ -8,10 +8,10 @@ defaultProvider: deepseek
 providers:
   deepseek:
     baseUrl: https://api.deepseek.com
-    model: deepseek-chat
+    model: deepseek-v4-flash
     apiKeyEnv: DEEPSEEK_API_KEY
     timeoutSeconds: 90
-    maxOutputTokens: 4096
+    maxOutputTokens: 8192
     maxTokensParameter: max_tokens
     jsonMode: false
     temperature: 0
