@@ -3,30 +3,39 @@ package org.ftckb.agent.edit
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.nio.ByteBuffer
+import java.nio.channels.SeekableByteChannel
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
+import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.attribute.PosixFilePermission
 import java.security.MessageDigest
+import java.util.Collections
+import java.util.HashSet
+import java.util.UUID
 
 sealed interface FileSnapshot {
     data object Missing:FileSnapshot
     data class Text(val content:String,val sha256:String):FileSnapshot
 }
 
-data class PlannedFileChange(
-    val path:String,val before:FileSnapshot,val after:FileSnapshot,val scope:EditScope
+@ConsistentCopyVisibility
+data class PlannedFileChange internal constructor(
+    val path:String,
+    val before:FileSnapshot,
+    val after:FileSnapshot,
+    val scope:EditScope,
+    internal val permissionSourcePath:String?
 ) {
-    internal var permissionSourcePath:String?=null
-        private set
-
-    internal fun withPermissionSource(path:String):PlannedFileChange=also { permissionSourcePath=path }
+    constructor(path:String,before:FileSnapshot,after:FileSnapshot,scope:EditScope):
+        this(path,before,after,scope,null)
 }
 
 data class ValidatedEditBatch(val summary:String,val changes:List<PlannedFileChange>)
@@ -55,32 +64,38 @@ class FileEditEngine(
     root:Path,
     private val beforeWrite:(Path,Int)->Unit={ _,_-> }
 ) {
-    private val paths=SafeEditPath(root)
+    private val root=root.toRealPath()
+    private val paths=SafeEditPath(this.root)
+
+    private data class VirtualFile(val snapshot:FileSnapshot,val permissionSourcePath:String?)
 
     fun preview(plan:EditPlan):ValidatedEditBatch {
         require(plan.operations.size<=MAX_FILES) { "edit batch contains too many operations" }
-        val initial=linkedMapOf<String,FileSnapshot>()
-        val current=linkedMapOf<String,FileSnapshot>()
+        val initial=linkedMapOf<String,VirtualFile>()
+        val current=linkedMapOf<String,VirtualFile>()
         val scopes=linkedMapOf<String,EditScope>()
-        val permissionSources=mutableMapOf<String,String>()
-        fun snapshot(path:ResolvedEditPath):FileSnapshot {
-            val snapshot=current.getOrPut(path.relative) { readSnapshot(path.absolute) }
-            initial.putIfAbsent(path.relative,snapshot)
+        fun state(path:ResolvedEditPath):VirtualFile {
+            val state=current.getOrPut(path.relative) {
+                val snapshot=readSnapshot(path.absolute)
+                VirtualFile(snapshot,if (snapshot is FileSnapshot.Text) path.relative else null)
+            }
+            initial.putIfAbsent(path.relative,state)
             scopes.putIfAbsent(path.relative,path.scope)
             require(initial.size<=MAX_FILES) { "edit batch contains too many files" }
-            return snapshot
+            return state
         }
         plan.operations.forEach { operation ->
             when (operation) {
                 is CreateText -> {
                     require(operation.expectedAbsent) { "create destination must be expected absent: ${operation.path}" }
                     val resolved=paths.resolve(operation.path)
-                    require(snapshot(resolved)==FileSnapshot.Missing) { "create destination already exists: ${resolved.relative}" }
-                    current[resolved.relative]=textSnapshot(operation.content)
+                    require(state(resolved).snapshot==FileSnapshot.Missing) { "create destination already exists: ${resolved.relative}" }
+                    current[resolved.relative]=VirtualFile(textSnapshot(operation.content),null)
                 }
                 is ReplaceText -> {
                     val resolved=paths.resolve(operation.path)
-                    val text=requireText(snapshot(resolved),resolved.relative)
+                    val currentState=state(resolved)
+                    val text=requireText(currentState.snapshot,resolved.relative)
                     require(text.sha256==operation.expectedSha256) { "stale file hash: ${resolved.relative}" }
                     require(operation.oldText.isNotEmpty()) { "replacement text must not be empty: ${resolved.relative}" }
                     val first=text.content.indexOf(operation.oldText)
@@ -88,13 +103,13 @@ class FileEditEngine(
                         "replacement text must occur exactly once: ${resolved.relative}"
                     }
                     val content=text.content.replaceRange(first,first+operation.oldText.length,operation.newText)
-                    current[resolved.relative]=textSnapshot(content)
+                    current[resolved.relative]=currentState.copy(snapshot=textSnapshot(content))
                 }
                 is DeleteText -> {
                     val resolved=paths.resolve(operation.path)
-                    val text=requireText(snapshot(resolved),resolved.relative)
+                    val text=requireText(state(resolved).snapshot,resolved.relative)
                     require(text.sha256==operation.expectedSha256) { "stale file hash: ${resolved.relative}" }
-                    current[resolved.relative]=FileSnapshot.Missing
+                    current[resolved.relative]=VirtualFile(FileSnapshot.Missing,null)
                 }
                 is MoveText -> {
                     require(operation.destinationExpectedAbsent) {
@@ -103,105 +118,130 @@ class FileEditEngine(
                     val source=paths.resolve(operation.sourcePath)
                     val destination=paths.resolve(operation.destinationPath)
                     require(source.relative!=destination.relative) { "move source and destination must differ" }
-                    val sourceText=requireText(snapshot(source),source.relative)
+                    val sourceState=state(source)
+                    val sourceText=requireText(sourceState.snapshot,source.relative)
                     require(sourceText.sha256==operation.expectedSha256) { "stale file hash: ${source.relative}" }
-                    require(snapshot(destination)==FileSnapshot.Missing) {
+                    require(state(destination).snapshot==FileSnapshot.Missing) {
                         "move destination already exists: ${destination.relative}"
                     }
-                    current[source.relative]=FileSnapshot.Missing
-                    current[destination.relative]=sourceText
-                    permissionSources[destination.relative]=source.relative
+                    current[source.relative]=VirtualFile(FileSnapshot.Missing,null)
+                    current[destination.relative]=sourceState
                 }
             }
         }
-        val changes=current.mapNotNull { (path,after) ->
-            val before=initial.getValue(path)
-            if (before==after) null else PlannedFileChange(path,before,after,scopes.getValue(path)).also { change ->
-                permissionSources[path]?.let(change::withPermissionSource)
-            }
+        val changes=current.mapNotNull { (path,afterState) ->
+            val before=initial.getValue(path).snapshot
+            val after=afterState.snapshot
+            if (before==after) null else PlannedFileChange(
+                path,before,after,scopes.getValue(path),
+                if (after is FileSnapshot.Text) afterState.permissionSourcePath else null
+            )
         }
         validateLimits(changes)
-        return ValidatedEditBatch(plan.summary,changes)
+        return ValidatedEditBatch(plan.summary,Collections.unmodifiableList(java.util.ArrayList(changes)))
     }
 
     fun apply(batch:ValidatedEditBatch):AppliedEditBatch {
-        require(batch.changes.map { it.path }.toSet().size==batch.changes.size) { "edit batch contains duplicate files" }
-        require(batch.changes.size<=MAX_FILES) { "edit batch contains too many files" }
-        val resolved=batch.changes.associateWith { change -> paths.resolve(change.path) }
+        val changes=Collections.unmodifiableList(java.util.ArrayList(batch.changes))
+        require(changes.map { it.path }.toSet().size==changes.size) { "edit batch contains duplicate files" }
+        require(changes.size<=MAX_FILES) { "edit batch contains too many files" }
+        val resolved=changes.associateWith { change -> paths.resolve(change.path) }
         resolved.forEach { (change,path) ->
             require(path.relative==change.path) { "edit path is not canonical: ${change.path}" }
             require(path.scope==change.scope) { "edit scope changed: ${change.path}" }
             validateSnapshot(change.before,change.path)
             validateSnapshot(change.after,change.path)
-            require(readSnapshot(path.absolute)==change.before) { "edit precondition changed: ${change.path}" }
         }
-        validateLimits(batch.changes)
-        val originalPermissions=resolved.mapValues { (_,path) -> permissions(path.absolute) }
-        val changesByPath=batch.changes.associateBy(PlannedFileChange::path)
-        val permissionSourcePaths=batch.changes.mapNotNull(PlannedFileChange::permissionSourcePath)
+        validateLimits(changes)
+        val verified=resolved.mapValues { (_,path) -> VerifiedEditPath(path) }
+        verified.forEach { (change,path) ->
+            path.verifyBoundary()
+            require(path.snapshot()==change.before) { "edit precondition changed: ${change.path}" }
+        }
+        val originalPermissions=verified.mapValues { (change,path) ->
+            if (change.before is FileSnapshot.Text) path.permissions() else null
+        }
+        val writePermissions=permissionMap(changes,originalPermissions)
+        val applied=mutableListOf<PlannedFileChange>()
+        val temporaryFiles=mutableMapOf<PlannedFileChange,Path>()
+        try {
+            changes.forEachIndexed { index,change ->
+                val path=verified.getValue(change)
+                path.verifyBoundary()
+                require(path.snapshot()==change.before) { "edit precondition changed: ${change.path}" }
+                beforeWrite(path.absolute,index+1)
+                path.verifyBoundary()
+                require(path.snapshot()==change.before) { "edit precondition changed: ${change.path}" }
+                val after=change.after
+                if (after is FileSnapshot.Text) {
+                    temporaryFiles[change]=path.prepare(after,writePermissions[change])
+                }
+                path.verifyBoundary()
+                require(path.snapshot()==change.before) { "edit precondition changed: ${change.path}" }
+                applied+=change
+                when (after) {
+                    FileSnapshot.Missing -> Files.delete(path.absolute)
+                    is FileSnapshot.Text -> {
+                        val temporary=temporaryFiles.getValue(change)
+                        if (change.before==FileSnapshot.Missing) moveNoReplace(temporary,path.absolute)
+                        else replace(temporary,path.absolute)
+                        temporaryFiles.remove(change)
+                    }
+                }
+                path.verifyBoundary()
+                require(path.snapshot()==after) { "edit result changed during apply: ${change.path}" }
+            }
+        } catch (failure:Throwable) {
+            val rollbackFailures=rollback(applied,verified,originalPermissions)
+            val cleanupFailures=cleanup(temporaryFiles,verified)
+            throw FileEditApplyException(failure,rollbackFailures,cleanupFailures)
+        }
+        return AppliedEditBatch(batch.summary,changes)
+    }
+
+    private fun permissionMap(
+        changes:List<PlannedFileChange>,
+        originalPermissions:Map<PlannedFileChange,Set<PosixFilePermission>?>
+    ):Map<PlannedFileChange,Set<PosixFilePermission>?> {
+        val changesByPath=changes.associateBy(PlannedFileChange::path)
+        val permissionOrigins=changes.associateWith { change ->
+            change.permissionSourcePath ?: if (
+                change.before is FileSnapshot.Text && change.after is FileSnapshot.Text
+            ) change.path else null
+        }
+        val permissionSourcePaths=permissionOrigins.values.filterNotNull()
         require(permissionSourcePaths.toSet().size==permissionSourcePaths.size) { "edit batch reuses a permission source" }
-        val writePermissions=batch.changes.associateWith { change ->
-            originalPermissions[change] ?: change.permissionSourcePath?.let { sourcePath ->
+        return changes.associateWith { change ->
+            permissionOrigins.getValue(change)?.let { sourcePath ->
+                if (sourcePath==change.path) {
+                    require(change.before is FileSnapshot.Text) { "edit permission provenance is invalid: ${change.path}" }
+                    return@let originalPermissions[change]
+                }
                 val source=changesByPath[sourcePath]
                 require(
                     change.before==FileSnapshot.Missing && change.after is FileSnapshot.Text &&
-                        source!=null && source.after==FileSnapshot.Missing && source.before==change.after
+                        source!=null && source.before is FileSnapshot.Text
                 ) { "edit permission provenance is invalid: ${change.path}" }
                 originalPermissions[source]
             }
         }
-        val prepared=mutableMapOf<PlannedFileChange,Path>()
-        val attempted=mutableListOf<PlannedFileChange>()
-        try {
-            batch.changes.forEach { change ->
-                val after=change.after
-                if (after is FileSnapshot.Text) {
-                    val path=resolved.getValue(change).absolute
-                    prepared[change]=prepareSibling(path,after,writePermissions[change])
-                }
-            }
-            batch.changes.forEachIndexed { index,change ->
-                val expectedPath=resolved.getValue(change)
-                val path=paths.resolve(change.path)
-                require(path==expectedPath) { "edit path changed: ${change.path}" }
-                require(readSnapshot(path.absolute)==change.before) { "edit precondition changed: ${change.path}" }
-                beforeWrite(path.absolute,index+1)
-                attempted+=change
-                when (change.after) {
-                    FileSnapshot.Missing -> Files.delete(path.absolute)
-                    is FileSnapshot.Text -> replace(prepared.getValue(change),path.absolute)
-                }
-                prepared.remove(change)
-            }
-        } catch (failure:Throwable) {
-            val rollbackFailures=rollback(attempted,resolved,originalPermissions)
-            val cleanupFailures=mutableListOf<Throwable>()
-            cleanup(prepared.values,cleanupFailures)
-            throw FileEditApplyException(failure,rollbackFailures,cleanupFailures)
-        }
-        val cleanupFailures=mutableListOf<Throwable>()
-        cleanup(prepared.values,cleanupFailures)
-        if (cleanupFailures.isNotEmpty()) {
-            throw FileEditApplyException(IOException("temporary-file cleanup failed"),emptyList(),cleanupFailures)
-        }
-        return AppliedEditBatch(batch.summary,batch.changes)
     }
 
     private fun rollback(
-        attempted:List<PlannedFileChange>,
-        resolved:Map<PlannedFileChange,ResolvedEditPath>,
+        applied:List<PlannedFileChange>,
+        verified:Map<PlannedFileChange,VerifiedEditPath>,
         permissions:Map<PlannedFileChange,Set<PosixFilePermission>?>
     ):MutableList<Throwable> {
         val failures=mutableListOf<Throwable>()
-        attempted.asReversed().forEach { change ->
+        applied.asReversed().forEach { change ->
             try {
-                val expectedPath=resolved.getValue(change)
-                val path=paths.resolve(change.path)
-                require(path==expectedPath) { "edit path changed during rollback: ${change.path}" }
-                when (val before=change.before) {
+                val path=verified.getValue(change)
+                path.verifyBoundary()
+                val before=change.before
+                when (before) {
                     FileSnapshot.Missing -> Files.deleteIfExists(path.absolute)
                     is FileSnapshot.Text -> {
-                        val temporary=prepareSibling(path.absolute,before,permissions[change])
+                        val temporary=path.prepare(before,permissions[change])
                         try {
                             replace(temporary,path.absolute)
                         } finally {
@@ -209,6 +249,8 @@ class FileEditEngine(
                         }
                     }
                 }
+                path.verifyBoundary()
+                require(path.snapshot()==before) { "edit rollback changed: ${change.path}" }
             } catch (failure:Throwable) {
                 failures+=failure
             }
@@ -216,34 +258,112 @@ class FileEditEngine(
         return failures
     }
 
-    private fun prepareSibling(
-        target:Path,
-        snapshot:FileSnapshot.Text,
-        permissions:Set<PosixFilePermission>?
-    ):Path {
-        val parent=target.parent
-        require(Files.isDirectory(parent,LinkOption.NOFOLLOW_LINKS) && !Files.isSymbolicLink(parent)) {
-            "edit parent must be an existing directory"
-        }
-        val temporary=Files.createTempFile(parent,".${target.fileName}.ftckb-",".tmp")
-        try {
-            Files.newByteChannel(
-                temporary,setOf(StandardOpenOption.WRITE,StandardOpenOption.TRUNCATE_EXISTING,LinkOption.NOFOLLOW_LINKS)
-            ).use { channel ->
-                val bytes=ByteBuffer.wrap(encodeUtf8(snapshot.content))
-                while (bytes.hasRemaining()) channel.write(bytes)
-            }
-            if (permissions!=null) Files.setAttribute(
-                temporary,"posix:permissions",permissions,LinkOption.NOFOLLOW_LINKS
-            )
-            return temporary
-        } catch (failure:Throwable) {
+    private fun cleanup(
+        temporaryFiles:Map<PlannedFileChange,Path>,
+        verified:Map<PlannedFileChange,VerifiedEditPath>
+    ):MutableList<Throwable> {
+        val failures=mutableListOf<Throwable>()
+        temporaryFiles.forEach { (change,temporary) ->
             try {
+                verified.getValue(change).verifyBoundary()
                 Files.deleteIfExists(temporary)
-            } catch (cleanupFailure:Throwable) {
-                failure.addSuppressed(cleanupFailure)
+            } catch (failure:Throwable) {
+                failures+=failure
             }
-            throw failure
+        }
+        return failures
+    }
+
+    private data class DirectoryIdentity(val path:Path,val fileKey:Any)
+
+    /*
+     * Standard Java has no descriptor-relative mutation API on every supported provider.
+     * This portable boundary detects ordinary IDE/concurrent ancestor changes before and
+     * after each operation. It does not claim to defeat a malicious same-account process
+     * swapping a directory in the microseconds between the final check and the path call.
+     */
+    private inner class VerifiedEditPath(val resolved:ResolvedEditPath) {
+        val absolute:Path=resolved.absolute
+        private val directories=captureDirectories()
+
+        fun verifyBoundary() {
+            directories.forEach { identity ->
+                val attributes=Files.readAttributes(
+                    identity.path,BasicFileAttributes::class.java,LinkOption.NOFOLLOW_LINKS
+                )
+                require(
+                    attributes.isDirectory && !attributes.isSymbolicLink &&
+                        attributes.fileKey()==identity.fileKey && identity.path.toRealPath()==identity.path
+                ) { "edit directory changed during apply: ${resolved.relative}" }
+            }
+        }
+
+        fun snapshot():FileSnapshot=readSnapshot(absolute)
+
+        fun permissions():Set<PosixFilePermission>?=try {
+            Collections.unmodifiableSet(HashSet(Files.getPosixFilePermissions(absolute,LinkOption.NOFOLLOW_LINKS)))
+        } catch (_:UnsupportedOperationException) {
+            null
+        }
+
+        fun prepare(snapshot:FileSnapshot.Text,permissions:Set<PosixFilePermission>?):Path {
+            repeat(TEMP_NAME_ATTEMPTS) {
+                verifyBoundary()
+                val temporary=absolute.parent.resolve(
+                    ".${absolute.fileName}.ftckb-write-${UUID.randomUUID()}.tmp"
+                )
+                var created=false
+                try {
+                    Files.newByteChannel(
+                        temporary,setOf(
+                            StandardOpenOption.CREATE_NEW,StandardOpenOption.WRITE,LinkOption.NOFOLLOW_LINKS
+                        )
+                    ).use { channel ->
+                        created=true
+                        val bytes=ByteBuffer.wrap(encodeUtf8(snapshot.content))
+                        while (bytes.hasRemaining()) channel.write(bytes)
+                    }
+                    if (permissions!=null) Files.setAttribute(
+                        temporary,"posix:permissions",permissions,LinkOption.NOFOLLOW_LINKS
+                    )
+                    verifyBoundary()
+                    return temporary
+                } catch (_:FileAlreadyExistsException) {
+                    // Try a new unguessable sibling name.
+                } catch (failure:Throwable) {
+                    if (created) {
+                        try {
+                            verifyBoundary()
+                            Files.deleteIfExists(temporary)
+                        } catch (cleanupFailure:Throwable) {
+                            failure.addSuppressed(cleanupFailure)
+                        }
+                    }
+                    throw failure
+                }
+            }
+            throw IOException("could not allocate a safe temporary sibling")
+        }
+
+        private fun captureDirectories():List<DirectoryIdentity> {
+            val pathsToCapture=mutableListOf(root)
+            var current=root
+            Path.of(resolved.relative).parent?.forEach { component ->
+                current=current.resolve(component)
+                pathsToCapture.add(current)
+            }
+            val identities=pathsToCapture.map { directory ->
+                val attributes=Files.readAttributes(
+                    directory,BasicFileAttributes::class.java,LinkOption.NOFOLLOW_LINKS
+                )
+                require(
+                    attributes.isDirectory && !attributes.isSymbolicLink && directory.toRealPath()==directory
+                ) { "edit path contains an unsafe directory" }
+                DirectoryIdentity(
+                    directory,requireNotNull(attributes.fileKey()) { "edit directory identity is unavailable" }
+                )
+            }
+            return Collections.unmodifiableList(identities)
         }
     }
 
@@ -255,20 +375,8 @@ class FileEditEngine(
         }
     }
 
-    private fun permissions(path:Path):Set<PosixFilePermission>?=try {
-        if (Files.exists(path,LinkOption.NOFOLLOW_LINKS)) Files.getPosixFilePermissions(path,LinkOption.NOFOLLOW_LINKS) else null
-    } catch (_:UnsupportedOperationException) {
-        null
-    }
-
-    private fun cleanup(paths:Collection<Path>,failures:MutableList<Throwable>) {
-        paths.forEach { path ->
-            try {
-                Files.deleteIfExists(path)
-            } catch (failure:Throwable) {
-                failures+=failure
-            }
-        }
+    private fun moveNoReplace(source:Path,target:Path) {
+        Files.move(source,target)
     }
 
     private fun validateLimits(changes:List<PlannedFileChange>) {
@@ -297,28 +405,32 @@ class FileEditEngine(
     private fun readSnapshot(path:Path):FileSnapshot {
         if (!Files.exists(path,LinkOption.NOFOLLOW_LINKS)) return FileSnapshot.Missing
         require(Files.isRegularFile(path,LinkOption.NOFOLLOW_LINKS) && !Files.isSymbolicLink(path)) { "edit path must identify a regular file" }
-        val bytes=readBounded(path)
+        return snapshot(readBounded(path))
+    }
+
+    private fun snapshot(bytes:ByteArray):FileSnapshot.Text {
         require(bytes.none { it==0.toByte() }) { "binary files cannot be edited" }
         val content=decodeUtf8(bytes)
         return FileSnapshot.Text(content,sha256(bytes))
     }
 
-    private fun readBounded(path:Path):ByteArray {
-        Files.newByteChannel(path,setOf(StandardOpenOption.READ,LinkOption.NOFOLLOW_LINKS)).use { channel ->
-            val output=ByteArrayOutputStream()
-            val buffer=ByteBuffer.allocate(8_192)
-            var total=0L
-            while (true) {
-                buffer.clear()
-                val count=channel.read(buffer)
-                if (count<0) break
-                if (count==0) continue
-                total+=count
-                require(total<=MAX_FILE_BYTES) { "edit source exceeds per-file size limit" }
-                output.write(buffer.array(),0,count)
-            }
-            return output.toByteArray()
+    private fun readBounded(path:Path):ByteArray=
+        Files.newByteChannel(path,setOf(StandardOpenOption.READ,LinkOption.NOFOLLOW_LINKS)).use(::readBounded)
+
+    private fun readBounded(channel:SeekableByteChannel):ByteArray {
+        val output=ByteArrayOutputStream()
+        val buffer=ByteBuffer.allocate(8_192)
+        var total=0L
+        while (true) {
+            buffer.clear()
+            val count=channel.read(buffer)
+            if (count<0) break
+            if (count==0) continue
+            total+=count
+            require(total<=MAX_FILE_BYTES) { "edit source exceeds per-file size limit" }
+            output.write(buffer.array(),0,count)
         }
+        return output.toByteArray()
     }
 
     private fun textSnapshot(content:String):FileSnapshot.Text {
@@ -361,5 +473,6 @@ class FileEditEngine(
         private const val MAX_FILES=24
         private const val MAX_FILE_BYTES=1_048_576L
         private const val MAX_TOTAL_BYTES=4_194_304L
+        private const val TEMP_NAME_ATTEMPTS=8
     }
 }

@@ -14,6 +14,7 @@ import java.nio.file.Path
 import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.attribute.PosixFilePermission
 import java.security.MessageDigest
+import java.util.AbstractList
 
 class FileEditEngineTest {
     @Test
@@ -198,6 +199,88 @@ class FileEditEngineTest {
     }
 
     @Test
+    fun `ancestor swap after final validation cannot escape or leave a partial batch`(@TempDir container:Path) {
+        val root=container.resolve("repo")
+        val teamCode=root.resolve("TeamCode")
+        val parked=root.resolve("ParkedTeamCode")
+        val outside=container.resolve("outside")
+        Files.createDirectories(teamCode.resolve("nested"))
+        Files.createDirectories(outside.resolve("nested"))
+        Files.writeString(root.resolve("build.gradle"),"first\n")
+        Files.writeString(teamCode.resolve("nested/Second.java"),"second\n")
+        Files.writeString(outside.resolve("outside.marker"),"outside\n")
+        val engine=FileEditEngine(root) { _,writeNumber ->
+            if (writeNumber==2) {
+                Files.move(teamCode,parked)
+                Files.createSymbolicLink(teamCode,outside)
+            }
+        }
+        val batch=engine.preview(EditPlan("race",listOf(
+            ReplaceText("build.gradle",sha256("first\n"),"first","changed first","reason",emptyList()),
+            ReplaceText(
+                "TeamCode/nested/Second.java",sha256("second\n"),"second","changed second","reason",emptyList()
+            )
+        )))
+
+        assertThrows<FileEditApplyException> { engine.apply(batch) }
+
+        assertEquals("first\n",Files.readString(root.resolve("build.gradle")))
+        assertEquals("second\n",Files.readString(parked.resolve("nested/Second.java")))
+        assertEquals("outside\n",Files.readString(outside.resolve("outside.marker")))
+        assertNoEditTemporaryFiles(parked)
+        assertNoEditTemporaryFiles(outside)
+    }
+
+    @Test
+    fun `destination created during apply is preserved and prior writes roll back`(@TempDir root:Path) {
+        val teamCode=root.resolve("TeamCode")
+        Files.createDirectories(teamCode)
+        Files.writeString(root.resolve("build.gradle"),"first\n")
+        val destination=teamCode.resolve("Created.java")
+        val engine=FileEditEngine(root) { _,writeNumber ->
+            if (writeNumber==2) Files.writeString(destination,"concurrent\n")
+        }
+        val batch=engine.preview(EditPlan("race",listOf(
+            ReplaceText("build.gradle",sha256("first\n"),"first","changed first","reason",emptyList()),
+            CreateText("TeamCode/Created.java",true,"batch\n","reason",emptyList())
+        )))
+
+        assertThrows<FileEditApplyException> { engine.apply(batch) }
+
+        assertEquals("first\n",Files.readString(root.resolve("build.gradle")))
+        assertEquals("concurrent\n",Files.readString(destination))
+        assertNoEditTemporaryFiles(root)
+    }
+
+    @Test
+    fun `apply snapshots a hostile changing batch list exactly once`(@TempDir root:Path) {
+        val teamCode=root.resolve("TeamCode")
+        Files.createDirectories(teamCode)
+        Files.writeString(teamCode.resolve("First.java"),"first\n")
+        Files.writeString(teamCode.resolve("Second.java"),"second\n")
+        val changes=listOf(
+            PlannedFileChange(
+                "TeamCode/First.java",FileSnapshot.Text("first\n",sha256("first\n")),
+                FileSnapshot.Text("changed first\n",sha256("changed first\n")),EditScope.NORMAL
+            ),
+            PlannedFileChange(
+                "TeamCode/Second.java",FileSnapshot.Text("second\n",sha256("second\n")),
+                FileSnapshot.Text("changed second\n",sha256("changed second\n")),EditScope.NORMAL
+            )
+        )
+        val hostile=ChangingIterationList(changes)
+
+        val applied=FileEditEngine(root).apply(ValidatedEditBatch("hostile",hostile))
+
+        assertEquals(1,hostile.iteratorCalls)
+        assertEquals("changed first\n",Files.readString(teamCode.resolve("First.java")))
+        assertEquals("changed second\n",Files.readString(teamCode.resolve("Second.java")))
+        assertEquals(2,applied.changes.size)
+        @Suppress("UNCHECKED_CAST")
+        assertThrows<UnsupportedOperationException> { (applied.changes as MutableList<PlannedFileChange>).clear() }
+    }
+
+    @Test
     fun `enforces file count per result and aggregate byte limits`(@TempDir root:Path) {
         val teamCode=root.resolve("TeamCode")
         Files.createDirectories(teamCode)
@@ -274,6 +357,42 @@ class FileEditEngineTest {
     }
 
     @Test
+    fun `permission origins compose through move replace and create chains`(@TempDir root:Path) {
+        val teamCode=root.resolve("TeamCode")
+        Files.createDirectories(teamCode)
+        val chainSource=teamCode.resolve("ChainA.java")
+        val replaceSource=teamCode.resolve("ReplaceA.java")
+        Files.writeString(chainSource,"identical\n")
+        Files.writeString(replaceSource,"identical\n")
+        if (!Files.getFileStore(chainSource).supportsFileAttributeView("posix")) return
+        val chainMode=setOf(
+            PosixFilePermission.OWNER_READ,PosixFilePermission.OWNER_WRITE,PosixFilePermission.OWNER_EXECUTE
+        )
+        val replaceMode=setOf(PosixFilePermission.OWNER_READ,PosixFilePermission.GROUP_READ)
+        Files.setPosixFilePermissions(chainSource,chainMode)
+        Files.setPosixFilePermissions(replaceSource,replaceMode)
+        val engine=FileEditEngine(root)
+        val batch=engine.preview(EditPlan("permission chains",listOf(
+            MoveText("TeamCode/ChainA.java","TeamCode/ChainB.java",sha256("identical\n"),true,"reason",emptyList()),
+            MoveText("TeamCode/ChainB.java","TeamCode/ChainC.java",sha256("identical\n"),true,"reason",emptyList()),
+            ReplaceText(
+                "TeamCode/ReplaceA.java",sha256("identical\n"),"identical","replaced","reason",emptyList()
+            ),
+            MoveText(
+                "TeamCode/ReplaceA.java","TeamCode/ReplaceB.java",sha256("replaced\n"),true,"reason",emptyList()
+            ),
+            CreateText("TeamCode/CreateA.java",true,"created\n","reason",emptyList()),
+            MoveText("TeamCode/CreateA.java","TeamCode/CreateB.java",sha256("created\n"),true,"reason",emptyList())
+        )))
+
+        engine.apply(batch)
+
+        assertEquals(chainMode,Files.getPosixFilePermissions(teamCode.resolve("ChainC.java")))
+        assertEquals(replaceMode,Files.getPosixFilePermissions(teamCode.resolve("ReplaceB.java")))
+        assertFalse(Files.getPosixFilePermissions(teamCode.resolve("CreateB.java")).contains(PosixFilePermission.OWNER_EXECUTE))
+    }
+
+    @Test
     fun `rejects forged validated snapshots before writing`(@TempDir root:Path) {
         val teamCode=root.resolve("TeamCode")
         Files.createDirectories(teamCode)
@@ -299,4 +418,28 @@ class FileEditEngineTest {
 
     private fun replacePlan(path:String,bytes:ByteArray,oldText:String,newText:String):EditPlan=
         EditPlan("replace",listOf(ReplaceText(path,sha256(bytes),oldText,newText,"reason",emptyList())))
+
+    private fun assertNoEditTemporaryFiles(root:Path) {
+        Files.walk(root).use { files ->
+            assertTrue(files.noneMatch { it.fileName.toString().contains(".ftckb-") })
+        }
+    }
+
+    private class ChangingIterationList(
+        private val values:List<PlannedFileChange>
+    ):AbstractList<PlannedFileChange>() {
+        var iteratorCalls=0
+            private set
+
+        override val size:Int
+            get()=values.size
+
+        override fun get(index:Int):PlannedFileChange=values[index]
+
+        override fun iterator():MutableIterator<PlannedFileChange> {
+            iteratorCalls++
+            val selected=if (iteratorCalls==1) values else values.take(1)
+            return selected.toMutableList().iterator()
+        }
+    }
 }
