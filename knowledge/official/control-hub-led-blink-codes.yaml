@@ -1,0 +1,70 @@
+schemaVersion: 2
+rules:
+  - id: official.hub-led-read-before-repair
+    topic: hub-led-diagnostic-order
+    title: Read the hub status LED before repairing
+    instruction: Map the Control Hub, Expansion Hub, or Driver Hub status LED color and blink pattern to the REV Status LED Blink Codes table before rebooting, reflashing, or replacing hardware.
+    rationale: The LED pattern separates boot state, lost communication, low battery, and Wi-Fi band changes, each of which requires a different fix.
+    status: candidate
+    authority: official
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - type: web
+        url: https://docs.revrobotics.com/duo-control/troubleshooting-the-control-system/led-blink-codes.md
+        title: Status LED Blink Codes
+        publisher: REV Robotics
+        accessedAt: 2026-08-15
+        section: Control Hub
+  - id: official.hub-led-orange-low-battery
+    topic: hub-led-low-battery
+    title: Blinking orange means low battery
+    instruction: Treat a blinking-orange hub status LED as battery voltage below 7V and charge or replace the 12V battery before assuming a communication or motor fault.
+    rationale: Blinking orange reports voltage below 7V and is not overwritten by the keep-alive timeout pattern.
+    status: candidate
+    authority: official
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - type: web
+        url: https://docs.revrobotics.com/duo-control/troubleshooting-the-control-system/led-blink-codes.md
+        title: Status LED Blink Codes
+        publisher: REV Robotics
+        accessedAt: 2026-08-15
+        section: Control Hub
+  - id: official.hub-led-blue-keepalive-timeout
+    topic: hub-led-keepalive-timeout
+    title: Blinking blue means lost communication
+    instruction: Treat a blinking-blue hub status LED as a keep-alive timeout and check the communication path rather than power or motor hardware; the fault clears when communication resumes.
+    rationale: Blinking blue signals that the keep-alive timed out, which points at the connection between the hub and the Robot Controller or Driver Station.
+    status: candidate
+    authority: official
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - type: web
+        url: https://docs.revrobotics.com/duo-control/troubleshooting-the-control-system/led-blink-codes.md
+        title: Status LED Blink Codes
+        publisher: REV Robotics
+        accessedAt: 2026-08-15
+        section: Control Hub
+  - id: official.expansion-hub-led-blue-blinks-address
+    topic: expansion-hub-led-address
+    title: Blue blink count equals the Expansion Hub address
+    instruction: When verifying Expansion Hub communication, count the blue blinks in the solid-green pattern; the count equals the hub address (factory default 2) and must match the configured address.
+    rationale: The solid-green pattern reports the Expansion Hub address through its blue blink count, so a mismatch indicates the hub is at an unexpected address.
+    status: candidate
+    authority: official
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - type: web
+        url: https://docs.revrobotics.com/duo-control/troubleshooting-the-control-system/led-blink-codes.md
+        title: Status LED Blink Codes
+        publisher: REV Robotics
+        accessedAt: 2026-08-15
+        section: Expansion Hub
