@@ -98,4 +98,3 @@ ftckb chat --knowledge PATH --team N --season YYYY-YYYY --provider NAME [--repo 
 - 不部署：没有 Control Hub、ADB、Logcat 或任何机器人硬件访问；
 - 不自动执行 Git 写操作：不自动 commit/push/merge；
 - 没有 Android Studio 界面：只有命令行。
-
