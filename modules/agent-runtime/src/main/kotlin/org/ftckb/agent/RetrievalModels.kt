@@ -59,18 +59,7 @@ data class AgentAnswer(val claims:List<AnswerClaim>,val usage:TokenUsage?)
 class CitationValidationException(message:String):RuntimeException(message)
 
 internal object EvidenceSerialization {
-    fun payload(evidence:List<EvidenceItem>):String=buildString {
-        evidence.forEach { append(block(it)) }
-    }
+    fun payload(evidence:List<EvidenceItem>):String=ContextSafety.payload(evidence)
 
-    fun block(item:EvidenceItem):String=buildString {
-        when (item) {
-            is CodeEvidence -> append('[').append(item.id).append("] ").append(item.path)
-                .append(':').append(item.startLine).append('-').append(item.endLine).append('\n').append(item.text).append('\n')
-            is RuleEvidenceItem -> append('[').append(item.id).append("] approved rule ").append(item.rule.id)
-                .append(": ").append(item.rule.instruction).append('\n')
-            is GuideEvidence -> append('[').append(item.id).append("] guide ").append(item.path)
-                .append(" # ").append(item.heading).append('\n').append(item.text).append('\n')
-        }
-    }
+    fun block(item:EvidenceItem):String=ContextSafety.block(item)
 }

@@ -143,7 +143,7 @@ class AnswerGeneratorTest {
         val knowledgeRoot=Files.createDirectories(tempDir.resolve("empty-knowledge"))
         val index=RepositoryIndex()
         index.build(repositoryRoot)
-        val cap=80
+        val cap=256
         val context=ContextRetriever(index,KnowledgeRetriever(knowledgeRoot,null,null),cap)
             .retrieve(RetrievalIntent(setOf("drive"),emptySet(),emptySet(),emptySet(),emptySet()))
         val provider=ScriptedProvider(

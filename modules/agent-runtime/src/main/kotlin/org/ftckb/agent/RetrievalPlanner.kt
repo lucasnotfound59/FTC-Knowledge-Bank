@@ -34,7 +34,7 @@ class RetrievalPlanner(private val provider:ModelProvider) {
                 if (input.pendingQuestions.isNotEmpty()) {
                     append("Pending user turns without validated answers: ").append(input.pendingQuestions.joinToString()).append('\n')
                 }
-                append("Repository summary: ").append(input.repositorySummary)
+                append("Repository summary: ").append(ContextSafety.wrapUntrusted("REPOSITORY",input.repositorySummary))
                 issue?.let { append("\nRepair the previous response: ").append(it) }
             })
         ),512
