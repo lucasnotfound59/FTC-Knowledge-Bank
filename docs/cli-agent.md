@@ -93,6 +93,24 @@ ftckb chat --knowledge PATH --team N --season YYYY-YYYY --provider NAME [--repo 
 - 仓库不可读/不支持的仓库：Ask 报错并禁用 Edit。
 - 模型返回格式异常：与"模型生成的无效 JSON"分开归类报告。
 
+## 机器接口（供外部 Agent 使用）
+
+validate 与 resolve 支持 --json 输出稳定、版本化的 JSON 契约，供 Codex / Claude Code / 其他 Agent 把知识库当作确定性"策略裁决器"调用，而不是把规则当普通文本读：
+
+```bash
+ftckb validate knowledge --json
+ftckb resolve knowledge --team 20827 --season 2025-2026 --json
+```
+
+契约要点：
+
+- 顶层含 schemaVersion（当前 1）、command、ok；破坏性变更必须提升版本号。
+- 输出确定性：activeRules 按 id 排序、conflicts 按 topic 排序、规则内的 teams/seasons/evidence 顺序固定——同样的输入永远得到同样的输出。
+- resolve 返回每条 active 规则的 id/topic/title/instruction/rationale/status/authority/applicability/evidence（git 与 web 两种证据形态），以及 conflicts（topic + authority + ruleIds）。
+- 退出码：成功 0；知识加载/校验失败或存在冲突 2；参数错误 64。错误信息仍是文本，外部 Agent 应以退出码 + JSON 解析为准。
+
+未来将在此契约上继续增加：check 裁决器（对代码/diff 做可机器判定的硬规则检查）、native 单文件可执行、MCP 薄适配层。
+
 ## 当前明确不包含的能力
 
 - 不联网：不访问任何官方文档网页；

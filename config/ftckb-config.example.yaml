@@ -8,7 +8,7 @@ defaultProvider: deepseek
 providers:
   deepseek:
     baseUrl: https://api.deepseek.com
-    model: deepseek-v4-flash
+    model: deepseek-v4-pro
     apiKeyEnv: DEEPSEEK_API_KEY
     timeoutSeconds: 90
     maxOutputTokens: 16384

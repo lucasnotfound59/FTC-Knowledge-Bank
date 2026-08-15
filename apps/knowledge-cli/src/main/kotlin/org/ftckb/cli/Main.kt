@@ -19,31 +19,33 @@ fun runCli(
     if (args.firstOrNull()=="chat") return runChatCommand(args.drop(1),input,out,chatLauncher)
     if (args.firstOrNull()=="eval") return evalCommand.run(args.drop(1),out)
     if (args.size<2) {
-        out.println("usage: knowledge-cli <validate|resolve> <knowledge-root> [--team N --season S]")
+        out.println("usage: knowledge-cli <validate|resolve> <knowledge-root> [--team N --season S] [--json]")
         return 64
     }
     if (args[0] !in setOf("validate","resolve")) {
         out.println("unknown command: ${args[0]}")
         return 64
     }
-    if (args[0]=="validate" && args.size!=2) {
+    val jsonMode=args.drop(2).contains("--json")
+    val optionArgs=args.drop(2).filterNot { it=="--json" }
+    if (args[0]=="validate" && optionArgs.isNotEmpty()) {
         out.println("validate accepts exactly one knowledge root")
         return 64
     }
-    if (args[0]=="resolve" && "--team" !in args.drop(2)) {
+    if (args[0]=="resolve" && "--team" !in optionArgs) {
         out.println("missing --team")
         return 64
     }
-    if (args[0]=="resolve" && "--season" !in args.drop(2)) {
+    if (args[0]=="resolve" && "--season" !in optionArgs) {
         out.println("missing --season")
         return 64
     }
-    if (args[0]=="resolve" && args.drop(2).size%2!=0) {
+    if (args[0]=="resolve" && optionArgs.size%2!=0) {
         out.println("resolve options must be flag-value pairs")
         return 64
     }
     if (args[0]=="resolve") {
-        val optionPairs=args.drop(2).chunked(2)
+        val optionPairs=optionArgs.chunked(2)
         val unknown=optionPairs.firstOrNull { it[0] !in setOf("--team","--season") }
         if (unknown!=null) {
             out.println("unknown resolve option: ${unknown[0]}")
@@ -89,15 +91,19 @@ fun runCli(
     }
     return when (args[0]) {
         "validate" -> {
-            out.println("validation=ok rules=${loaded.rules.size}")
+            if (jsonMode) out.println(KernelJson.validateJson(loaded.rules.size))
+            else out.println("validation=ok rules=${loaded.rules.size}")
             0
         }
         "resolve" -> {
-            val options=args.drop(2).chunked(2).associate { pair -> pair[0] to pair.getOrElse(1) { "" } }
+            val options=optionArgs.chunked(2).associate { pair -> pair[0] to pair.getOrElse(1) { "" } }
             val team=options["--team"] ?: return 64.also { out.println("missing --team") }
             val season=options["--season"] ?: return 64.also { out.println("missing --season") }
             val result=RuleResolver.resolve(loaded.rules,RuleContext(team,season))
-            if (result.conflicts.isNotEmpty()) {
+            if (jsonMode) {
+                out.println(KernelJson.resolveJson(team,season,result.activeRules,result.conflicts))
+                if (result.conflicts.isNotEmpty()) 2 else 0
+            } else if (result.conflicts.isNotEmpty()) {
                 result.conflicts.forEach { out.println("conflict topic=${it.topic} rules=${it.ruleIds.sorted().joinToString(",")}") }
                 2
             } else {

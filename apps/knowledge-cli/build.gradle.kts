@@ -17,6 +17,7 @@ dependencies {
     implementation(project(":modules:tooling-git"))
     implementation(libs.jgit)
     implementation(libs.snakeyaml.engine)
+    implementation(libs.jackson.databind)
     testImplementation(libs.jackson.databind)
     testImplementation(libs.jgit)
     testImplementation(platform(libs.junit.bom))
