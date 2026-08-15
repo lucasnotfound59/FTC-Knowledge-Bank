@@ -62,6 +62,7 @@ class FileEditApplyException(
 
 class FileEditEngine(
     root:Path,
+    private val beforeMutation:(Path,Int)->Unit={ _,_-> },
     private val beforeWrite:(Path,Int)->Unit={ _,_-> }
 ) {
     private val root=root.toRealPath()
@@ -178,7 +179,7 @@ class FileEditEngine(
                 }
                 path.verifyBoundary()
                 require(path.snapshot()==change.before) { "edit precondition changed: ${change.path}" }
-                applied+=change
+                beforeMutation(path.absolute,index+1)
                 when (after) {
                     FileSnapshot.Missing -> Files.delete(path.absolute)
                     is FileSnapshot.Text -> {
@@ -188,6 +189,7 @@ class FileEditEngine(
                         temporaryFiles.remove(change)
                     }
                 }
+                applied+=change
                 path.verifyBoundary()
                 require(path.snapshot()==after) { "edit result changed during apply: ${change.path}" }
             }
@@ -235,22 +237,7 @@ class FileEditEngine(
         val failures=mutableListOf<Throwable>()
         applied.asReversed().forEach { change ->
             try {
-                val path=verified.getValue(change)
-                path.verifyBoundary()
-                val before=change.before
-                when (before) {
-                    FileSnapshot.Missing -> Files.deleteIfExists(path.absolute)
-                    is FileSnapshot.Text -> {
-                        val temporary=path.prepare(before,permissions[change])
-                        try {
-                            replace(temporary,path.absolute)
-                        } finally {
-                            Files.deleteIfExists(temporary)
-                        }
-                    }
-                }
-                path.verifyBoundary()
-                require(path.snapshot()==before) { "edit rollback changed: ${change.path}" }
+                verified.getValue(change).rollback(change,permissions[change])
             } catch (failure:Throwable) {
                 failures+=failure
             }
@@ -265,8 +252,7 @@ class FileEditEngine(
         val failures=mutableListOf<Throwable>()
         temporaryFiles.forEach { (change,temporary) ->
             try {
-                verified.getValue(change).verifyBoundary()
-                Files.deleteIfExists(temporary)
+                verified.getValue(change).cleanup(temporary)
             } catch (failure:Throwable) {
                 failures+=failure
             }
@@ -281,9 +267,12 @@ class FileEditEngine(
      * This portable boundary detects ordinary IDE/concurrent ancestor changes before and
      * after each operation. It does not claim to defeat a malicious same-account process
      * swapping a directory in the microseconds between the final check and the path call.
+     * Rollback relocation is limited to captured file keys under the verified repository
+     * parent and then under each captured repository ancestor.
      */
     private inner class VerifiedEditPath(val resolved:ResolvedEditPath) {
         val absolute:Path=resolved.absolute
+        private val repositoryParent=captureDirectory(requireNotNull(root.parent))
         private val directories=captureDirectories()
 
         fun verifyBoundary() {
@@ -306,11 +295,50 @@ class FileEditEngine(
             null
         }
 
-        fun prepare(snapshot:FileSnapshot.Text,permissions:Set<PosixFilePermission>?):Path {
+        fun prepare(snapshot:FileSnapshot.Text,permissions:Set<PosixFilePermission>?):Path=
+            prepareAt(absolute,snapshot,permissions,::verifyBoundary)
+
+        fun rollback(change:PlannedFileChange,permissions:Set<PosixFilePermission>?) {
+            val target=locateCapturedTarget()
+            require(readSnapshot(target)==change.after) { "edit result changed before rollback: ${change.path}" }
+            val verify={ require(locateCapturedTarget()==target) { "edit directory changed during rollback: ${change.path}" } }
+            when (val before=change.before) {
+                FileSnapshot.Missing -> Files.delete(target)
+                is FileSnapshot.Text -> {
+                    val temporary=prepareAt(target,before,permissions,verify)
+                    try {
+                        replace(temporary,target)
+                    } finally {
+                        Files.deleteIfExists(temporary)
+                    }
+                }
+            }
+            verify()
+            require(readSnapshot(target)==change.before) { "edit rollback changed: ${change.path}" }
+        }
+
+        fun cleanup(temporary:Path) {
+            val parent=locateCapturedTarget().parent
+            val relocated=parent.resolve(temporary.fileName)
+            if (Files.exists(relocated,LinkOption.NOFOLLOW_LINKS)) {
+                require(
+                    Files.isRegularFile(relocated,LinkOption.NOFOLLOW_LINKS) && !Files.isSymbolicLink(relocated)
+                ) { "edit temporary file changed during cleanup" }
+                Files.delete(relocated)
+            }
+            require(locateCapturedTarget().parent==parent) { "edit directory changed during cleanup" }
+        }
+
+        private fun prepareAt(
+            target:Path,
+            snapshot:FileSnapshot.Text,
+            permissions:Set<PosixFilePermission>?,
+            verify:()->Unit
+        ):Path {
             repeat(TEMP_NAME_ATTEMPTS) {
-                verifyBoundary()
-                val temporary=absolute.parent.resolve(
-                    ".${absolute.fileName}.ftckb-write-${UUID.randomUUID()}.tmp"
+                verify()
+                val temporary=target.parent.resolve(
+                    ".${target.fileName}.ftckb-write-${UUID.randomUUID()}.tmp"
                 )
                 var created=false
                 try {
@@ -326,14 +354,14 @@ class FileEditEngine(
                     if (permissions!=null) Files.setAttribute(
                         temporary,"posix:permissions",permissions,LinkOption.NOFOLLOW_LINKS
                     )
-                    verifyBoundary()
+                    verify()
                     return temporary
                 } catch (_:FileAlreadyExistsException) {
                     // Try a new unguessable sibling name.
                 } catch (failure:Throwable) {
                     if (created) {
                         try {
-                            verifyBoundary()
+                            verify()
                             Files.deleteIfExists(temporary)
                         } catch (cleanupFailure:Throwable) {
                             failure.addSuppressed(cleanupFailure)
@@ -345,6 +373,35 @@ class FileEditEngine(
             throw IOException("could not allocate a safe temporary sibling")
         }
 
+        private fun locateCapturedTarget():Path {
+            require(matches(repositoryParent.path,repositoryParent)) { "edit repository parent changed during rollback" }
+            var current=directories.first().path
+            if (!matches(current,directories.first())) {
+                current=findCapturedChild(repositoryParent.path,directories.first())
+            }
+            directories.drop(1).forEach { identity ->
+                val expected=current.resolve(identity.path.fileName)
+                current=if (matches(expected,identity)) expected else findCapturedChild(current,identity)
+            }
+            return current.resolve(absolute.fileName)
+        }
+
+        private fun findCapturedChild(parent:Path,identity:DirectoryIdentity):Path {
+            val matches=Files.newDirectoryStream(parent).use { entries ->
+                entries.filter { matches(it,identity) }.toList()
+            }
+            require(matches.size==1) { "edit directory cannot be located safely during rollback" }
+            return matches.single()
+        }
+
+        private fun matches(path:Path,identity:DirectoryIdentity):Boolean=try {
+            val attributes=Files.readAttributes(path,BasicFileAttributes::class.java,LinkOption.NOFOLLOW_LINKS)
+            attributes.isDirectory && !attributes.isSymbolicLink && attributes.fileKey()==identity.fileKey &&
+                path.toRealPath()==path
+        } catch (_:IOException) {
+            false
+        }
+
         private fun captureDirectories():List<DirectoryIdentity> {
             val pathsToCapture=mutableListOf(root)
             var current=root
@@ -352,18 +409,20 @@ class FileEditEngine(
                 current=current.resolve(component)
                 pathsToCapture.add(current)
             }
-            val identities=pathsToCapture.map { directory ->
-                val attributes=Files.readAttributes(
-                    directory,BasicFileAttributes::class.java,LinkOption.NOFOLLOW_LINKS
-                )
-                require(
-                    attributes.isDirectory && !attributes.isSymbolicLink && directory.toRealPath()==directory
-                ) { "edit path contains an unsafe directory" }
-                DirectoryIdentity(
-                    directory,requireNotNull(attributes.fileKey()) { "edit directory identity is unavailable" }
-                )
-            }
+            val identities=pathsToCapture.map(::captureDirectory)
             return Collections.unmodifiableList(identities)
+        }
+
+        private fun captureDirectory(directory:Path):DirectoryIdentity {
+            val attributes=Files.readAttributes(
+                directory,BasicFileAttributes::class.java,LinkOption.NOFOLLOW_LINKS
+            )
+            require(
+                attributes.isDirectory && !attributes.isSymbolicLink && directory.toRealPath()==directory
+            ) { "edit path contains an unsafe directory" }
+            return DirectoryIdentity(
+                directory,requireNotNull(attributes.fileKey()) { "edit directory identity is unavailable" }
+            )
         }
     }
 

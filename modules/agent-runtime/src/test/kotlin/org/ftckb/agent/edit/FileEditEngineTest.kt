@@ -72,9 +72,9 @@ class FileEditEngineTest {
         val secondBytes="second user bytes\n".toByteArray(StandardCharsets.UTF_8)
         Files.write(first,firstBytes)
         Files.write(second,secondBytes)
-        val engine=FileEditEngine(root) { _,writeNumber ->
+        val engine=FileEditEngine(root,beforeMutation={ _,writeNumber ->
             if (writeNumber==2) throw IOException("injected second write failure")
-        }
+        })
         val secondFileKey=Files.readAttributes(second,BasicFileAttributes::class.java).fileKey()
         val batch=engine.preview(EditPlan("rollback",listOf(
             ReplaceText("TeamCode/First.java",sha256(firstBytes),"first","agent first","reason",emptyList()),
@@ -229,6 +229,87 @@ class FileEditEngineTest {
         assertEquals("outside\n",Files.readString(outside.resolve("outside.marker")))
         assertNoEditTemporaryFiles(parked)
         assertNoEditTemporaryFiles(outside)
+    }
+
+    @Test
+    fun `rollback follows a captured ancestor renamed inside the repository`(@TempDir root:Path) {
+        val teamCode=root.resolve("TeamCode")
+        val parked=root.resolve("ParkedTeamCode")
+        Files.createDirectories(teamCode)
+        Files.writeString(teamCode.resolve("First.java"),"first\n")
+        Files.writeString(root.resolve("build.gradle"),"second\n")
+        val engine=FileEditEngine(root) { _,writeNumber ->
+            if (writeNumber==2) {
+                Files.move(teamCode,parked)
+                Files.createDirectories(teamCode)
+                throw IOException("ancestor replaced")
+            }
+        }
+        val batch=engine.preview(EditPlan("race",listOf(
+            ReplaceText("TeamCode/First.java",sha256("first\n"),"first","changed first","reason",emptyList()),
+            ReplaceText("build.gradle",sha256("second\n"),"second","changed second","reason",emptyList())
+        )))
+
+        val failure=assertThrows<FileEditApplyException> { engine.apply(batch) }
+
+        assertTrue(failure.rollbackFailures.isEmpty())
+        assertEquals("first\n",Files.readString(parked.resolve("First.java")))
+        assertEquals("second\n",Files.readString(root.resolve("build.gradle")))
+        assertTrue(Files.list(teamCode).use { it.findAny().isEmpty })
+        assertNoEditTemporaryFiles(root)
+    }
+
+    @Test
+    fun `rollback follows a captured repository root renamed within its parent`(@TempDir container:Path) {
+        val root=container.resolve("repo")
+        val parked=container.resolve("parked-repo")
+        Files.createDirectories(root.resolve("TeamCode"))
+        Files.writeString(root.resolve("TeamCode/First.java"),"first\n")
+        Files.writeString(root.resolve("build.gradle"),"second\n")
+        val engine=FileEditEngine(root,beforeMutation={ _,writeNumber ->
+            if (writeNumber==2) {
+                Files.move(root,parked)
+                Files.createDirectories(root)
+                throw IOException("root replaced")
+            }
+        })
+        val batch=engine.preview(EditPlan("race",listOf(
+            ReplaceText("TeamCode/First.java",sha256("first\n"),"first","changed first","reason",emptyList()),
+            ReplaceText("build.gradle",sha256("second\n"),"second","changed second","reason",emptyList())
+        )))
+
+        val failure=assertThrows<FileEditApplyException> { engine.apply(batch) }
+
+        assertTrue(failure.rollbackFailures.isEmpty())
+        assertTrue(failure.cleanupFailures.isEmpty())
+        assertEquals("first\n",Files.readString(parked.resolve("TeamCode/First.java")))
+        assertEquals("second\n",Files.readString(parked.resolve("build.gradle")))
+        assertTrue(Files.list(root).use { it.findAny().isEmpty })
+        assertNoEditTemporaryFiles(parked)
+        assertNoEditTemporaryFiles(root)
+    }
+
+    @Test
+    fun `no replace create race preserves the concurrent destination`(@TempDir root:Path) {
+        val teamCode=root.resolve("TeamCode")
+        Files.createDirectories(teamCode)
+        Files.writeString(root.resolve("build.gradle"),"first\n")
+        val destination=teamCode.resolve("Created.java")
+        val engine=FileEditEngine(root,beforeMutation={ _,writeNumber ->
+            if (writeNumber==2) Files.writeString(destination,"concurrent\n")
+        })
+        val batch=engine.preview(EditPlan("race",listOf(
+            ReplaceText("build.gradle",sha256("first\n"),"first","changed first","reason",emptyList()),
+            CreateText("TeamCode/Created.java",true,"batch\n","reason",emptyList())
+        )))
+
+        val failure=assertThrows<FileEditApplyException> { engine.apply(batch) }
+
+        assertTrue(failure.rollbackFailures.isEmpty())
+        assertTrue(failure.cleanupFailures.isEmpty())
+        assertEquals("first\n",Files.readString(root.resolve("build.gradle")))
+        assertEquals("concurrent\n",Files.readString(destination))
+        assertNoEditTemporaryFiles(root)
     }
 
     @Test
