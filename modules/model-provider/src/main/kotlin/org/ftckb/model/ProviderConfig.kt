@@ -30,7 +30,18 @@ data class ProviderProfile(
 }
 
 data class ProviderConfig(val defaultProvider:String,val providers:Map<String,ProviderProfile>) {
-    fun profile(name:String=defaultProvider)=providers[name] ?: error("unknown provider profile: $name")
+    fun profile(name:String=defaultProvider):ProviderProfile {
+        if (name.length !in 1..MAX_SELECTOR_LENGTH || !name.matches(selectorPattern) ||
+            SecretRedactor.redact(name).redactionCount>0) {
+            error("invalid provider profile selector")
+        }
+        return providers[name] ?:error("unknown provider profile")
+    }
+
+    private companion object {
+        const val MAX_SELECTOR_LENGTH=64
+        val selectorPattern=Regex("[a-z0-9][a-z0-9.-]*")
+    }
 }
 
 fun interface SecretResolver {

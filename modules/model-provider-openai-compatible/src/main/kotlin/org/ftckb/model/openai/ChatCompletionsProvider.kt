@@ -32,6 +32,8 @@ internal class ChatCompletionsProvider(
             ))
         } catch (_:ResponseTooLargeException) {
             throw ModelProviderException.Protocol("model provider response exceeded size limit")
+        } catch (_:IllegalArgumentException) {
+            throw ModelProviderException.Transport(IOException("HTTP request failed"))
         } catch (_:IOException) {
             throw ModelProviderException.Transport(IOException("HTTP request failed"))
         }

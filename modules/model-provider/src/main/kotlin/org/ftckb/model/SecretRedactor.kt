@@ -8,22 +8,26 @@ object SecretRedactor {
     fun redact(text:String,exactSecrets:Set<String> =emptySet()):RedactionResult {
         if (text.isEmpty()) return RedactionResult(text,0)
         val spans=TreeMap<Int,Int>()
-        exactSecrets.asSequence()
+        if (exactSecrets.size>MAX_EXACT_SECRETS) return failClosed()
+        val secrets=exactSecrets.asSequence()
             .filter(String::isNotBlank)
             .distinct()
             .sortedByDescending(String::length)
-            .forEach { secret ->
-                var offset=0
-                while (offset<=text.length-secret.length) {
-                    val start=text.indexOf(secret,offset)
-                    if (start<0) break
-                    select(spans,start,start+secret.length)
-                    offset=start+1
-                }
+            .toList()
+        for (secret in secrets) {
+            var offset=0
+            while (offset<=text.length-secret.length) {
+                val start=text.indexOf(secret,offset)
+                if (start<0) break
+                select(spans,start,start+secret.length)
+                if (spans.size>MAX_REDACTION_SPANS) return failClosed()
+                offset=start+secret.length
             }
-        patterns.forEach { pattern ->
-            pattern.findAll(text).forEach { match ->
+        }
+        for (pattern in patterns) {
+            for (match in pattern.findAll(text)) {
                 select(spans,match.range.first,match.range.last+1)
+                if (spans.size>MAX_REDACTION_SPANS) return failClosed()
             }
         }
         if (spans.isEmpty()) return RedactionResult(text,0)
@@ -39,13 +43,28 @@ object SecretRedactor {
         return RedactionResult(redacted,spans.size)
     }
 
+    private fun failClosed()=RedactionResult(REPLACEMENT,1)
+
     private fun select(spans:TreeMap<Int,Int>,start:Int,end:Int) {
-        if (spans.floorEntry(start)?.value?.let { it>start }==true) return
-        if (spans.ceilingKey(start)?.let { it<end }==true) return
-        spans[start]=end
+        var mergedStart=start
+        var mergedEnd=end
+        spans.floorEntry(start)?.takeIf { (_,existingEnd) -> existingEnd>start }?.let { (existingStart,existingEnd) ->
+            mergedStart=existingStart
+            mergedEnd=maxOf(mergedEnd,existingEnd)
+            spans.remove(existingStart)
+        }
+        var next=spans.ceilingEntry(mergedStart)
+        while (next!=null && next.key<mergedEnd) {
+            mergedEnd=maxOf(mergedEnd,next.value)
+            spans.remove(next.key)
+            next=spans.ceilingEntry(mergedStart)
+        }
+        spans[mergedStart]=mergedEnd
     }
 
     private const val REPLACEMENT="[REDACTED]"
+    private const val MAX_EXACT_SECRETS=64
+    private const val MAX_REDACTION_SPANS=4096
     private val authorization=Regex("(?i)\\bauthorization[ \\t]*:[ \\t]*bearer[ \\t]+[^\\s,;]+")
     private val bearer=Regex("(?i)\\bbearer[ \\t]+[A-Za-z0-9._~+/-]{12,}={0,2}")
     private val skToken=Regex("(?i)sk-[A-Za-z0-9][A-Za-z0-9._-]{10,}")

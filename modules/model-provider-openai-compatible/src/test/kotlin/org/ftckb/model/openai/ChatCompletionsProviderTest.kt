@@ -144,6 +144,28 @@ class ChatCompletionsProviderTest {
     }
 
     @Test
+    fun `maps malformed authorization headers to stable transport errors without retaining credentials`() {
+        val injectedName=listOf("X","Synthetic","Header").joinToString("-")
+        val secretShape=listOf("sk","synthetic","header","credential").joinToString("-")
+        val malformed=listOf("synthetic","line").joinToString("-")+"\r\n$injectedName: $secretShape"
+        val provider=ProviderFactory.create(
+            profile(),SecretResolver { malformed },JdkHttpTransport()
+        )
+
+        val error=assertThrows(ModelProviderException.Transport::class.java) {
+            provider.complete(request())
+        }
+
+        assertEquals("model provider transport failed",error.message)
+        assertEquals("HTTP request failed",error.cause?.message)
+        assertEquals(null,error.cause?.cause)
+        val diagnostic=throwableDiagnostics(error)
+        listOf(malformed,injectedName,secretShape).forEach { unsafe ->
+            assertFalse(diagnostic.contains(unsafe),unsafe)
+        }
+    }
+
+    @Test
     fun `rejects empty choices as a protocol error`() {
         val error=assertThrows(ModelProviderException.Protocol::class.java) {
             ProviderFactory.create(profile(),resolver(),FakeTransport(HttpResult(200,"{\"choices\":[]}"))).complete(request())
@@ -176,6 +198,18 @@ class ChatCompletionsProviderTest {
     private fun resolver()=SecretResolver { name -> if (name=="DEEPSEEK_API_KEY") "test-key" else null }
 
     private fun fixture(name:String)=javaClass.getResource("/$name")!!.readText()
+
+    private fun throwableDiagnostics(error:Throwable):String=buildString {
+        val pending=ArrayDeque<Throwable>().apply { add(error) }
+        val seen=java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Throwable,Boolean>())
+        while (pending.isNotEmpty()) {
+            val current=pending.removeFirst()
+            if (!seen.add(current)) continue
+            append(current.toString()).append('\n')
+            current.cause?.let(pending::add)
+            current.suppressed.forEach(pending::add)
+        }
+    }
 
     private class FakeTransport(private val result:HttpResult):HttpTransport {
         lateinit var exchange:HttpExchange

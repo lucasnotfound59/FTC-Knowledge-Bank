@@ -67,4 +67,38 @@ class ProviderConfigLoaderTest {
             assertEquals("provider baseUrl must use HTTPS without credentials, query, or fragment",error.message)
         }
     }
+
+    @Test
+    fun `rejects unsafe provider selectors before lookup without echoing them`() {
+        val profile=ProviderProfile(
+            "custom.v2-beta",URI("https://example.com/v1"),"model","CUSTOM_KEY"
+        )
+        val config=ProviderConfig(profile.name,mapOf(profile.name to profile))
+        val credentialShape=listOf("sk","synthetic","selector","credential").joinToString("-")
+        val selectors=listOf(
+            "custom.v2-beta\nforged",
+            "\u001b[31mcustom.v2-beta",
+            "\u001b]0;owned\u0007custom.v2-beta",
+            "\u202ecustom.v2-beta",
+            "custom\u200d.v2-beta",
+            credentialShape,
+            "x".repeat(1024*1024)
+        )
+
+        selectors.forEach { selector ->
+            val error=assertThrows(IllegalStateException::class.java) { config.profile(selector) }
+            assertEquals("invalid provider profile selector",error.message)
+        }
+        assertEquals(profile,config.profile("custom.v2-beta"))
+    }
+
+    @Test
+    fun `does not echo a valid but unknown provider selector`() {
+        val profile=ProviderProfile("known",URI("https://example.com/v1"),"model","CUSTOM_KEY")
+        val config=ProviderConfig(profile.name,mapOf(profile.name to profile))
+
+        val error=assertThrows(IllegalStateException::class.java) { config.profile("unknown-custom") }
+
+        assertEquals("unknown provider profile",error.message)
+    }
 }

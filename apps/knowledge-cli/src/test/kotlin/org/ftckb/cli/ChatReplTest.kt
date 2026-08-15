@@ -352,6 +352,31 @@ class ChatReplTest {
     }
 
     @Test
+    fun `production startup never echoes an unsafe provider selector`(@TempDir root:Path) {
+        val config=root.resolve("config.yaml")
+        writeFakeConfig(config,"FTC_KB_FAKE_KEY")
+        val credentialShape=listOf("sk","synthetic","selector","credential").joinToString("-")
+        val selector="\u001b]0;owned\u0007$credentialShape\u202e"
+        val output=ByteArrayOutputStream()
+        val launcher=ProductionChatLauncher(
+            environment={ error("environment must not be read") },
+            providerCreator={ _,_ -> error("provider must not be created") }
+        )
+
+        val code=launcher.run(
+            ChatOptions(
+                Path.of("missing-repository"),Path.of("missing-knowledge"),"20827","2025-2026",selector,config
+            ),
+            BufferedReader(StringReader("")),
+            PrintStream(output)
+        )
+
+        assertEquals(2,code)
+        assertEquals("error starting chat: unknown or invalid provider profile\n",output.toString())
+        assertFalse(output.toString().contains(credentialShape))
+    }
+
+    @Test
     fun `production reports a deleted repository for one turn and keeps the REPL alive`(@TempDir root:Path) {
         val repository=root.resolve("repository")
         val unavailable=root.resolve("repository-unavailable")

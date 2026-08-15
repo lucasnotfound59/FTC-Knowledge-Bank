@@ -51,7 +51,7 @@ class ProductionChatLauncher(
         val profile=try {
             config.profile(options.provider)
         } catch (_:Exception) {
-            out.println("error starting chat: unknown provider profile: ${options.provider}")
+            out.println("error starting chat: unknown or invalid provider profile")
             return 2
         }
         val secret=environment(profile.apiKeyEnv)?.takeIf { it.isNotBlank() }

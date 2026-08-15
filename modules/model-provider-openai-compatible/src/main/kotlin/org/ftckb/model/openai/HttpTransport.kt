@@ -27,13 +27,13 @@ class JdkHttpTransport(
         .build()
 ):HttpTransport {
     override fun send(exchange:HttpExchange):HttpResult {
-        val request=HttpRequest.newBuilder(exchange.uri)
-            .timeout(Duration.ofSeconds(exchange.timeoutSeconds.toLong()))
-            .header("Content-Type","application/json; charset=utf-8")
-            .POST(HttpRequest.BodyPublishers.ofString(exchange.body,StandardCharsets.UTF_8))
-            .apply { exchange.headers.forEach { (name,value) -> header(name,value) } }
-            .build()
         try {
+            val request=HttpRequest.newBuilder(exchange.uri)
+                .timeout(Duration.ofSeconds(exchange.timeoutSeconds.toLong()))
+                .header("Content-Type","application/json; charset=utf-8")
+                .POST(HttpRequest.BodyPublishers.ofString(exchange.body,StandardCharsets.UTF_8))
+                .apply { exchange.headers.forEach { (name,value) -> header(name,value) } }
+                .build()
             val response=client.send(request,HttpResponse.BodyHandlers.ofInputStream())
             val contentLength=response.headers().firstValueAsLong("Content-Length")
             if (contentLength.isPresent && contentLength.asLong>MAX_RESPONSE_BYTES) {
@@ -58,6 +58,8 @@ class JdkHttpTransport(
         } catch (error:InterruptedException) {
             Thread.currentThread().interrupt()
             throw IOException("HTTP request interrupted",error)
+        } catch (_:IllegalArgumentException) {
+            throw IOException("HTTP request construction failed")
         }
     }
 
