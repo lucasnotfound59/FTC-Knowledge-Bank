@@ -5,6 +5,7 @@ import org.ftckb.agent.edit.EditAgent
 import org.ftckb.agent.edit.EditHistory
 import org.ftckb.agent.edit.EditReport
 import org.ftckb.agent.edit.EditValidationException
+import org.ftckb.agent.edit.FileEditApplyException
 import org.ftckb.agent.edit.HistoryResult
 import org.ftckb.git.AgentDiffRenderer
 import org.ftckb.git.GitWorkspace
@@ -62,6 +63,12 @@ class SessionController(
                     EditResult(editAgent.edit(message,::requireAuthorizedBranchAtWriteBoundary))
                 } catch (_:EditAuthorizationException) {
                     RejectedResult("Edit requires the authorized named current branch")
+                } catch (failure:FileEditApplyException) {
+                    if (failure.isRolledBackAuthorizationAbort()) {
+                        RejectedResult("Edit requires the authorized named current branch")
+                    } else {
+                        throw failure
+                    }
                 } catch (_:EditValidationException) {
                     RejectedResult("Edit plan validation failed; no files were written")
                 }
@@ -73,14 +80,30 @@ class SessionController(
     fun undo():HistoryCommandResult {
         if (currentMode!=AgentMode.EDIT) return RejectedResult("Undo requires Edit mode")
         if (!isAuthorizedBranchCurrent()) return RejectedResult("Undo requires the authorized named current branch")
-        return HistoryAppliedResult(history.undo().also(::refreshAfterHistory))
+        return try {
+            HistoryAppliedResult(history.undo(::requireAuthorizedBranchAtWriteBoundary).also(::refreshAfterHistory))
+        } catch (failure:FileEditApplyException) {
+            if (failure.isRolledBackAuthorizationAbort()) {
+                RejectedResult("Undo requires the authorized named current branch")
+            } else {
+                throw failure
+            }
+        }
     }
 
     @Synchronized
     fun discard():HistoryCommandResult {
         if (currentMode!=AgentMode.EDIT) return RejectedResult("Discard requires Edit mode")
         if (!isAuthorizedBranchCurrent()) return RejectedResult("Discard requires the authorized named current branch")
-        return HistoryAppliedResult(history.discard().also(::refreshAfterHistory))
+        return try {
+            HistoryAppliedResult(history.discard(::requireAuthorizedBranchAtWriteBoundary).also(::refreshAfterHistory))
+        } catch (failure:FileEditApplyException) {
+            if (failure.isRolledBackAuthorizationAbort()) {
+                RejectedResult("Discard requires the authorized named current branch")
+            } else {
+                throw failure
+            }
+        }
     }
 
     @Synchronized
@@ -98,6 +121,9 @@ class SessionController(
     private fun requireAuthorizedBranchAtWriteBoundary() {
         if (!isAuthorizedBranchCurrent()) throw EditAuthorizationException()
     }
+
+    private fun FileEditApplyException.isRolledBackAuthorizationAbort():Boolean=
+        originalFailure is EditAuthorizationException && rollbackFailures.isEmpty() && cleanupFailures.isEmpty()
 
     private fun currentNamedBranch():String?=runCatching {
         val workspace=workspaceInspector(repositoryRoot)

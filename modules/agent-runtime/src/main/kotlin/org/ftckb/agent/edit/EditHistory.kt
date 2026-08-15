@@ -25,7 +25,7 @@ class EditHistory(root:Path,private val engine:FileEditEngine=FileEditEngine(roo
     private var batches=ArrayDeque<AppliedEditBatch>()
 
     @Synchronized
-    fun applyAndRecord(batch:ValidatedEditBatch):AppliedEditBatch {
+    fun applyAndRecord(batch:ValidatedEditBatch,authorizationGuard:()->Unit={}):AppliedEditBatch {
         val changes=Collections.unmodifiableList(ArrayList(batch.changes))
         require(changes.map { it.path }.toSet().size==changes.size) { "edit history batch contains duplicate files" }
         val nextFirstTouch=LinkedHashMap(firstTouch)
@@ -43,7 +43,7 @@ class EditHistory(root:Path,private val engine:FileEditEngine=FileEditEngine(roo
         }
         val recorded=AppliedEditBatch(batch.summary,changes)
         val nextBatches=ArrayDeque(batches).apply { addLast(recorded) }
-        val applied=engine.apply(ValidatedEditBatch(batch.summary,changes))
+        val applied=engine.apply(ValidatedEditBatch(batch.summary,changes),authorizationGuard)
         firstTouch=nextFirstTouch
         expected=nextExpected
         scopes=nextScopes
@@ -52,7 +52,7 @@ class EditHistory(root:Path,private val engine:FileEditEngine=FileEditEngine(roo
     }
 
     @Synchronized
-    fun undo():HistoryResult {
+    fun undo(authorizationGuard:()->Unit={}):HistoryResult {
         val batch=batches.lastOrNull() ?:return HistoryResult(emptySet(),emptySet())
         val conflicts=conflicts(batch.changes.associate { it.path to it.after })
         if (conflicts.isNotEmpty()) return HistoryResult(emptySet(),conflicts)
@@ -60,7 +60,7 @@ class EditHistory(root:Path,private val engine:FileEditEngine=FileEditEngine(roo
             PlannedFileChange(change.path,change.after,change.before,change.scope)
         }
         try {
-            engine.apply(ValidatedEditBatch("undo ${batch.summary}",reverse))
+            engine.apply(ValidatedEditBatch("undo ${batch.summary}",reverse),authorizationGuard)
         } catch (failure:Exception) {
             val raced=conflicts(batch.changes.associate { it.path to it.after })
             if (raced.isNotEmpty()) return HistoryResult(emptySet(),raced)
@@ -72,7 +72,7 @@ class EditHistory(root:Path,private val engine:FileEditEngine=FileEditEngine(roo
     }
 
     @Synchronized
-    fun discard():HistoryResult {
+    fun discard(authorizationGuard:()->Unit={}):HistoryResult {
         val conflicts=conflicts(expected)
         if (conflicts.isNotEmpty()) return HistoryResult(emptySet(),conflicts)
         val reverse=firstTouch.mapNotNull { (path,baseline) ->
@@ -80,7 +80,7 @@ class EditHistory(root:Path,private val engine:FileEditEngine=FileEditEngine(roo
             if (current==baseline) null else PlannedFileChange(path,current,baseline,scopes.getValue(path))
         }
         if (reverse.isNotEmpty()) try {
-            engine.apply(ValidatedEditBatch("discard Agent edits",reverse))
+            engine.apply(ValidatedEditBatch("discard Agent edits",reverse),authorizationGuard)
         } catch (failure:Exception) {
             val raced=conflicts(expected)
             if (raced.isNotEmpty()) return HistoryResult(emptySet(),raced)

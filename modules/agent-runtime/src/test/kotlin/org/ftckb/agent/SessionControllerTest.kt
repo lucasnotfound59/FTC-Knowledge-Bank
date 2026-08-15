@@ -154,9 +154,131 @@ class SessionControllerTest {
         assertEquals(2,provider.requests.size)
     }
 
+    @Test
+    fun `branch detach during engine validation rejects submit before its target mutation`(@TempDir root:Path) {
+        var currentBranch:String?="team-work"
+        var detached=false
+        val provider=ScriptedProvider(
+            retrievalPlan(),
+            """{"summary":"guarded","operations":[{"kind":"create","path":"TeamCode/Guarded.java","expectedAbsent":true,"content":"class Guarded {}\n","reason":"requested","citations":[]}]}"""
+        )
+        val fixture=fixture(
+            root,provider,
+            inspector={ repository ->
+                GitWorkspaceState(repository.toRealPath(),currentBranch,detached,dirtyPaths=emptySet())
+            },
+            beforeWrite={ _,_->
+                currentBranch=null
+                detached=true
+            }
+        )
+        assertNull(fixture.controller.setMode(AgentMode.EDIT))
+
+        val result=fixture.controller.submit("Create Guarded")
+
+        assertTrue(result is RejectedResult)
+        assertTrue(Files.notExists(fixture.repository.resolve("TeamCode/Guarded.java")))
+        assertTrue(fixture.controller.changes().isEmpty())
+        assertEquals(2,provider.requests.size)
+    }
+
+    @Test
+    fun `branch switch before a later submit mutation rolls back earlier writes`(@TempDir root:Path) {
+        var currentBranch="team-work"
+        val provider=ScriptedProvider(retrievalPlan(),twoCreatesPlan())
+        val fixture=fixture(
+            root,provider,
+            beforeMutation={ _,mutationNumber ->
+                if (mutationNumber==2) currentBranch="other-work"
+            }
+        ) { repository ->
+            GitWorkspaceState(repository.toRealPath(),currentBranch,detached=false,dirtyPaths=emptySet())
+        }
+        assertNull(fixture.controller.setMode(AgentMode.EDIT))
+
+        val result=fixture.controller.submit("Create both files")
+
+        assertTrue(result is RejectedResult)
+        assertTrue(Files.notExists(fixture.repository.resolve("TeamCode/First.java")))
+        assertTrue(Files.notExists(fixture.repository.resolve("TeamCode/Second.java")))
+        assertTrue(fixture.controller.changes().isEmpty())
+        assertEquals(2,provider.requests.size)
+    }
+
+    @Test
+    fun `branch switch before a later undo mutation rolls back and retains history for retry`(@TempDir root:Path) {
+        var currentBranch="team-work"
+        var switchDuringUndo=false
+        val fixture=fixture(
+            root,ScriptedProvider(retrievalPlan(),twoCreatesPlan()),
+            beforeMutation={ _,mutationNumber ->
+                if (switchDuringUndo && mutationNumber==2) currentBranch="other-work"
+            }
+        ) { repository ->
+            GitWorkspaceState(repository.toRealPath(),currentBranch,detached=false,dirtyPaths=emptySet())
+        }
+        assertNull(fixture.controller.setMode(AgentMode.EDIT))
+        assertTrue(fixture.controller.submit("Create both files") is EditResult)
+        switchDuringUndo=true
+
+        val rejected=fixture.controller.undo()
+
+        assertTrue(rejected is RejectedResult)
+        assertEquals("class First {}\n",Files.readString(fixture.repository.resolve("TeamCode/First.java")))
+        assertEquals("class Second {}\n",Files.readString(fixture.repository.resolve("TeamCode/Second.java")))
+        assertEquals(2,fixture.controller.changes().size)
+
+        currentBranch="team-work"
+        switchDuringUndo=false
+        val retried=fixture.controller.undo()
+        assertTrue(retried is HistoryAppliedResult && retried.result.succeeded)
+        assertTrue(Files.notExists(fixture.repository.resolve("TeamCode/First.java")))
+        assertTrue(Files.notExists(fixture.repository.resolve("TeamCode/Second.java")))
+        assertTrue(fixture.controller.changes().isEmpty())
+    }
+
+    @Test
+    fun `branch detach before a later discard mutation rolls back and retains history for retry`(@TempDir root:Path) {
+        var currentBranch:String?="team-work"
+        var detached=false
+        var detachDuringDiscard=false
+        val fixture=fixture(
+            root,ScriptedProvider(retrievalPlan(),twoCreatesPlan()),
+            beforeMutation={ _,mutationNumber ->
+                if (detachDuringDiscard && mutationNumber==2) {
+                    currentBranch=null
+                    detached=true
+                }
+            }
+        ) { repository ->
+            GitWorkspaceState(repository.toRealPath(),currentBranch,detached,dirtyPaths=emptySet())
+        }
+        assertNull(fixture.controller.setMode(AgentMode.EDIT))
+        assertTrue(fixture.controller.submit("Create both files") is EditResult)
+        detachDuringDiscard=true
+
+        val rejected=fixture.controller.discard()
+
+        assertTrue(rejected is RejectedResult)
+        assertEquals("class First {}\n",Files.readString(fixture.repository.resolve("TeamCode/First.java")))
+        assertEquals("class Second {}\n",Files.readString(fixture.repository.resolve("TeamCode/Second.java")))
+        assertEquals(2,fixture.controller.changes().size)
+
+        currentBranch="team-work"
+        detached=false
+        detachDuringDiscard=false
+        val retried=fixture.controller.discard()
+        assertTrue(retried is HistoryAppliedResult && retried.result.succeeded)
+        assertTrue(Files.notExists(fixture.repository.resolve("TeamCode/First.java")))
+        assertTrue(Files.notExists(fixture.repository.resolve("TeamCode/Second.java")))
+        assertTrue(fixture.controller.changes().isEmpty())
+    }
+
     private fun fixture(
         root:Path,
         provider:ScriptedProvider,
+        beforeMutation:(Path,Int)->Unit={ _,_-> },
+        beforeWrite:(Path,Int)->Unit={ _,_-> },
         inspector:(Path)->GitWorkspaceState={ repository ->
             GitWorkspaceState(repository.toRealPath(),"team-work",detached=false,dirtyPaths=emptySet())
         }
@@ -171,7 +293,7 @@ class SessionControllerTest {
         val ask=AskAgent(
             RetrievalPlanner(provider),contextRetriever,AnswerGenerator(provider,index),conversation,"supported FTC repository"
         )
-        val engine=FileEditEngine(repository)
+        val engine=FileEditEngine(repository,beforeMutation,beforeWrite)
         val history=EditHistory(repository,engine)
         val edit=EditAgent(
             RetrievalPlanner(provider),contextRetriever,provider,index,engine,history,conversation,"supported FTC repository"
@@ -184,6 +306,9 @@ class SessionControllerTest {
 
     private fun retrievalPlan()=
         """{"concepts":["Drive"],"symbols":[],"pathGlobs":["TeamCode/**"],"ruleTopics":[],"guideTopics":[]}"""
+
+    private fun twoCreatesPlan()=
+        """{"summary":"two files","operations":[{"kind":"create","path":"TeamCode/First.java","expectedAbsent":true,"content":"class First {}\n","reason":"requested","citations":[]},{"kind":"create","path":"TeamCode/Second.java","expectedAbsent":true,"content":"class Second {}\n","reason":"requested","citations":[]}]}"""
 
     private data class Fixture(
         val repository:Path,val provider:ScriptedProvider,val controller:SessionController

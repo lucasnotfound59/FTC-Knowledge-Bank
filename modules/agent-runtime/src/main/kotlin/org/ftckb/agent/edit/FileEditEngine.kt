@@ -142,7 +142,7 @@ class FileEditEngine(
         return ValidatedEditBatch(plan.summary,Collections.unmodifiableList(java.util.ArrayList(changes)))
     }
 
-    fun apply(batch:ValidatedEditBatch):AppliedEditBatch {
+    fun apply(batch:ValidatedEditBatch,authorizationGuard:()->Unit={}):AppliedEditBatch {
         val changes=Collections.unmodifiableList(java.util.ArrayList(batch.changes))
         require(changes.map { it.path }.toSet().size==changes.size) { "edit batch contains duplicate files" }
         require(changes.size<=MAX_FILES) { "edit batch contains too many files" }
@@ -180,6 +180,9 @@ class FileEditEngine(
                 path.verifyBoundary()
                 require(path.snapshot()==change.before) { "edit precondition changed: ${change.path}" }
                 beforeMutation(path.absolute,index+1)
+                path.verifyBoundary()
+                require(path.snapshot()==change.before) { "edit precondition changed: ${change.path}" }
+                authorizationGuard()
                 when (after) {
                     FileSnapshot.Missing -> Files.delete(path.absolute)
                     is FileSnapshot.Text -> {
