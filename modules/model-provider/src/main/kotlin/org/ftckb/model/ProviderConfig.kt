@@ -4,6 +4,14 @@ import java.net.URI
 
 enum class MaxTokensParameter { MAX_TOKENS,MAX_COMPLETION_TOKENS }
 
+internal object ProviderNamePolicy {
+    fun accepts(value:String):Boolean=
+        value.length in 1..MAX_LENGTH && value.matches(pattern)
+
+    private const val MAX_LENGTH=128
+    private val pattern=Regex("[a-z0-9][a-z0-9.-]*")
+}
+
 data class ProviderProfile(
     val name:String,
     val baseUrl:URI,
@@ -15,7 +23,7 @@ data class ProviderProfile(
     val jsonMode:Boolean=false
 ) {
     init {
-        require(name.matches(Regex("[a-z0-9][a-z0-9.-]*"))) { "invalid provider name" }
+        require(ProviderNamePolicy.accepts(name)) { "invalid provider name" }
         require(baseUrl.scheme.equals("https",true) && !baseUrl.host.isNullOrBlank() && baseUrl.userInfo==null) {
             "provider baseUrl must use HTTPS without credentials"
         }
@@ -31,16 +39,10 @@ data class ProviderProfile(
 
 data class ProviderConfig(val defaultProvider:String,val providers:Map<String,ProviderProfile>) {
     fun profile(name:String=defaultProvider):ProviderProfile {
-        if (name.length !in 1..MAX_SELECTOR_LENGTH || !name.matches(selectorPattern) ||
-            SecretRedactor.redact(name).redactionCount>0) {
+        if (!ProviderNamePolicy.accepts(name)) {
             error("invalid provider profile selector")
         }
         return providers[name] ?:error("unknown provider profile")
-    }
-
-    private companion object {
-        const val MAX_SELECTOR_LENGTH=64
-        val selectorPattern=Regex("[a-z0-9][a-z0-9.-]*")
     }
 }
 

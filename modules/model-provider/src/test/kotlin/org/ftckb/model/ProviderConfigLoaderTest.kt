@@ -74,14 +74,12 @@ class ProviderConfigLoaderTest {
             "custom.v2-beta",URI("https://example.com/v1"),"model","CUSTOM_KEY"
         )
         val config=ProviderConfig(profile.name,mapOf(profile.name to profile))
-        val credentialShape=listOf("sk","synthetic","selector","credential").joinToString("-")
         val selectors=listOf(
             "custom.v2-beta\nforged",
             "\u001b[31mcustom.v2-beta",
             "\u001b]0;owned\u0007custom.v2-beta",
             "\u202ecustom.v2-beta",
             "custom\u200d.v2-beta",
-            credentialShape,
             "x".repeat(1024*1024)
         )
 
@@ -90,6 +88,34 @@ class ProviderConfigLoaderTest {
             assertEquals("invalid provider profile selector",error.message)
         }
         assertEquals(profile,config.profile("custom.v2-beta"))
+    }
+
+    @Test
+    fun `uses one provider name policy for construction and selection`() {
+        val validNames=listOf(
+            "a",
+            "custom.v2-beta",
+            "x".repeat(65),
+            listOf("sk","proxy","provider").joinToString("-")
+        )
+
+        validNames.forEach { name ->
+            val profile=ProviderProfile(name,URI("https://example.com/v1"),"model","CUSTOM_KEY")
+            val config=ProviderConfig(name,mapOf(name to profile))
+            assertEquals(profile,config.profile())
+            assertEquals(profile,config.profile(name))
+        }
+
+        val known=ProviderProfile("known",URI("https://example.com/v1"),"model","CUSTOM_KEY")
+        val config=ProviderConfig(known.name,mapOf(known.name to known))
+        listOf("",".leading","UPPER","under_score","x".repeat(129),"known\nforged","known\u200d").forEach { name ->
+            val profileError=assertThrows(IllegalArgumentException::class.java) {
+                ProviderProfile(name,URI("https://example.com/v1"),"model","CUSTOM_KEY")
+            }
+            val selectorError=assertThrows(IllegalStateException::class.java) { config.profile(name) }
+            assertEquals("invalid provider name",profileError.message)
+            assertEquals("invalid provider profile selector",selectorError.message)
+        }
     }
 
     @Test

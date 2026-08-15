@@ -95,4 +95,24 @@ class SecretRedactorTest {
 
         assertEquals(RedactionResult("[REDACTED]",1),result)
     }
+
+    @Test
+    fun `fails closed when contained candidates exceed the work budget`() {
+        val coveredPrefix="a".repeat(5_000)
+        val secrets=(listOf(coveredPrefix)+(1..63).map { length -> "a".repeat(length) }).toSet()
+
+        val result=SecretRedactor.redact(coveredPrefix+"z",secrets)
+
+        assertEquals(RedactionResult("[REDACTED]",1),result)
+    }
+
+    @Test
+    fun `fails closed on a four MiB full exact match before scanning contained secrets`() {
+        val text="a".repeat(4*1024*1024)
+        val secrets=(listOf(text)+(1..63).map { length -> "a".repeat(length) }).toSet()
+
+        val result=SecretRedactor.redact(text,secrets)
+
+        assertEquals(RedactionResult("[REDACTED]",1),result)
+    }
 }
