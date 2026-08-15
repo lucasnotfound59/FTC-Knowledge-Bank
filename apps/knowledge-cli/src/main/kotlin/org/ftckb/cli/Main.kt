@@ -13,9 +13,11 @@ fun runCli(
     args:List<String>,
     out:PrintStream=System.out,
     input:BufferedReader=System.`in`.bufferedReader(),
-    chatLauncher:ChatLauncher=ProductionChatLauncher()
+    chatLauncher:ChatLauncher=ProductionChatLauncher(),
+    evalCommand:EvalCommand=EvalCommand()
 ):Int {
     if (args.firstOrNull()=="chat") return runChatCommand(args.drop(1),input,out,chatLauncher)
+    if (args.firstOrNull()=="eval") return evalCommand.run(args.drop(1),out)
     if (args.size<2) {
         out.println("usage: knowledge-cli <validate|resolve> <knowledge-root> [--team N --season S]")
         return 64

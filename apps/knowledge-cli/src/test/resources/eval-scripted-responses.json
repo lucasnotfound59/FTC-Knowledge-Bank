@@ -1,0 +1,178 @@
+{
+  "responses": [
+    {
+      "prompt": "Is the Limelight result checked safely?",
+      "plan": {
+        "concepts": [
+          "SampleTeleOp"
+        ],
+        "symbols": [
+          "SampleTeleOp"
+        ],
+        "pathGlobs": [],
+        "ruleTopics": [
+          "limelight-result-validity"
+        ],
+        "guideTopics": []
+      },
+      "answer": {
+        "claims": [
+          {
+            "kind": "code_observation",
+            "text": "SampleTeleOp reads the result without checking validity first.",
+            "citations": [
+              "CODE:C1"
+            ]
+          },
+          {
+            "kind": "approved_rule",
+            "text": "Check that the latest Limelight result exists and is valid before using fields.",
+            "citations": [
+              "RULE:R1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "prompt": "When is the SampleTeleOp motor initialized?",
+      "plan": {
+        "concepts": [
+          "SampleTeleOp"
+        ],
+        "symbols": [
+          "SampleTeleOp"
+        ],
+        "pathGlobs": [],
+        "ruleTopics": [],
+        "guideTopics": []
+      },
+      "answer": {
+        "claims": [
+          {
+            "kind": "code_observation",
+            "text": "The motor is assigned after waitForStart inside runOpMode.",
+            "citations": [
+              "CODE:C1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "prompt": "Where is Pedro localization configured?",
+      "plan": {
+        "concepts": [
+          "SampleTeleOp"
+        ],
+        "symbols": [
+          "SampleTeleOp"
+        ],
+        "pathGlobs": [],
+        "ruleTopics": [
+          "pedro-localization-readiness"
+        ],
+        "guideTopics": []
+      },
+      "answer": {
+        "claims": [
+          {
+            "kind": "code_observation",
+            "text": "This fixture declares no Pedro localization constants.",
+            "citations": [
+              "CODE:C1"
+            ]
+          },
+          {
+            "kind": "approved_rule",
+            "text": "Configure and validate the localizer before relying on follower tuning.",
+            "citations": [
+              "RULE:R1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "prompt": "Add a cleanup helper for TeleOp stop.",
+      "plan": {
+        "concepts": [
+          "Vision"
+        ],
+        "symbols": [
+          "Vision"
+        ],
+        "pathGlobs": [
+          "TeamCode/src/main/java/example/Vision.java"
+        ],
+        "ruleTopics": [],
+        "guideTopics": []
+      },
+      "edit": {
+        "summary": "Add a cleanup helper.",
+        "operations": [
+          {
+            "kind": "create",
+            "path": "TeamCode/src/main/java/example/CleanupHelper.java",
+            "expectedAbsent": true,
+            "content": "package example;\n",
+            "reason": "Add the requested cleanup helper.",
+            "citations": [
+              "CODE:C1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "prompt": "为什么 SampleTeleOp 可能空指针？",
+      "plan": {
+        "concepts": [
+          "SampleTeleOp"
+        ],
+        "symbols": [
+          "SampleTeleOp"
+        ],
+        "pathGlobs": [],
+        "ruleTopics": [],
+        "guideTopics": []
+      },
+      "answer": {
+        "claims": [
+          {
+            "kind": "code_observation",
+            "text": "motor may be null before assignment.",
+            "citations": [
+              "CODE:C1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "prompt": "刚才那个类的初始化顺序是什么？",
+      "plan": {
+        "concepts": [
+          "SampleTeleOp"
+        ],
+        "symbols": [
+          "SampleTeleOp"
+        ],
+        "pathGlobs": [],
+        "ruleTopics": [],
+        "guideTopics": []
+      },
+      "answer": {
+        "claims": [
+          {
+            "kind": "code_observation",
+            "text": "The field is assigned inside runOpMode before use.",
+            "citations": [
+              "CODE:C1"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
