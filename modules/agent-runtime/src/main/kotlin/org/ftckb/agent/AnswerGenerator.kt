@@ -42,7 +42,7 @@ class AnswerGenerator(private val provider:ModelProvider,private val repositoryI
                 append(EvidenceSerialization.payload(input.context.evidence))
                 issue?.let { append("Repair the previous response: ").append(it) }
             })
-        ),8192
+        ),16384
     )
 
     private fun decodeAndValidate(text:String,context:ContextPack):List<AnswerClaim> {

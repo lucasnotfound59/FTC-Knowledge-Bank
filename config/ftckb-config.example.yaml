@@ -11,7 +11,7 @@ providers:
     model: deepseek-v4-flash
     apiKeyEnv: DEEPSEEK_API_KEY
     timeoutSeconds: 90
-    maxOutputTokens: 8192
+    maxOutputTokens: 16384
     maxTokensParameter: max_tokens
     jsonMode: false
     temperature: 0

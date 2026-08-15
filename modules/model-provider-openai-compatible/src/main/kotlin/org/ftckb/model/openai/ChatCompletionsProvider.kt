@@ -86,13 +86,22 @@ internal class ChatCompletionsProvider(
         } catch (_:JsonProcessingException) {
             throw ModelProviderException.Protocol("model provider returned an invalid response")
         }
-        val contentNode=root.path("choices").takeIf(JsonNode::isArray)
-            ?.get(0)?.path("message")?.path("content")
+        val message=root.path("choices").takeIf(JsonNode::isArray)
+            ?.get(0)?.path("message")
             ?:throw ModelProviderException.Protocol("model provider response contained no completion content")
+        val contentNode=message.path("content")
         val content=when {
             contentNode.isTextual && contentNode.asText().isNotBlank() -> contentNode.asText()
             contentNode.isObject -> mapper.writeValueAsString(contentNode)
-            else -> throw ModelProviderException.Protocol("model provider response contained no completion content")
+            else -> {
+                val reasoning=message.path("reasoning_content")
+                if (reasoning.isTextual && reasoning.asText().isNotBlank()) {
+                    throw ModelProviderException.Protocol(
+                        "model provider returned reasoning without a final answer (output budget may be exhausted)"
+                    )
+                }
+                throw ModelProviderException.Protocol("model provider response contained no completion content")
+            }
         }
         val usage=root.path("usage")
         val inputTokens=usage.intOrNull("prompt_tokens")

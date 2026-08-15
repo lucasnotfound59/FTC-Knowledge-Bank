@@ -166,6 +166,19 @@ class ChatCompletionsProviderTest {
     }
 
     @Test
+    fun `rejects reasoning-only responses with a specific protocol error`() {
+        val body="""{"choices":[{"message":{"role":"assistant","content":"","reasoning_content":"thinking..."},"finish_reason":"length"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}"""
+        val error=assertThrows(ModelProviderException.Protocol::class.java) {
+            ProviderFactory.create(profile(),resolver(),FakeTransport(HttpResult(200,body))).complete(request())
+        }
+
+        assertEquals(
+            "model provider returned reasoning without a final answer (output budget may be exhausted)",
+            error.message
+        )
+    }
+
+    @Test
     fun `rejects empty choices as a protocol error`() {
         val error=assertThrows(ModelProviderException.Protocol::class.java) {
             ProviderFactory.create(profile(),resolver(),FakeTransport(HttpResult(200,"{\"choices\":[]}"))).complete(request())
