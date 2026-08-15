@@ -169,8 +169,12 @@ class FileEditEngineTest {
         )))
         Files.writeString(second,"concurrent\n")
 
-        assertThrows<IllegalArgumentException> { engine.apply(batch) }
+        val failure=assertThrows<FileEditApplyException> { engine.apply(batch) }
 
+        assertTrue(failure.originalFailure is EditContentRaceException)
+        assertEquals("TeamCode/Second.java",(failure.originalFailure as EditContentRaceException).path)
+        assertTrue(failure.rollbackFailures.isEmpty())
+        assertTrue(failure.cleanupFailures.isEmpty())
         assertEquals("first\n",Files.readString(first))
         assertEquals("concurrent\n",Files.readString(second))
         Files.list(teamCode).use { files ->

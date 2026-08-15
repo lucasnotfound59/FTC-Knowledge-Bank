@@ -114,6 +114,41 @@ class EditHistoryTest {
     }
 
     @Test
+    fun `undo propagates an unsafe current snapshot read instead of reporting a conflict`(@TempDir root:Path) {
+        val file=root.resolve("TeamCode/Drive.java")
+        val outside=root.resolve("outside.txt")
+        Files.createDirectories(file.parent)
+        Files.writeString(file,"baseline\n")
+        Files.writeString(outside,"outside\n")
+        val engine=FileEditEngine(root)
+        val history=EditHistory(root,engine)
+        history.applyAndRecord(replaceBatch(engine,"baseline\n","agent\n"))
+        Files.delete(file)
+        Files.createSymbolicLink(file,outside)
+
+        assertThrows(IllegalArgumentException::class.java) { history.undo() }
+
+        assertEquals("outside\n",Files.readString(outside))
+        assertEquals("agent\n",history.changes().single().after)
+    }
+
+    @Test
+    fun `discard propagates a malformed current snapshot read instead of reporting a conflict`(@TempDir root:Path) {
+        val file=root.resolve("TeamCode/Drive.java")
+        Files.createDirectories(file.parent)
+        Files.writeString(file,"baseline\n")
+        val engine=FileEditEngine(root)
+        val history=EditHistory(root,engine)
+        history.applyAndRecord(replaceBatch(engine,"baseline\n","agent\n"))
+        Files.write(file,byteArrayOf(0xC3.toByte()))
+
+        assertThrows(IllegalArgumentException::class.java) { history.discard() }
+
+        assertEquals(byteArrayOf(0xC3.toByte()).toList(),Files.readAllBytes(file).toList())
+        assertEquals("agent\n",history.changes().single().after)
+    }
+
+    @Test
     fun `discard conflict performs zero writes and retains first-touch state for retry`(@TempDir root:Path) {
         val teamCode=root.resolve("TeamCode")
         Files.createDirectories(teamCode)
@@ -272,6 +307,38 @@ class EditHistoryTest {
         assertTrue(failure.originalFailure is TestAuthorizationException)
         assertEquals("external during authorization\n",Files.readString(file))
         assertEquals("agent\n",history.changes().single().after)
+    }
+
+    @Test
+    fun `non race IllegalArgumentException propagates even when bytes also change`(@TempDir root:Path) {
+        val teamCode=root.resolve("TeamCode")
+        Files.createDirectories(teamCode)
+        val first=teamCode.resolve("First.java")
+        val second=teamCode.resolve("Second.java")
+        Files.writeString(first,"first\n")
+        Files.writeString(second,"second\n")
+        var failUndo=false
+        val engine=FileEditEngine(root,beforeWrite={ _,writeNumber ->
+            if (failUndo && writeNumber==2) {
+                Files.writeString(second,"external non-race change\n")
+                throw IllegalArgumentException("synthetic invariant failure")
+            }
+        })
+        val history=EditHistory(root,engine)
+        history.applyAndRecord(engine.preview(EditPlan("both",listOf(
+            ReplaceText("TeamCode/First.java",sha256("first\n"),"first","agent first","reason",emptyList()),
+            ReplaceText("TeamCode/Second.java",sha256("second\n"),"second","agent second","reason",emptyList())
+        ))))
+        failUndo=true
+
+        val failure=assertThrows(FileEditApplyException::class.java) { history.undo() }
+
+        assertEquals("synthetic invariant failure",failure.originalFailure.message)
+        assertTrue(failure.rollbackFailures.isEmpty())
+        assertTrue(failure.cleanupFailures.isEmpty())
+        assertEquals("agent first\n",Files.readString(first))
+        assertEquals("external non-race change\n",Files.readString(second))
+        assertEquals(2,history.changes().size)
     }
 
     @Test

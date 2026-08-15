@@ -102,16 +102,13 @@ class EditHistory(root:Path,private val engine:FileEditEngine=FileEditEngine(roo
     }
 
     private fun conflicts(snapshots:Map<String,FileSnapshot>):Set<String> =snapshots
-        .filter { (path,snapshot) -> runCatching { current(path) }.getOrNull()!=snapshot }
+        .filter { (path,snapshot) -> current(path)!=snapshot }
         .keys
         .toCollection(linkedSetOf())
 
-    private fun Exception.isCleanLiveConflict():Boolean=when (this) {
-        is FileEditApplyException ->
-            rollbackFailures.isEmpty() && cleanupFailures.isEmpty() && originalFailure is IllegalArgumentException
-        is IllegalArgumentException -> true
-        else -> false
-    }
+    private fun Exception.isCleanLiveConflict():Boolean=
+        this is FileEditApplyException && rollbackFailures.isEmpty() && cleanupFailures.isEmpty() &&
+            originalFailure is EditContentRaceException
 
     private fun current(path:String):FileSnapshot {
         val absolute=paths.resolve(path).absolute

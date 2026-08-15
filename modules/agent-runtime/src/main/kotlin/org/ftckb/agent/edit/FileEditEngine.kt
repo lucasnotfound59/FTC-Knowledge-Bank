@@ -42,6 +42,8 @@ data class ValidatedEditBatch(val summary:String,val changes:List<PlannedFileCha
 
 data class AppliedEditBatch(val summary:String,val changes:List<PlannedFileChange>)
 
+internal class EditContentRaceException(val path:String):IOException("edit content changed during apply: $path")
+
 class FileEditApplyException(
     val originalFailure:Throwable,
     val rollbackFailures:List<Throwable>,
@@ -155,9 +157,13 @@ class FileEditEngine(
         }
         validateLimits(changes)
         val verified=resolved.mapValues { (_,path) -> VerifiedEditPath(path) }
-        verified.forEach { (change,path) ->
-            path.verifyBoundary()
-            require(path.snapshot()==change.before) { "edit precondition changed: ${change.path}" }
+        try {
+            verified.forEach { (change,path) ->
+                path.verifyBoundary()
+                path.requireSnapshot(change.before)
+            }
+        } catch (failure:EditContentRaceException) {
+            throw FileEditApplyException(failure,emptyList())
         }
         val originalPermissions=verified.mapValues { (change,path) ->
             if (change.before is FileSnapshot.Text) path.permissions() else null
@@ -169,19 +175,19 @@ class FileEditEngine(
             changes.forEachIndexed { index,change ->
                 val path=verified.getValue(change)
                 path.verifyBoundary()
-                require(path.snapshot()==change.before) { "edit precondition changed: ${change.path}" }
+                path.requireSnapshot(change.before)
                 beforeWrite(path.absolute,index+1)
                 path.verifyBoundary()
-                require(path.snapshot()==change.before) { "edit precondition changed: ${change.path}" }
+                path.requireSnapshot(change.before)
                 val after=change.after
                 if (after is FileSnapshot.Text) {
                     temporaryFiles[change]=path.prepare(after,writePermissions[change])
                 }
                 path.verifyBoundary()
-                require(path.snapshot()==change.before) { "edit precondition changed: ${change.path}" }
+                path.requireSnapshot(change.before)
                 beforeMutation(path.absolute,index+1)
                 path.verifyBoundary()
-                require(path.snapshot()==change.before) { "edit precondition changed: ${change.path}" }
+                path.requireSnapshot(change.before)
                 authorizationGuard()
                 when (after) {
                     FileSnapshot.Missing -> Files.delete(path.absolute)
@@ -194,7 +200,7 @@ class FileEditEngine(
                 }
                 applied+=change
                 path.verifyBoundary()
-                require(path.snapshot()==after) { "edit result changed during apply: ${change.path}" }
+                path.requireSnapshot(after)
             }
         } catch (failure:Throwable) {
             val rollbackFailures=rollback(applied,verified,originalPermissions)
@@ -261,6 +267,10 @@ class FileEditEngine(
             }
         }
         return failures
+    }
+
+    private fun VerifiedEditPath.requireSnapshot(expected:FileSnapshot) {
+        if (snapshot()!=expected) throw EditContentRaceException(resolved.relative)
     }
 
     private data class DirectoryIdentity(val path:Path,val fileKey:Any)
