@@ -1,0 +1,29 @@
+# FTC Knowledge Bank provider configuration example.
+# Copy this file to ${user.home}/.ftckb/config.yaml and fill in nothing secret:
+# every provider references an API key environment variable by NAME only.
+# Never write the key value itself into this file.
+
+defaultProvider: deepseek
+
+providers:
+  deepseek:
+    baseUrl: https://api.deepseek.com
+    model: deepseek-chat
+    apiKeyEnv: DEEPSEEK_API_KEY
+    timeoutSeconds: 90
+    maxOutputTokens: 4096
+    maxTokensParameter: max_tokens
+    jsonMode: false
+  openai:
+    baseUrl: https://api.openai.com/v1
+    model: gpt-5.6-terra
+    apiKeyEnv: OPENAI_API_KEY
+    timeoutSeconds: 90
+    maxOutputTokens: 4096
+    maxTokensParameter: max_completion_tokens
+    jsonMode: true
+  custom:
+    baseUrl: https://your-compatible-endpoint.example/v1
+    model: your-model-name
+    apiKeyEnv: CUSTOM_API_KEY
+    maxTokensParameter: max_tokens

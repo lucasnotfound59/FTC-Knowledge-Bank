@@ -4,7 +4,7 @@ plugins {
 }
 
 kotlin { jvmToolchain(21) }
-application { mainClass.set("org.ftckb.cli.MainKt") }
+application { mainClass.set("org.ftckb.cli.MainKt"); applicationName="ftckb" }
 tasks.named<JavaExec>("run") { workingDir(rootProject.projectDir) }
 
 dependencies {

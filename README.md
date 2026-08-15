@@ -4,15 +4,15 @@
 
 ## 项目状态
 
-当前仓库已经完成 **Knowledge Core Foundation**，但完整 FTC 编程 Agent 和 IDE 客户端尚未实现。
+当前仓库已经完成 **Knowledge Core Foundation** 与 **命令行 Agent（Ask/Edit）**；Run 模式、Android Studio 插件与 IDE 客户端尚未实现。
 
 | 状态 | 能力 |
 | --- | --- |
-| 已实现 | schema v1/v2 规则模型、Git/官方网页证据、严格本地 YAML 加载、证据与审批校验、规则优先级和冲突解析、`validate` / `resolve` CLI、20827 与 16093 初始档案、自动化测试 |
+| 已实现 | schema v1/v2 规则模型、Git/官方网页证据、严格本地 YAML 加载、证据与审批校验、规则优先级和冲突解析、`validate` / `resolve` CLI、连续聊天 Agent（Ask 两阶段检索 + 引用校验、Edit 事务写入 + undo/discard）、OpenAI-compatible provider（DeepSeek/OpenAI/自定义端点）、提示注入与上下文预算防御、固定 FTC 质量评估（`eval`）、`ftckb` 分发与用户文档 |
 | 部分完成 | `knowledge/` 当前包含 23 条规则：20 条已批准规则（1 条官方规则、19 条共享规则）和 3 条候选规则；候选规则保持 inactive，已有 6 篇 FTC SDK、依赖与工具教程，队伍知识内容仍需扩充 |
-| 尚未实现 | 自动导入和分析 FTC 仓库、候选规范提取、审批 UI/历史、Ask/Edit/Run Agent、Android Studio 插件、Control Hub 部署 |
+| 尚未实现 | 候选规范自动提取、审批 UI/历史、Run 模式、官方文档联网检索、Android Studio 插件、Control Hub 部署 |
 
-当前使用 JDK 21 验证的测试套件有 66 项测试全部通过；这是当前快照，测试数量会随功能增长。
+当前使用 JDK 21 验证的测试套件有 362 项测试全部通过；这是当前快照，测试数量会随功能增长。
 
 ## 5 分钟快速开始
 
@@ -84,6 +84,27 @@ active shared.pedro-tune-current-robot
 ```
 
 该上下文会输出官方规则以及所有适用的已批准共享规则（共 20 条）；其余 3 条规则是 `candidate`，保持 inactive，因此不会出现在 active 输出中。候选规则不会自动生效。
+
+## ftckb 命令行 Agent
+
+安装（JDK 21 + Git）：
+
+```bash
+./gradlew :apps:knowledge-cli:installDist
+apps/knowledge-cli/build/install/knowledge-cli/bin/ftckb chat --help
+```
+
+启动连续聊天：
+
+```bash
+ftckb chat --knowledge knowledge --team 20827 --season 2025-2026 --provider deepseek --repo /path/to/FtcRobotController
+```
+
+- **Ask**（默认只读）：两阶段本地检索回答代码问题，并区分已批准规则、代码观察、模型推测与证据不足；
+- **Edit**：`/mode edit` 后在当前分支做事务式修改，支持 `/undo` / `/discard` / `/diff` / `/commit`；
+- **eval**：`ftckb eval --cases fixtures/agent/eval/cases.yaml --knowledge knowledge --provider deepseek --output report.md` 运行固定质量评估。
+
+完整安装、配置、命令与安全边界见 [docs/cli-agent.md](docs/cli-agent.md)。当前不包含：官方文档联网、Run/Gradle 执行、Control Hub 部署、Android Studio 插件。
 
 ## 完整使用手册
 
@@ -389,13 +410,18 @@ CLI 的错误信息写到标准输出；脚本应同时检查退出码，不要�
 
 ### 开发与验证
 
-当前 Gradle 构建包含三个模块：
+当前 Gradle 构建包含八个模块：
 
 | 模块 | 职责 |
 | --- | --- |
 | `modules/domain` | 规则值对象、校验、审批策略和解析 |
 | `modules/knowledge` | 严格 YAML 解码和文件系统知识库加载 |
-| `apps/knowledge-cli` | 面向使用者的 validate/resolve 命令与退出码 |
+| `modules/repository-analysis` | FTC 仓库检测、安全索引和本地检索 |
+| `modules/model-provider` | provider 中立类型、配置与统一脱敏 |
+| `modules/model-provider-openai-compatible` | OpenAI-compatible Chat Completions 适配器 |
+| `modules/agent-runtime` | 会话、两阶段检索、引用校验、Ask/Edit 编排 |
+| `modules/tooling-git` | Agent 专属 diff 与受保护的本地提交 |
+| `apps/knowledge-cli` | `validate` / `resolve` / `chat` / `eval` 命令与退出码 |
 
 在 JDK 21 环境运行全量测试：
 
@@ -403,7 +429,7 @@ CLI 的错误信息写到标准输出；脚本应同时检查退出码，不要�
 ./gradlew clean test
 ```
 
-2026-08-13 的当前快照为 66 项测试全部通过；测试数量会随功能增长，以本地最新结果为准。
+2026-08-15 的当前快照为 362 项测试全部通过；测试数量会随功能增长，以本地最新结果为准。
 
 ## 为什么需要这个项目
 

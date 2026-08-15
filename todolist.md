@@ -5,17 +5,17 @@
 ## MVP：队内代码 Agent 闭环
 
 - [x] 定义知识条目、候选规范、正式规范和弃用规范的数据格式；
-- [ ] 定义共享规范、队号专属规范和赛季配置的覆盖规则；
+- [x] 定义共享规范、队号专属规范和赛季配置的覆盖规则；
 - [x] 建立 `20827` 与 `16093` 队号档案；
 - [ ] 导入代码仓库并识别 FTC SDK 版本、依赖、目录和代码结构；
 - [ ] 从代码中提取带文件证据和可信度的候选规范；
 - [ ] 实现总软件负责人和队伍软件负责人的审批流程；
-- [ ] 实现命令行连续聊天 Agent，由本地 Kotlin Runtime 管理会话、检索、引用和权限；
-- [ ] 实现 OpenAI-compatible Chat Completions provider，支持 OpenAI、DeepSeek 和自定义 `baseUrl` / `model`；
-- [ ] 实现 Ask 模式：使用两阶段本地检索解释现有代码，并区分正式规则、代码观察和模型推测；
-- [ ] 实现 Edit 模式：在用户当前 Git branch 内自动修改，引用采用的规范，展示 Agent 本轮 diff，并支持 `/undo` 与 `/discard`；
+- [x] 实现命令行连续聊天 Agent，由本地 Kotlin Runtime 管理会话、检索、引用和权限；
+- [x] 实现 OpenAI-compatible Chat Completions provider，支持 OpenAI、DeepSeek 和自定义 `baseUrl` / `model`；
+- [x] 实现 Ask 模式：使用两阶段本地检索解释现有代码，并区分正式规则、代码观察和模型推测；
+- [x] 实现 Edit 模式：在用户当前 Git branch 内自动修改，引用采用的规范，展示 Agent 本轮 diff，并支持 `/undo` 与 `/discard`；
 - [ ] 实现 Run 模式：运行 Gradle 构建并诊断失败原因；
-- [ ] 保护仓库外路径、凭据和 `.git`；允许当前 branch 有既有改动，但 Agent 不得自动 commit、push 或 merge；
+- [x] 保护仓库外路径、凭据和 `.git`；允许当前 branch 有既有改动，但 Agent 不得自动 commit、push 或 merge；
 - [ ] 建立测试样例，验证 Agent 不会把遗留代码、重复依赖或单次写法误判为正式规范；
 - [ ] 制作 Android Studio 插件的最小交互界面；
 
