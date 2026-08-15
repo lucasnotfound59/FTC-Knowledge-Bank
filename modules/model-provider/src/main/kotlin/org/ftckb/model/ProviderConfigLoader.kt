@@ -9,7 +9,8 @@ object ProviderConfigLoader {
     private val load=Load(LoadSettings.builder().setAllowDuplicateKeys(false).build())
     private val rootKeys=setOf("defaultProvider","providers")
     private val profileKeys=setOf(
-        "baseUrl","model","apiKeyEnv","timeoutSeconds","maxOutputTokens","maxTokensParameter","jsonMode"
+        "baseUrl","model","apiKeyEnv","timeoutSeconds","maxOutputTokens","maxTokensParameter","jsonMode",
+        "temperature"
     )
 
     fun decode(text:String):ProviderConfig {
@@ -35,7 +36,8 @@ object ProviderConfigLoader {
             timeoutSeconds=map.optionalInt("timeoutSeconds") ?: 90,
             maxOutputTokens=map.optionalInt("maxOutputTokens") ?: 4096,
             maxTokensParameter=map.optionalString("maxTokensParameter")?.toMaxTokensParameter(),
-            jsonMode=map.optionalBoolean("jsonMode") ?: false
+            jsonMode=map.optionalBoolean("jsonMode") ?: false,
+            temperature=map.optionalDouble("temperature")
         )
     }
 
@@ -60,6 +62,12 @@ object ProviderConfigLoader {
     private fun Map<String,Any?>.optionalBoolean(key:String):Boolean? {
         if (key !in this) return null
         return this[key] as? Boolean ?: error("$key must be a boolean")
+    }
+    private fun Map<String,Any?>.optionalDouble(key:String):Double? {
+        if (key !in this) return null
+        val number=this[key] as? Number ?: error("$key must be a number")
+        return runCatching { BigDecimal(number.toString()).toDouble() }
+            .getOrElse { error("$key must be a number") }
     }
     private fun Any?.strictInt(key:String):Int {
         val number=this as? Number ?: error("$key must be an integer")

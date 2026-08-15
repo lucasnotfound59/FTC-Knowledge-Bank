@@ -20,7 +20,8 @@ data class ProviderProfile(
     val timeoutSeconds:Int=90,
     val maxOutputTokens:Int=4096,
     val maxTokensParameter:MaxTokensParameter?=null,
-    val jsonMode:Boolean=false
+    val jsonMode:Boolean=false,
+    val temperature:Double?=null
 ) {
     init {
         require(ProviderNamePolicy.accepts(name)) { "invalid provider name" }
@@ -34,6 +35,7 @@ data class ProviderProfile(
         require(apiKeyEnv.matches(Regex("[A-Z_][A-Z0-9_]*"))) { "invalid apiKeyEnv" }
         require(timeoutSeconds in 1..300) { "timeoutSeconds must be between 1 and 300" }
         require(maxOutputTokens in 1..131072) { "maxOutputTokens must be between 1 and 131072" }
+        temperature?.let { require(it in 0.0..2.0) { "temperature must be between 0 and 2" } }
     }
 }
 

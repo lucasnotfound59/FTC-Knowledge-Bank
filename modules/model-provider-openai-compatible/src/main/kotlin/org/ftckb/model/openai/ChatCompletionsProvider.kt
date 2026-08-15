@@ -75,6 +75,7 @@ internal class ChatCompletionsProvider(
         }
         if (tokenField!=null) body.put(tokenField,minOf(request.maxOutputTokens,profile.maxOutputTokens))
         if (profile.jsonMode) body.putObject("response_format").put("type","json_object")
+        profile.temperature?.let { body.put("temperature",it) }
         body.put("stream",false)
         return mapper.writeValueAsString(body)
     }

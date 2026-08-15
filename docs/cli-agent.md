@@ -23,6 +23,7 @@
 | providers.<name>.model | 模型名 |
 | providers.<name>.apiKeyEnv | 存放密钥的环境变量名（如 DEEPSEEK_API_KEY） |
 | maxTokensParameter | 仅允许 max_tokens 或 max_completion_tokens，或省略 |
+| temperature | 可选采样温度（0–2）；证据引用型回答建议设为 0 |
 
 启动前把密钥放入对应环境变量，例如 export DEEPSEEK_API_KEY=...。缺失或为空的环境变量是启动错误，密钥值不会出现在任何错误、日志或会话保存里。
 

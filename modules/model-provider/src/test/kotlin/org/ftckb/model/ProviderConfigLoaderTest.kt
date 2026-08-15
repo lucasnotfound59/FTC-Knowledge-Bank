@@ -48,6 +48,46 @@ class ProviderConfigLoaderTest {
     }
 
     @Test
+    fun `decodes an optional temperature and rejects invalid values`() {
+        val config=ProviderConfigLoader.decode("""
+            defaultProvider: deepseek
+            providers:
+              deepseek:
+                baseUrl: https://api.deepseek.com
+                model: deepseek-chat
+                apiKeyEnv: DEEPSEEK_API_KEY
+                temperature: 0
+        """.trimIndent())
+        assertEquals(0.0,config.profile("deepseek").temperature)
+
+        val rangeError=assertThrows(IllegalArgumentException::class.java) {
+            ProviderConfigLoader.decode("""
+                defaultProvider: deepseek
+                providers:
+                  deepseek:
+                    baseUrl: https://api.deepseek.com
+                    model: deepseek-chat
+                    apiKeyEnv: DEEPSEEK_API_KEY
+                    temperature: 3
+            """.trimIndent())
+        }
+        assertEquals("temperature must be between 0 and 2",rangeError.message)
+
+        val typeError=assertThrows(IllegalStateException::class.java) {
+            ProviderConfigLoader.decode("""
+                defaultProvider: deepseek
+                providers:
+                  deepseek:
+                    baseUrl: https://api.deepseek.com
+                    model: deepseek-chat
+                    apiKeyEnv: DEEPSEEK_API_KEY
+                    temperature: zero
+            """.trimIndent())
+        }
+        assertEquals("temperature must be a number",typeError.message)
+    }
+
+    @Test
     fun `rejects non-https provider roots`() {
         val error=assertThrows(IllegalArgumentException::class.java) {
             ProviderProfile("x",URI("http://example.com"),"m","KEY",90,4096,null,false)

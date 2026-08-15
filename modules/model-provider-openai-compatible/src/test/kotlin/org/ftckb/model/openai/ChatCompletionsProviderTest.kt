@@ -186,13 +186,35 @@ class ChatCompletionsProviderTest {
 
     private fun request()=ModelRequest(listOf(ModelMessage(MessageRole.USER,"hello")),512)
 
+    @Test
+    fun `sends configured temperature`() {
+        val transport=FakeTransport(HttpResult(200,fixture("openai-success.json")))
+        val provider=ProviderFactory.create(profile(temperature=0.0),resolver(),transport)
+
+        provider.complete(request())
+
+        val body=mapper.readTree(transport.exchange.body)
+        assertEquals(0.0,body["temperature"].asDouble())
+    }
+
+    @Test
+    fun `omits temperature when the profile does not configure it`() {
+        val transport=FakeTransport(HttpResult(200,fixture("openai-success.json")))
+        val provider=ProviderFactory.create(profile(),resolver(),transport)
+
+        provider.complete(request())
+
+        assertFalse(mapper.readTree(transport.exchange.body).has("temperature"))
+    }
+
     private fun profile(
         maxTokensParameter:MaxTokensParameter?=MaxTokensParameter.MAX_TOKENS,
         maxOutputTokens:Int=4096,
-        jsonMode:Boolean=false
+        jsonMode:Boolean=false,
+        temperature:Double?=null
     )=ProviderProfile(
         "deepseek",URI("https://api.deepseek.com/"),"deepseek-chat","DEEPSEEK_API_KEY",
-        90,maxOutputTokens,maxTokensParameter,jsonMode
+        90,maxOutputTokens,maxTokensParameter,jsonMode,temperature
     )
 
     private fun resolver()=SecretResolver { name -> if (name=="DEEPSEEK_API_KEY") "test-key" else null }
