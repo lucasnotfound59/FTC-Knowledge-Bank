@@ -69,9 +69,46 @@ class FileEditEngineTest {
 
         val failure=assertThrows<FileEditApplyException> { engine.apply(batch) }
 
-        assertTrue(failure.originalFailure.message.orEmpty().contains("permission"))
+        assertTrue(
+            failure.originalFailure is EditPermissionRaceException,
+            failure.originalFailure.toString()
+        )
         assertTrue(failure.rollbackFailures.isEmpty())
         assertEquals("before\n",Files.readString(file))
+        assertTrue(Files.isExecutable(file))
+    }
+
+    @Test
+    fun `non-POSIX replacement preserves executable state and rejects a concurrent chmod`(@TempDir root:Path) {
+        val file=root.resolve("TeamCode/Test.java")
+        Files.createDirectories(file.parent)
+        Files.writeString(file,"before\n")
+        assertFalse(Files.isExecutable(file))
+        var race=false
+        val engine=FileEditEngine(
+            root,
+            posixPermissionsReader={ null },
+            beforeWrite={ _,_->
+                if (race) assertTrue(file.toFile().setExecutable(true,false))
+            }
+        )
+
+        val first=engine.apply(engine.preview(EditPlan("edit",listOf(
+            ReplaceText("TeamCode/Test.java",sha256("before\n"),"before","after","reason",emptyList())
+        ))))
+
+        assertFalse(Files.isExecutable(file))
+        assertEquals(false,first.afterExecutable.getValue("TeamCode/Test.java"))
+
+        race=true
+        val failure=assertThrows<FileEditApplyException> {
+            engine.apply(engine.preview(EditPlan("edit again",listOf(
+                ReplaceText("TeamCode/Test.java",sha256("after\n"),"after","final","reason",emptyList())
+            ))))
+        }
+
+        assertTrue(failure.originalFailure is EditPermissionRaceException)
+        assertEquals("after\n",Files.readString(file))
         assertTrue(Files.isExecutable(file))
     }
 
@@ -94,6 +131,81 @@ class FileEditEngineTest {
         assertTrue(failure.rollbackFailures.isEmpty())
         assertEquals("before\n",Files.readString(file))
         assertTrue(Files.isExecutable(file))
+    }
+
+    @Test
+    fun `source-less create never attributes a chmod after publication to the Agent`(@TempDir root:Path) {
+        val file=root.resolve("TeamCode/Created.java")
+        Files.createDirectories(file.parent)
+        val engine=FileEditEngine(root,afterMutation={ path,_->
+            assertEquals(file.toRealPath(),path)
+            assertTrue(path.toFile().setExecutable(true,false))
+        })
+        val batch=engine.preview(EditPlan("create",listOf(
+            CreateText("TeamCode/Created.java",true,"created\n","reason",emptyList())
+        )))
+
+        val failure=assertThrows<FileEditApplyException> { engine.apply(batch) }
+
+        assertTrue(
+            failure.originalFailure is EditPermissionRaceException,
+            failure.originalFailure.toString()
+        )
+        assertTrue(failure.rollbackFailures.isNotEmpty())
+        assertEquals("created\n",Files.readString(file))
+        assertTrue(Files.isExecutable(file))
+    }
+
+    @Test
+    fun `chmod in an Agent-create rollback window prevents deletion`(@TempDir root:Path) {
+        val created=root.resolve("TeamCode/Created.java")
+        val second=root.resolve("TeamCode/Second.java")
+        Files.createDirectories(created.parent)
+        Files.writeString(second,"second\n")
+        val engine=FileEditEngine(
+            root,
+            beforeRollbackDelete={ path->
+                assertEquals(created.toRealPath(),path)
+                assertTrue(path.toFile().setExecutable(true,false))
+            },
+            beforeMutation={ _,mutationNumber->
+                if (mutationNumber==2) throw IOException("force rollback")
+            }
+        )
+        val batch=engine.preview(EditPlan("create then fail",listOf(
+            CreateText("TeamCode/Created.java",true,"created\n","reason",emptyList()),
+            ReplaceText("TeamCode/Second.java",sha256("second\n"),"second","changed","reason",emptyList())
+        )))
+
+        val failure=assertThrows<FileEditApplyException> { engine.apply(batch) }
+
+        assertTrue(failure.rollbackFailures.isNotEmpty())
+        assertEquals("created\n",Files.readString(created))
+        assertTrue(Files.isExecutable(created))
+        assertEquals("second\n",Files.readString(second))
+        assertNoEditTemporaryFiles(root)
+    }
+
+    @Test
+    fun `Agent create is removed completely when a later mutation fails`(@TempDir root:Path) {
+        val created=root.resolve("TeamCode/Created.java")
+        val second=root.resolve("TeamCode/Second.java")
+        Files.createDirectories(created.parent)
+        Files.writeString(second,"second\n")
+        val engine=FileEditEngine(root,beforeMutation={ _,mutationNumber->
+            if (mutationNumber==2) throw IOException("force rollback")
+        })
+        val batch=engine.preview(EditPlan("create then fail",listOf(
+            CreateText("TeamCode/Created.java",true,"created\n","reason",emptyList()),
+            ReplaceText("TeamCode/Second.java",sha256("second\n"),"second","changed","reason",emptyList())
+        )))
+
+        val failure=assertThrows<FileEditApplyException> { engine.apply(batch) }
+
+        assertTrue(failure.rollbackFailures.isEmpty())
+        assertTrue(Files.notExists(created))
+        assertEquals("second\n",Files.readString(second))
+        assertNoEditTemporaryFiles(root)
     }
 
     @Test
@@ -124,6 +236,38 @@ class FileEditEngineTest {
         assertEquals("IDE during rollback\n",Files.readString(first))
         assertTrue(Files.isExecutable(first))
         assertEquals("second\n",Files.readString(second))
+    }
+
+    @Test
+    fun `chmod after rollback replacement is reported instead of silently attributed`(@TempDir root:Path) {
+        val first=root.resolve("TeamCode/First.java")
+        val second=root.resolve("TeamCode/Second.java")
+        Files.createDirectories(first.parent)
+        Files.writeString(first,"first\n")
+        Files.writeString(second,"second\n")
+        assertFalse(Files.isExecutable(first))
+        val engine=FileEditEngine(
+            root,
+            afterRollbackReplace={ path->
+                assertEquals(first.toRealPath(),path)
+                assertTrue(path.toFile().setExecutable(true,false))
+            },
+            beforeMutation={ _,mutationNumber->
+                if (mutationNumber==2) throw IOException("force rollback")
+            }
+        )
+        val batch=engine.preview(EditPlan("two",listOf(
+            ReplaceText("TeamCode/First.java",sha256("first\n"),"first","agent first","reason",emptyList()),
+            ReplaceText("TeamCode/Second.java",sha256("second\n"),"second","agent second","reason",emptyList())
+        )))
+
+        val failure=assertThrows<FileEditApplyException> { engine.apply(batch) }
+
+        assertTrue(failure.rollbackFailures.isNotEmpty())
+        assertEquals("first\n",Files.readString(first))
+        assertTrue(Files.isExecutable(first))
+        assertEquals("second\n",Files.readString(second))
+        assertNoEditTemporaryFiles(root)
     }
 
     @Test

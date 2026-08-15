@@ -164,8 +164,8 @@ class ChatRepl(
                     } else {
                         out.println("$name=ok")
                         printPaths("paths",result.result.changedPaths.sorted())
-                        if (result.warnings.isNotEmpty()) printValues("warnings",result.warnings,MAX_WARNINGS)
                     }
+                    if (result.warnings.isNotEmpty()) printValues("warnings",result.warnings,MAX_WARNINGS)
                 }
             }
         } catch (_:Exception) {

@@ -1,11 +1,14 @@
 package org.ftckb.agent.edit
 
 import java.io.IOException
+import java.nio.file.AccessDeniedException
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertArrayEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -113,6 +116,7 @@ class EditHistoryTest {
         val result=history.undo()
 
         assertEquals(setOf("TeamCode/Drive.java"),result.conflicts)
+        assertTrue(result.warnings.isEmpty())
         assertEquals("agent\n",Files.readString(file))
         assertTrue(Files.isExecutable(file))
         assertEquals("agent\n",history.changes().single().after)
@@ -140,6 +144,41 @@ class EditHistoryTest {
         assertTrue(Files.exists(file))
         assertTrue(!Files.isExecutable(file))
 
+        assertTrue(history.discard().succeeded)
+        assertEquals("same\n",Files.readString(file))
+        assertTrue(Files.isExecutable(file))
+        assertTrue(history.changes().isEmpty())
+    }
+
+    @Test
+    fun `non-POSIX mode-only history stays visible conflict-safe and reversible`(@TempDir root:Path) {
+        val file=root.resolve("TeamCode/Executable.java")
+        Files.createDirectories(file.parent)
+        Files.writeString(file,"same\n")
+        assertTrue(file.toFile().setExecutable(true,false))
+        val engine=FileEditEngine(root,posixPermissionsReader={ null })
+        val history=EditHistory(root,engine,posixPermissionsReader={ null })
+        history.applyAndRecord(engine.preview(EditPlan("delete",listOf(
+            DeleteText("TeamCode/Executable.java",sha256("same\n"),"delete",emptyList())
+        ))))
+        history.applyAndRecord(engine.preview(EditPlan("recreate",listOf(
+            CreateText("TeamCode/Executable.java",true,"same\n","recreate",emptyList())
+        ))))
+
+        val modeOnly=history.changes().single()
+        assertEquals("same\n",modeOnly.before)
+        assertEquals("same\n",modeOnly.after)
+        assertEquals(false,modeOnly.expectedExecutable)
+        assertFalse(Files.isExecutable(file))
+
+        assertTrue(file.toFile().setExecutable(true,false))
+        val conflicted=history.discard()
+        assertEquals(setOf("TeamCode/Executable.java"),conflicted.conflicts)
+        assertTrue(conflicted.warnings.isEmpty())
+        assertTrue(Files.isExecutable(file))
+        assertEquals(1,history.changes().size)
+
+        assertTrue(file.toFile().setExecutable(false,false))
         assertTrue(history.discard().succeeded)
         assertEquals("same\n",Files.readString(file))
         assertTrue(Files.isExecutable(file))
@@ -208,7 +247,7 @@ class EditHistoryTest {
     }
 
     @Test
-    fun `undo propagates an unsafe current snapshot read instead of reporting a conflict`(@TempDir root:Path) {
+    fun `undo reports an unsafe symlink observation without overwriting and remains retryable`(@TempDir root:Path) {
         val file=root.resolve("TeamCode/Drive.java")
         val outside=root.resolve("outside.txt")
         Files.createDirectories(file.parent)
@@ -220,14 +259,22 @@ class EditHistoryTest {
         Files.delete(file)
         Files.createSymbolicLink(file,outside)
 
-        assertThrows(IllegalArgumentException::class.java) { history.undo() }
+        val conflicted=history.undo()
 
+        assertEquals(setOf("TeamCode/Drive.java"),conflicted.conflicts)
+        assertEquals(listOf("Some edited paths could not be safely inspected; no files were overwritten"),conflicted.warnings)
         assertEquals("outside\n",Files.readString(outside))
         assertEquals("agent\n",history.changes().single().after)
+
+        Files.delete(file)
+        Files.writeString(file,"agent\n")
+        assertTrue(history.undo().succeeded)
+        assertEquals("baseline\n",Files.readString(file))
+        assertTrue(history.changes().isEmpty())
     }
 
     @Test
-    fun `discard propagates a malformed current snapshot read instead of reporting a conflict`(@TempDir root:Path) {
+    fun `discard reports malformed text without overwriting and remains retryable`(@TempDir root:Path) {
         val file=root.resolve("TeamCode/Drive.java")
         Files.createDirectories(file.parent)
         Files.writeString(file,"baseline\n")
@@ -236,10 +283,139 @@ class EditHistoryTest {
         history.applyAndRecord(replaceBatch(engine,"baseline\n","agent\n"))
         Files.write(file,byteArrayOf(0xC3.toByte()))
 
-        assertThrows(IllegalArgumentException::class.java) { history.discard() }
+        val conflicted=history.discard()
 
+        assertEquals(setOf("TeamCode/Drive.java"),conflicted.conflicts)
+        assertEquals(listOf("Some edited paths could not be safely inspected; no files were overwritten"),conflicted.warnings)
         assertEquals(byteArrayOf(0xC3.toByte()).toList(),Files.readAllBytes(file).toList())
         assertEquals("agent\n",history.changes().single().after)
+
+        Files.writeString(file,"agent\n")
+        assertTrue(history.discard().succeeded)
+        assertEquals("baseline\n",Files.readString(file))
+        assertTrue(history.changes().isEmpty())
+    }
+
+    @Test
+    fun `undo reports a nonregular file without overwriting and remains retryable`(@TempDir root:Path) {
+        val file=root.resolve("TeamCode/Drive.java")
+        Files.createDirectories(file.parent)
+        Files.writeString(file,"baseline\n")
+        val engine=FileEditEngine(root)
+        val history=EditHistory(root,engine)
+        history.applyAndRecord(replaceBatch(engine,"baseline\n","agent\n"))
+        Files.delete(file)
+        Files.createDirectory(file)
+
+        val conflicted=history.undo()
+
+        assertUnavailableConflict(conflicted)
+        assertTrue(Files.isDirectory(file))
+        assertEquals("agent\n",history.changes().single().after)
+
+        Files.delete(file)
+        Files.writeString(file,"agent\n")
+        assertTrue(history.undo().succeeded)
+        assertEquals("baseline\n",Files.readString(file))
+    }
+
+    @Test
+    fun `discard reports oversized text without overwriting and remains retryable`(@TempDir root:Path) {
+        val file=root.resolve("TeamCode/Drive.java")
+        Files.createDirectories(file.parent)
+        Files.writeString(file,"baseline\n")
+        val engine=FileEditEngine(root)
+        val history=EditHistory(root,engine)
+        history.applyAndRecord(replaceBatch(engine,"baseline\n","agent\n"))
+        val oversized=ByteArray(1_048_577) { 'x'.code.toByte() }
+        Files.write(file,oversized)
+
+        val conflicted=history.discard()
+
+        assertUnavailableConflict(conflicted)
+        assertArrayEquals(oversized,Files.readAllBytes(file))
+        assertEquals("agent\n",history.changes().single().after)
+
+        Files.writeString(file,"agent\n")
+        assertTrue(history.discard().succeeded)
+        assertEquals("baseline\n",Files.readString(file))
+    }
+
+    @Test
+    fun `undo reports a file disappearing during observation and remains retryable`(@TempDir root:Path) {
+        val file=root.resolve("TeamCode/Drive.java")
+        Files.createDirectories(file.parent)
+        Files.writeString(file,"baseline\n")
+        val engine=FileEditEngine(root)
+        var disappear=false
+        val history=EditHistory(root,engine,afterObservationAttributes={ path->
+            if (disappear) {
+                Files.delete(path)
+                disappear=false
+            }
+        })
+        history.applyAndRecord(replaceBatch(engine,"baseline\n","agent\n"))
+        disappear=true
+
+        val conflicted=history.undo()
+
+        assertUnavailableConflict(conflicted)
+        assertTrue(Files.notExists(file))
+        assertEquals("agent\n",history.changes().single().after)
+
+        Files.writeString(file,"agent\n")
+        assertTrue(history.undo().succeeded)
+        assertEquals("baseline\n",Files.readString(file))
+    }
+
+    @Test
+    fun `discard reports an access failure generically and remains retryable`(@TempDir root:Path) {
+        val file=root.resolve("TeamCode/Drive.java")
+        Files.createDirectories(file.parent)
+        Files.writeString(file,"baseline\n")
+        val engine=FileEditEngine(root)
+        var inaccessible=false
+        val history=EditHistory(root,engine,beforeObservation={ path->
+            if (inaccessible) throw AccessDeniedException(path.toString(),null,"sensitive detail")
+        })
+        history.applyAndRecord(replaceBatch(engine,"baseline\n","agent\n"))
+        inaccessible=true
+
+        val conflicted=history.discard()
+
+        assertUnavailableConflict(conflicted)
+        assertTrue(conflicted.warnings.none { it.contains("sensitive") || it.contains(root.toString()) })
+        assertEquals("agent\n",Files.readString(file))
+        assertEquals("agent\n",history.changes().single().after)
+
+        inaccessible=false
+        assertTrue(history.discard().succeeded)
+        assertEquals("baseline\n",Files.readString(file))
+    }
+
+    @Test
+    fun `undo reports a permission provider failure generically and remains retryable`(@TempDir root:Path) {
+        val file=root.resolve("TeamCode/Drive.java")
+        Files.createDirectories(file.parent)
+        Files.writeString(file,"baseline\n")
+        val engine=FileEditEngine(root)
+        var permissionFailure=false
+        val history=EditHistory(root,engine,beforePermissionObservation={ _->
+            if (permissionFailure) throw IOException("secret permission provider detail")
+        })
+        history.applyAndRecord(replaceBatch(engine,"baseline\n","agent\n"))
+        permissionFailure=true
+
+        val conflicted=history.undo()
+
+        assertUnavailableConflict(conflicted)
+        assertTrue(conflicted.warnings.none { it.contains("secret") })
+        assertEquals("agent\n",Files.readString(file))
+        assertEquals("agent\n",history.changes().single().after)
+
+        permissionFailure=false
+        assertTrue(history.undo().succeeded)
+        assertEquals("baseline\n",Files.readString(file))
     }
 
     @Test
@@ -564,6 +740,14 @@ class EditHistoryTest {
                 "TeamCode/Drive.java",sha256(before),before.trimEnd(),after.trimEnd(),"reason",emptyList()
             )
         )))
+
+    private fun assertUnavailableConflict(result:HistoryResult) {
+        assertEquals(setOf("TeamCode/Drive.java"),result.conflicts)
+        assertEquals(
+            listOf("Some edited paths could not be safely inspected; no files were overwritten"),
+            result.warnings
+        )
+    }
 
     private fun sha256(value:String):String=MessageDigest.getInstance("SHA-256")
         .digest(value.toByteArray(StandardCharsets.UTF_8))

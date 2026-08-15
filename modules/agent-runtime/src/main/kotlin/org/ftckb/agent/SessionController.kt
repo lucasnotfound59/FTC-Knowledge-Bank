@@ -131,12 +131,13 @@ class SessionController(
     fun diff():String=AgentDiffRenderer.render(history.changes())
 
     private fun historyResult(result:HistoryResult):HistoryAppliedResult {
-        if (!result.succeeded || result.changedPaths.isEmpty()) return HistoryAppliedResult(result)
-        val warnings=try {
-            indexRefresher(result.changedPaths)
-            emptyList()
-        } catch (_:Exception) {
-            listOf("Repository index refresh failed after files changed")
+        val warnings=result.warnings.toMutableList()
+        if (result.succeeded && result.changedPaths.isNotEmpty()) {
+            try {
+                indexRefresher(result.changedPaths)
+            } catch (_:Exception) {
+                warnings+="Repository index refresh failed after files changed"
+            }
         }
         return HistoryAppliedResult(result,warnings)
     }

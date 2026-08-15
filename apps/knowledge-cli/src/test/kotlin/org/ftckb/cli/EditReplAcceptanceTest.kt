@@ -573,6 +573,69 @@ class EditReplAcceptanceTest {
     }
 
     @Test
+    fun `undo and discard render unsafe observations as generic retryable warnings`(@TempDir root:Path) {
+        val repository=copyFixture(root.resolve("unsafe-observation"))
+        val git=initializeRepository(repository)
+        val source=repository.resolve(VISION_PATH)
+        val baseline=Files.readString(source)
+        val agentText=baseline.replace(
+            "consume(result);","if(result!=null && result.isValid()) consume(result);"
+        )
+        val malformed=byteArrayOf(0xC3.toByte())
+        val provider=EditProvider(sha256(baseline.toByteArray()),"fixture-secret")
+        val config=writeConfig(root.resolve("config.yaml"))
+        val output=ByteArrayOutputStream()
+        val input=object:BufferedReader(StringReader("")) {
+            private var next=0
+
+            override fun readLine():String?=when (next++) {
+                0 -> "/mode edit"
+                1 -> "guard Vision"
+                2 -> {
+                    Files.write(source,malformed)
+                    "/undo"
+                }
+                3 -> {
+                    Files.writeString(source,agentText)
+                    "/undo"
+                }
+                4 -> "guard Vision again"
+                5 -> {
+                    Files.write(source,malformed)
+                    "/discard"
+                }
+                6 -> {
+                    Files.writeString(source,agentText)
+                    "/discard"
+                }
+                7 -> "/exit"
+                else -> null
+            }
+        }
+
+        val code=ProductionChatLauncher(
+            environment={ "fixture-secret" },providerCreator={ _,_ -> provider }
+        ).run(
+            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config),
+            input,PrintStream(output)
+        )
+
+        assertEquals(0,code)
+        assertEquals(baseline,Files.readString(source))
+        val text=output.toString()
+        assertEquals(2,text.lineSequence().count { it.endsWith(" conflict; no files were overwritten") },text)
+        assertEquals(2,text.lineSequence().count { it=="warnings:" },text)
+        assertEquals(2,text.lineSequence().count {
+            it=="- Some edited paths could not be safely inspected; no files were overwritten"
+        },text)
+        assertTrue(text.contains("undo=ok"))
+        assertTrue(text.contains("discard=ok"))
+        assertFalse(text.contains("request did not complete"))
+        assertFalse(text.contains("UTF-8"))
+        git.close()
+    }
+
+    @Test
     fun `undo and discard stay successful when their index refresh fails`(@TempDir root:Path) {
         val repository=copyFixture(root.resolve("history-refresh-warning"))
         val git=initializeRepository(repository)
