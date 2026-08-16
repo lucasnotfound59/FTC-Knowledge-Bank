@@ -30,7 +30,15 @@ class ContextRetriever(
             }
         }
         var codeNumber=1
-        repositoryIndex.search(LocalQuery(intent.concepts,intent.symbols,intent.pathGlobs),48).forEach { fragment ->
+        val fragments=repositoryIndex.search(LocalQuery(intent.concepts,intent.symbols,intent.pathGlobs),48).toMutableList()
+        if (fragments.isEmpty()) {
+            // Deterministic fallback: the planned retrieval matched no source lines.
+            // Include a bounded slice of the repository sources so location/absence
+            // questions (e.g. "where is X configured?") can still be answered with a
+            // code observation instead of degrading to insufficient evidence.
+            fragments+=repositoryIndex.search(LocalQuery(emptySet(),emptySet(),setOf("**/*.java","**/*.kt")),48)
+        }
+        fragments.forEach { fragment ->
             val item=CodeEvidence("CODE:C$codeNumber",fragment.path,fragment.startLine,fragment.endLine,fragment.sha256,fragment.text)
             val length=EvidenceSerialization.block(item).length
             if (characters+length<=maximumCharacters-reservedCharacters) {

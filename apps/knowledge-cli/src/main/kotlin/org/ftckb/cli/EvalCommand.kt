@@ -325,7 +325,7 @@ class EvalCommand(
                     pipeline.controller.submit(turn.prompt)
                 } catch (exception:Exception) {
                     allOk=false
-                    expectations+=EvalExpectationDetail("turn",false,"submission failed: ${exception.javaClass.simpleName}")
+                    expectations+=EvalExpectationDetail("turn",false,"submission failed: ${exception.javaClass.simpleName}: ${detailOf(exception)}")
                     break
                 }
                 when (result) {
@@ -353,7 +353,8 @@ class EvalCommand(
                             expectations+=EvalExpectationDetail("turn",true,"claims=${claims.sorted().joinToString(",")}")
                         } else {
                             allOk=false
-                            expectations+=EvalExpectationDetail("turn",false,failures.joinToString("; "))
+                            val actual="actual claims=${claims.sorted().joinToString(",").ifEmpty { "none" }} referenced=${referenced.sorted().joinToString(",").ifEmpty { "none" }}"
+                            expectations+=EvalExpectationDetail("turn",false,failures.joinToString("; ")+"; "+actual)
                         }
                     }
                     is EditResult -> {
@@ -519,6 +520,12 @@ class EvalCommand(
     private companion object {
         const val EVAL_BRANCH="eval"
         val GIT_DIRECTORY=Path.of(".git")
+        fun detailOf(exception:Exception):String=exception.message
+            ?.lineSequence()
+            ?.firstOrNull()
+            ?.trim()
+            ?.take(300)
+            .orEmpty()
     }
 }
 

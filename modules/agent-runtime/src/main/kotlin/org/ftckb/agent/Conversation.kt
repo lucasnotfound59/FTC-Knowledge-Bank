@@ -160,7 +160,7 @@ class ConversationState(
                     append("Turn to summarize:\n")
                     append(renderTurn(turn))
                 })
-            ),4096
+            ),16384
         ))
         return redact(response.content).trim().take(maximumSummaryCharacters)
     }

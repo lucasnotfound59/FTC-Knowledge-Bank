@@ -24,7 +24,7 @@
 | providers.<name>.apiKeyEnv | 存放密钥的环境变量名（如 DEEPSEEK_API_KEY） |
 | maxTokensParameter | 仅允许 max_tokens 或 max_completion_tokens，或省略 |
 | temperature | 可选采样温度（0–2）；证据引用型回答建议设为 0 |
-| maxOutputTokens | 输出 token 上限；**推理模型（如 deepseek-v4-flash）的推理 token 计入该预算，建议 ≥ 16384** |
+| maxOutputTokens | 输出 token 上限；**推理模型（如 deepseek-v4-flash）的推理 token 计入该预算，建议 ≥ 32768** |
 
 启动前把密钥放入对应环境变量，例如 export DEEPSEEK_API_KEY=...。缺失或为空的环境变量是启动错误，密钥值不会出现在任何错误、日志或会话保存里。
 

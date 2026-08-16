@@ -25,7 +25,7 @@ class RetrievalPlanner(private val provider:ModelProvider) {
         listOf(
             ModelMessage(MessageRole.SYSTEM,"""
                 Return exactly one JSON object with the arrays concepts, symbols, pathGlobs, ruleTopics, and guideTopics.
-                symbols must list every concrete class, method, or identifier mentioned in the question; pathGlobs should name likely source files; concepts holds only general topic words; ruleTopics names rule topics relevant to the question.
+                symbols must list every concrete class, method, or identifier mentioned in the question; pathGlobs should name likely source files, and whenever the question concerns code that may or may not exist in a file, include a broad glob such as **/*.java so the retriever can inspect the sources; concepts holds only general topic words; ruleTopics names rule topics relevant to the question.
                 Each array is host-validated. Do not request files or tools.
             """.trimIndent()),
             ModelMessage(MessageRole.USER,buildString {
@@ -38,7 +38,7 @@ class RetrievalPlanner(private val provider:ModelProvider) {
                 append("Repository summary: ").append(ContextSafety.wrapUntrusted("REPOSITORY",input.repositorySummary))
                 issue?.let { append("\nRepair the previous response: ").append(it) }
             })
-        ),4096
+        ),16384
     )
 
     private fun decode(text:String):RetrievalIntent {

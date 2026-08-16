@@ -111,7 +111,7 @@ class EditAgent(
                 append("Evidence:\n").append(EvidenceSerialization.payload(context.evidence))
                 issue?.let { append("Repair the previous response: ").append(it) }
             }))
-        ),16384
+        ),32768
     )
 
     private fun priorContext(context:ConversationContext):String? {
