@@ -29,7 +29,14 @@ class ConversationState(
     private val maximumRecentTurns:Int=8,
     private val maximumRecentCharacters:Int=24_000
 ) {
-    private val exactSecrets=exactSecrets.filter(String::isNotBlank).toSet()
+    private var exactSecrets=exactSecrets.filter(String::isNotBlank).toSet()
+
+    /** Swaps the redaction set live (used when a session switches provider/secret
+     *  without losing history). */
+    @Synchronized
+    fun replaceSecrets(newSecrets:Set<String>) {
+        exactSecrets=newSecrets.filter(String::isNotBlank).toSet()
+    }
     private var rollingSummary:UntrustedSummary?=null
     private var recentTurns=emptyList<ConversationTurn>()
     private val transcript=mutableListOf<TranscriptEntry>()

@@ -137,4 +137,72 @@ class KernelJsonAcceptanceTest {
         assertTrue(text.startsWith("validation=ok rules="))
         assertFalse(text.contains("{"))
     }
+
+    @Test
+    fun `json mode usage errors keep the stable error shape`() {
+        val out=ByteArrayOutputStream()
+
+        val code=runCli(
+            listOf("resolve","does-not-exist","--team","20827","--json"),
+            PrintStream(out)
+        )
+
+        assertEquals(64,code)
+        val node=mapper.readTree(out.toString())
+        assertEquals(1,node["schemaVersion"].asInt())
+        assertEquals("resolve",node["command"].asText())
+        assertFalse(node["ok"].booleanValue())
+        assertEquals("usage",node["error"]["code"].asText())
+        assertEquals("missing --season",node["error"]["message"].asText())
+    }
+
+    @Test
+    fun `json mode load errors keep the stable error shape`(@TempDir root:Path) {
+        Files.writeString(root.resolve("invalid.yaml"),"not-a-map")
+        val out=ByteArrayOutputStream()
+
+        val code=runCli(listOf("validate",root.toString(),"--json"),PrintStream(out))
+
+        assertEquals(2,code)
+        val node=mapper.readTree(out.toString())
+        assertEquals(1,node["schemaVersion"].asInt())
+        assertEquals("validate",node["command"].asText())
+        assertFalse(node["ok"].booleanValue())
+        assertEquals("load-error",node["error"]["code"].asText())
+        assertTrue(node["error"]["message"].asText().startsWith("error loading knowledge:"))
+    }
+
+    @Test
+    fun `json mode violations return a machine readable violations array`(@TempDir root:Path) {
+        Files.writeString(root.resolve("rules.yaml"),"""
+            schemaVersion: 1
+            rules:
+              - id: shared.invalid-commit
+                topic: test-topic
+                title: Test rule
+                instruction: Test instruction.
+                rationale: Test rationale.
+                status: candidate
+                authority: shared
+                applicability:
+                  teams: []
+                  seasons: []
+                evidence:
+                  - repository: owner/repository
+                    commit: invalid
+                    file: TeamCode/Test.java
+                    symbol: Test
+        """.trimIndent())
+        val out=ByteArrayOutputStream()
+
+        val code=runCli(listOf("validate",root.toString(),"--json"),PrintStream(out))
+
+        assertEquals(2,code)
+        val node=mapper.readTree(out.toString())
+        assertFalse(node["ok"].booleanValue())
+        assertEquals("invalid-knowledge",node["error"]["code"].asText())
+        assertEquals(1,node["violations"].size())
+        assertEquals("shared.invalid-commit",node["violations"][0]["ruleId"].asText())
+        assertEquals("evidence[0].commit",node["violations"][0]["field"].asText())
+    }
 }

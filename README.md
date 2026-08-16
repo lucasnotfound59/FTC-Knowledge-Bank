@@ -9,10 +9,10 @@
 | 状态 | 能力 |
 | --- | --- |
 | 已实现 | schema v1/v2 规则模型、Git/官方网页证据、严格本地 YAML 加载、证据与审批校验、规则优先级和冲突解析、`validate` / `resolve` CLI、连续聊天 Agent（Ask 两阶段检索 + 引用校验、Edit 事务写入 + undo/discard）、OpenAI-compatible provider（DeepSeek/OpenAI/自定义端点）、提示注入与上下文预算防御、固定 FTC 质量评估（`eval`）、`ftckb` 分发与用户文档 |
-| 部分完成 | `knowledge/` 当前包含 23 条规则：20 条已批准规则（1 条官方规则、19 条共享规则）和 3 条候选规则；候选规则保持 inactive，已有 6 篇 FTC SDK、依赖与工具教程，队伍知识内容仍需扩充 |
+| 部分完成 | `knowledge/` 当前包含 27 条规则：20 条已批准规则（1 条官方规则、19 条共享规则）和 7 条候选规则（含 4 条 Control Hub LED 官方候选）；候选规则保持 inactive，已有 6 篇 FTC SDK、依赖与工具教程，队伍知识内容仍需扩充 |
 | 尚未实现 | 候选规范自动提取、审批 UI/历史、Run 模式、官方文档联网检索、Android Studio 插件、Control Hub 部署 |
 
-当前使用 JDK 21 验证的测试套件有 374 项测试全部通过；这是当前快照，测试数量会随功能增长。
+当前使用 JDK 21 验证的测试套件有 389 项测试全部通过；这是当前快照，测试数量会随功能增长。
 
 
 ## 5 分钟快速开始
@@ -91,7 +91,8 @@ active shared.pedro-tune-current-robot
 ### 用法一：开盖即食（队员直接用聊天 Agent）
 
 1. **环境**：JDK 21 + Git（Edit 模式要求目标仓库是 Git 仓库）。
-2. **构建安装**：
+2. **拿代码**：从 GitHub 新克隆时先 `git clone` 再 `git checkout codex/cli-agent`（最新成果在该分支，详见下方用法二第 1 步）。
+3. **构建安装**：
 
 ```bash
 ./gradlew :apps:knowledge-cli:installDist
@@ -99,19 +100,20 @@ active shared.pedro-tune-current-robot
 
 生成的启动脚本在 `apps/knowledge-cli/build/install/knowledge-cli/bin/ftckb`。
 
-3. **一次性配置**：把 [`config/ftckb-config.example.yaml`](config/ftckb-config.example.yaml) 复制为 `${user.home}/.ftckb/config.yaml`（示例已指向 `deepseek-v4-pro`，可按需改模型名）。
-4. **密钥只进环境变量**：`export DEEPSEEK_API_KEY=<你的key>`——绝不写进配置文件。
-5. **启动聊天**：
+4. **一次性配置**：把 [`config/ftckb-config.example.yaml`](config/ftckb-config.example.yaml) 复制为 `${user.home}/.ftckb/config.yaml`（示例已指向 `deepseek-v4-pro`，可按需改模型名）。
+5. **密钥只进环境变量**：`export DEEPSEEK_API_KEY=<你的key>`——绝不写进配置文件。
+6. **启动聊天**：
 
 ```bash
 ftckb chat --knowledge knowledge --team 20827 --season 2025-2026 --provider deepseek --repo /path/to/FtcRobotController
 ```
 
-6. **常用姿势**：
+7. **常用姿势**：
    - **Ask**（默认只读）：问代码、问规则，回答会区分已批准规则 / 代码观察 / 模型推测 / 证据不足；
    - **Edit**：`/mode edit` 后在当前分支做事务式修改，配合 `/undo` `/discard` `/diff` `/commit`；
    - 会话记录：`/save`（默认只存内存）；状态：`/status`。
-7. **自己体检**：`ftckb eval --cases fixtures/agent/eval/cases.yaml --knowledge knowledge --provider deepseek --output report.md` 会跑 5 个固定场景并给出逐条 PASS/FAIL。
+   - **不记命令就用网页**：`ftckb serve --knowledge knowledge --team 20827 --season 2025-2026 --provider deepseek --repo /path/to/FtcRobotController` —— 自动打开浏览器（127.0.0.1 本机），中文界面、按钮操作、一次性 token 防窥探，改参数不清空对话。
+8. **自己体检**：`ftckb eval --cases fixtures/agent/eval/cases.yaml --knowledge knowledge --provider deepseek --output report.md` 会跑 5 个固定场景并给出逐条 PASS/FAIL。
 
 完整命令、配置字段、安全边界与隐私说明见 [docs/cli-agent.md](docs/cli-agent.md)。当前不包含：官方文档联网、Run/Gradle 执行、Control Hub 部署、Android Studio 插件。
 
@@ -119,6 +121,38 @@ ftckb chat --knowledge knowledge --team 20827 --season 2025-2026 --provider deep
 
 Codex / Claude Code / 其他 harness 不应把规则当普通文本读——那样会丢掉 `OFFICIAL > TEAM > SHARED` 的确定性解析。正确姿势是调用下面的稳定 JSON 接口，把"哪条规则生效、证据是什么"交给确定性代码判决：
 
+### 从零开始：新机器上拿到可用的 ftckb
+
+仓库只包含源码，`build/` 构建产物不入库；最新契约文档、网页会话与入口文件目前在 `codex/cli-agent` 分支（默认分支 `main` 可能滞后）。新机器按下面步骤走一遍即可：
+
+1. **拿代码并切分支**：
+
+```bash
+git clone https://github.com/lucasnotfound59/FTC-Knowledge-Bank.git
+cd FTC-Knowledge-Bank
+git checkout codex/cli-agent
+```
+
+> 当 `main` 已合并最新分支后，`git checkout` 一步可以省略。
+
+2. **装环境**：JDK 21（用 `java -version` 确认）+ Git。
+3. **构建**：
+
+```bash
+./gradlew :apps:knowledge-cli:installDist
+```
+
+产物在 `apps/knowledge-cli/build/install/knowledge-cli/bin/ftckb`。可选：软链到 PATH（`ln -s "$(pwd)/apps/knowledge-cli/build/install/knowledge-cli/bin/ftckb" /usr/local/bin/ftckb`）。
+
+4. **自检**（应输出 `"ok":true`）：
+
+```bash
+apps/knowledge-cli/build/install/knowledge-cli/bin/ftckb validate knowledge --json
+```
+
+5. **开始对接**：按下面的契约命令调用；Agent 自动发现的项目约定在 [AGENTS.md](AGENTS.md)（Claude Code 走 [CLAUDE.md](CLAUDE.md)）。
+
+### 契约调用
 ```bash
 ftckb validate <knowledge-root> --json
 ftckb resolve <knowledge-root> --team 20827 --season 2025-2026 --json
@@ -126,7 +160,8 @@ ftckb resolve <knowledge-root> --team 20827 --season 2025-2026 --json
 
 - **契约**：顶层含 `schemaVersion`（当前 1）、`command`、`ok`；`resolve` 返回每条 active 规则的 `id/topic/title/instruction/rationale/status/authority/applicability/evidence`（git/web 两种证据形态），以及 `conflicts`（`topic` + `authority` + `ruleIds`）。
 - **确定性**：`activeRules` 按 `id` 排序、`conflicts` 按 `topic` 排序——同样输入永远得到同样输出，外部 Agent 可以放心缓存。
-- **退出码**：`0` 成功；`2` 知识加载/校验失败或存在冲突；`64` 参数错误。错误信息仍是文本，消费方应以退出码 + JSON 解析为准。
+- **退出码**：`0` 成功；`2` 知识加载/校验失败或存在冲突；`64` 参数错误。带 `--json` 时失败路径同样输出统一 JSON 错误（`error.code`: `usage` / `load-error` / `invalid-knowledge`）。
+- **完整契约**：[docs/kernel-contract.md](docs/kernel-contract.md)（命令形式、字段表、确定性保证、变更策略；契约的可执行定义在 `KernelJsonAcceptanceTest`）。
 - **对接建议**：外部 Agent 改代码前先跑 `resolve` 拿 active 规则当权威上下文；`validate` 用于入库前检查；机器可判定的硬规则检查等路线图中的 `check` 子命令。
 - **输出示例**（截取）：
 
@@ -477,7 +512,7 @@ CLI 的错误信息写到标准输出；脚本应同时检查退出码，不要�
 ./gradlew clean test
 ```
 
-2026-08-15 的当前快照为 374 项测试全部通过；测试数量会随功能增长，以本地最新结果为准。
+2026-08-16 的当前快照为 389 项测试全部通过；测试数量会随功能增长，以本地最新结果为准。
 
 ## 为什么需要这个项目
 

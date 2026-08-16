@@ -14,78 +14,70 @@ fun runCli(
     out:PrintStream=System.out,
     input:BufferedReader=System.`in`.bufferedReader(),
     chatLauncher:ChatLauncher=ProductionChatLauncher(),
-    evalCommand:EvalCommand=EvalCommand()
+    evalCommand:EvalCommand=EvalCommand(),
+    serveCommand:ServeRunner=ServeCommand()
 ):Int {
     if (args.firstOrNull()=="chat") return runChatCommand(args.drop(1),input,out,chatLauncher)
     if (args.firstOrNull()=="eval") return evalCommand.run(args.drop(1),out)
+    if (args.firstOrNull()=="serve") return runServeCommand(args.drop(1),out,serveCommand)
+    // In --json mode every failure path emits the same stable error shape:
+    // {"schemaVersion":1,"command":"<validate|resolve>","ok":false,"error":{"code","message"}}.
+    val jsonMode=args.contains("--json")
+    fun fail(message:String,code:String,exit:Int):Int {
+        if (jsonMode) out.println(KernelJson.errorJson(args.firstOrNull(),code,message))
+        else out.println(message)
+        return exit
+    }
     if (args.size<2) {
-        out.println("usage: knowledge-cli <validate|resolve> <knowledge-root> [--team N --season S] [--json]")
-        return 64
+        return fail("usage: knowledge-cli <validate|resolve> <knowledge-root> [--team N --season S] [--json]","usage",64)
     }
     if (args[0] !in setOf("validate","resolve")) {
-        out.println("unknown command: ${args[0]}")
-        return 64
+        return fail("unknown command: ${args[0]}","usage",64)
     }
-    val jsonMode=args.drop(2).contains("--json")
     val optionArgs=args.drop(2).filterNot { it=="--json" }
     if (args[0]=="validate" && optionArgs.isNotEmpty()) {
-        out.println("validate accepts exactly one knowledge root")
-        return 64
+        return fail("validate accepts exactly one knowledge root","usage",64)
     }
     if (args[0]=="resolve" && "--team" !in optionArgs) {
-        out.println("missing --team")
-        return 64
+        return fail("missing --team","usage",64)
     }
     if (args[0]=="resolve" && "--season" !in optionArgs) {
-        out.println("missing --season")
-        return 64
+        return fail("missing --season","usage",64)
     }
     if (args[0]=="resolve" && optionArgs.size%2!=0) {
-        out.println("resolve options must be flag-value pairs")
-        return 64
+        return fail("resolve options must be flag-value pairs","usage",64)
     }
     if (args[0]=="resolve") {
         val optionPairs=optionArgs.chunked(2)
         val unknown=optionPairs.firstOrNull { it[0] !in setOf("--team","--season") }
-        if (unknown!=null) {
-            out.println("unknown resolve option: ${unknown[0]}")
-            return 64
-        }
+        if (unknown!=null) return fail("unknown resolve option: ${unknown[0]}","usage",64)
         val duplicate=optionPairs.groupBy { it[0] }.entries.firstOrNull { it.value.size>1 }
-        if (duplicate!=null) {
-            out.println("duplicate resolve option: ${duplicate.key}")
-            return 64
-        }
+        if (duplicate!=null) return fail("duplicate resolve option: ${duplicate.key}","usage",64)
         val empty=optionPairs.firstOrNull { it[1].isEmpty() }
-        if (empty!=null) {
-            out.println("empty value for ${empty[0]}")
-            return 64
-        }
+        if (empty!=null) return fail("empty value for ${empty[0]}","usage",64)
         val flagValue=optionPairs.firstOrNull { it[1].startsWith("--") }
-        if (flagValue!=null) {
-            out.println("invalid value for ${flagValue[0]}: ${flagValue[1]}")
-            return 64
-        }
+        if (flagValue!=null) return fail("invalid value for ${flagValue[0]}: ${flagValue[1]}","usage",64)
         val options=optionPairs.associate { it[0] to it[1] }
         if (!RuleIdentity.isCanonicalTeam(options.getValue("--team"))) {
-            out.println("invalid value for --team: expected digits only")
-            return 64
+            return fail("invalid value for --team: expected digits only","usage",64)
         }
         if (!RuleIdentity.isCanonicalSeason(options.getValue("--season"))) {
-            out.println("invalid value for --season: expected YYYY-YYYY")
-            return 64
+            return fail("invalid value for --season: expected YYYY-YYYY","usage",64)
         }
     }
     val loaded=try {
         FileKnowledgeRepository.load(Path.of(args[1]))
     } catch (exception:Exception) {
         val detail=exception.message?.lineSequence()?.firstOrNull()?.trim().orEmpty()
-        out.println("error loading knowledge: ${detail.ifEmpty { exception.javaClass.simpleName }}")
-        return 2
+        return fail("error loading knowledge: ${detail.ifEmpty { exception.javaClass.simpleName }}","load-error",2)
     }
     if (loaded.violations.isNotEmpty()) {
-        loaded.violations.sortedWith(compareBy({ it.ruleId },{ it.field })).forEach {
-            out.println("error rule=${it.ruleId} field=${it.field} message=${it.message}")
+        if (jsonMode) {
+            out.println(KernelJson.violationsJson(args[0],loaded.violations))
+        } else {
+            loaded.violations.sortedWith(compareBy({ it.ruleId },{ it.field })).forEach {
+                out.println("error rule=${it.ruleId} field=${it.field} message=${it.message}")
+            }
         }
         return 2
     }

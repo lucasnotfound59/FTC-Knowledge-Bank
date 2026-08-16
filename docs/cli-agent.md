@@ -93,6 +93,23 @@ ftckb chat --knowledge PATH --team N --season YYYY-YYYY --provider NAME [--repo 
 - 仓库不可读/不支持的仓库：Ask 报错并禁用 Edit。
 - 模型返回格式异常：与"模型生成的无效 JSON"分开归类报告。
 
+
+## 本地网页会话（ftckb serve）
+
+`ftckb serve` 在 127.0.0.1 上启动一个**单会话**的本地网页界面（仅本机可访问），适合不想记斜杠命令的队员：
+
+```bash
+ftckb serve --knowledge PATH --team 20827 --season 2025-2026 --provider deepseek [--repo PATH] [--config PATH] [--port 0-65535] [--no-browser]
+```
+
+- 端口：默认随机（`--port 0`），启动时终端会打印 `url=` 和 `token=`；`token` 是一次性访问令牌，页面每次请求都要带（查询参数或 `X-FTCKB-Token` 头），泄露只需重启换新。
+- 未给 `--no-browser` 时自动打开默认浏览器（macOS `open` / Linux `xdg-open` / Windows `start`）。
+- API key 只进内存：优先读环境变量；没有则启动时在终端以隐藏方式输入一次，绝不写入配置文件、绝不打印。
+- 页面为中文，全部按钮操作；回答、引用、Agent 差异分栏展示。
+- 网页里可以改队伍/赛季/Provider/仓库/知识路径：**对话历史保留**（除非点「清空对话」）；有未提交的 Agent 编辑改动或处于编辑模式时，仓库/知识路径不可改。
+- 关闭服务：点「关闭服务」按钮，或 Ctrl-C 结束进程。
+
+HTTP 接口（`/api/status|ask|submit|mode|undo|discard|diff|save|clear|configure|shutdown`）返回统一 JSON：成功 `{ok:true,...}`；业务拒绝 `{ok:false,error:{code,message}}`；未授权 HTTP 401。模型调用在后台线程串行执行，网页不会卡死。
 ## 机器接口（供外部 Agent 使用）
 
 validate 与 resolve 支持 --json 输出稳定、版本化的 JSON 契约，供 Codex / Claude Code / 其他 Agent 把知识库当作确定性"策略裁决器"调用，而不是把规则当普通文本读：
@@ -107,7 +124,7 @@ ftckb resolve knowledge --team 20827 --season 2025-2026 --json
 - 顶层含 schemaVersion（当前 1）、command、ok；破坏性变更必须提升版本号。
 - 输出确定性：activeRules 按 id 排序、conflicts 按 topic 排序、规则内的 teams/seasons/evidence 顺序固定——同样的输入永远得到同样的输出。
 - resolve 返回每条 active 规则的 id/topic/title/instruction/rationale/status/authority/applicability/evidence（git 与 web 两种证据形态），以及 conflicts（topic + authority + ruleIds）。
-- 退出码：成功 0；知识加载/校验失败或存在冲突 2；参数错误 64。错误信息仍是文本，外部 Agent 应以退出码 + JSON 解析为准。
+- 退出码：成功 0；知识加载/校验失败或存在冲突 2；参数错误 64。带 `--json` 时失败路径同样是 JSON（统一 error 形状：usage / load-error / invalid-knowledge），不带时是文本行。完整契约见 [docs/kernel-contract.md](kernel-contract.md)，契约的可执行定义在 `KernelJsonAcceptanceTest`。
 
 未来将在此契约上继续增加：check 裁决器（对代码/diff 做可机器判定的硬规则检查）、native 单文件可执行、MCP 薄适配层。
 

@@ -63,9 +63,13 @@ class PedroTutorialAcceptanceTest {
     ):Boolean {
         val lexicalRoot=lexicalAbsolute(currentRoot)
         val lexicalCandidate=lexicalAbsolute(candidate,lexicalRoot)
+        // Exclude only worktrees nested inside the current walk root. A root that
+        // merely CONTAINS the current root (e.g. running the suite from the nested
+        // cli-agent worktree while the main checkout also registers it) must not
+        // swallow every candidate under the current root.
         return registeredWorktreeRoots
             .map { lexicalAbsolute(it,lexicalRoot) }
-            .filter { it!=lexicalRoot }
+            .filter { it!=lexicalRoot && it.startsWith(lexicalRoot) }
             .any(lexicalCandidate::startsWith)
     }
 
