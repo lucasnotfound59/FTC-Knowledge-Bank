@@ -42,6 +42,10 @@ public class SafePedroAuto extends OpMode {
         PRELOAD_CLOSED,DRIVE_TO_SCORE,RELEASE,RELEASE_WAIT,DRIVE_TO_PARK,DONE,SAFETY_STOP,STOPPED
     }
 
+    private enum LastServoCommand {
+        NONE,CLOSED,OPEN
+    }
+
     private enum ValidationIssue {
         CONFIGURATION_INCOMPLETE,SERVO_NAME_MISSING_OR_SENTINEL,NON_FINITE_NUMBER,
         SERVO_POSITION_OUT_OF_RANGE,SERVO_POSITIONS_IDENTICAL,WAIT_DURATION_OUT_OF_RANGE,
@@ -54,6 +58,7 @@ public class SafePedroAuto extends OpMode {
     private boolean safetyLocked=true;
     private String runtimeFailure="none";
     private AutoState autoState=AutoState.SAFETY_STOP;
+    private LastServoCommand lastServoCommand=LastServoCommand.NONE;
     private Follower follower;
     private Servo servo;
     private PathChain scorePath;
@@ -65,7 +70,7 @@ public class SafePedroAuto extends OpMode {
         validateStaticConfiguration();
         if (validationIssues.isEmpty()) initializeResourcesForSelectedStage();
         safetyLocked=!validationIssues.isEmpty();
-        if (!safetyLocked) autoState=AutoState.DONE;
+        if (!safetyLocked) transitionTo(AutoState.DONE);
         emitTelemetry();
     }
 
@@ -83,20 +88,20 @@ public class SafePedroAuto extends OpMode {
         try {
             switch (TEST_STAGE) {
                 case CONFIG_CHECK:
-                    autoState=AutoState.DONE;
+                    transitionTo(AutoState.DONE);
                     break;
                 case SERVO_ONLY:
-                    autoState=AutoState.PRELOAD_CLOSED;
-                    if (commandServo(SERVO_CLOSED_POSITION)) stateTimer.reset();
+                    transitionTo(AutoState.PRELOAD_CLOSED);
+                    commandServo(SERVO_CLOSED_POSITION,LastServoCommand.CLOSED);
                     break;
                 case SHORT_DRIVE:
-                    autoState=AutoState.DRIVE_TO_PARK;
+                    transitionTo(AutoState.DRIVE_TO_PARK);
                     commandPath(shortDrivePath,SHORT_DRIVE_MAX_POWER);
                     break;
                 case FULL_AUTO:
-                    autoState=AutoState.PRELOAD_CLOSED;
-                    if (commandServo(SERVO_CLOSED_POSITION)) {
-                        autoState=AutoState.DRIVE_TO_SCORE;
+                    transitionTo(AutoState.PRELOAD_CLOSED);
+                    if (commandServo(SERVO_CLOSED_POSITION,LastServoCommand.CLOSED)) {
+                        transitionTo(AutoState.DRIVE_TO_SCORE);
                         commandPath(scorePath,FULL_AUTO_MAX_POWER);
                     }
                     break;
@@ -129,7 +134,7 @@ public class SafePedroAuto extends OpMode {
     @Override
     public void stop() {
         safetyLocked=true;
-        autoState=AutoState.STOPPED;
+        transitionTo(AutoState.STOPPED);
         stopFollowingBestEffort();
     }
 
@@ -208,34 +213,33 @@ public class SafePedroAuto extends OpMode {
 
     private void updateServoTest() {
         if (autoState==AutoState.PRELOAD_CLOSED&&stateTimer.seconds()>=RELEASE_WAIT_SECONDS) {
-            autoState=AutoState.RELEASE;
-            if (commandServo(SERVO_OPEN_POSITION)) autoState=AutoState.DONE;
+            transitionTo(AutoState.RELEASE);
+            if (commandServo(SERVO_OPEN_POSITION,LastServoCommand.OPEN)) transitionTo(AutoState.DONE);
         }
     }
 
     private void updateShortDriveTest() {
-        if (autoState==AutoState.DRIVE_TO_PARK&&!follower.isBusy()) autoState=AutoState.DONE;
+        if (autoState==AutoState.DRIVE_TO_PARK&&!follower.isBusy()) transitionTo(AutoState.DONE);
     }
 
     private void updateFullAuto() {
         switch (autoState) {
             case DRIVE_TO_SCORE:
                 if (!follower.isBusy()) {
-                    autoState=AutoState.RELEASE;
-                    if (commandServo(SERVO_OPEN_POSITION)) {
-                        stateTimer.reset();
-                        autoState=AutoState.RELEASE_WAIT;
+                    transitionTo(AutoState.RELEASE);
+                    if (commandServo(SERVO_OPEN_POSITION,LastServoCommand.OPEN)) {
+                        transitionTo(AutoState.RELEASE_WAIT);
                     }
                 }
                 break;
             case RELEASE_WAIT:
                 if (stateTimer.seconds()>=RELEASE_WAIT_SECONDS) {
-                    autoState=AutoState.DRIVE_TO_PARK;
+                    transitionTo(AutoState.DRIVE_TO_PARK);
                     commandPath(parkPath,FULL_AUTO_MAX_POWER);
                 }
                 break;
             case DRIVE_TO_PARK:
-                if (!follower.isBusy()) autoState=AutoState.DONE;
+                if (!follower.isBusy()) transitionTo(AutoState.DONE);
                 break;
             case DONE:
                 break;
@@ -253,12 +257,13 @@ public class SafePedroAuto extends OpMode {
         return true;
     }
 
-    private boolean commandServo(double position) {
+    private boolean commandServo(double position,LastServoCommand command) {
         if (safetyLocked||!TEST_STAGE.servoAllowed||servo==null||!inClosedUnitRange(position)) {
             enterSafetyStop("servo command rejected");
             return false;
         }
         servo.setPosition(position);
+        lastServoCommand=command;
         return true;
     }
 
@@ -267,10 +272,16 @@ public class SafePedroAuto extends OpMode {
         follower.update();
     }
 
+    private void transitionTo(AutoState next) {
+        if (autoState==next) return;
+        autoState=next;
+        stateTimer.reset();
+    }
+
     private void enterSafetyStop(String reason) {
         runtimeFailure=reason==null?"unknown runtime failure":reason;
         safetyLocked=true;
-        autoState=AutoState.SAFETY_STOP;
+        transitionTo(AutoState.SAFETY_STOP);
         stopFollowingBestEffort();
     }
 
@@ -304,6 +315,7 @@ public class SafePedroAuto extends OpMode {
             telemetry.addData("heading (rad)",follower.getPose().getHeading());
             telemetry.addData("follower busy",follower.isBusy());
         }
+        telemetry.addData("last servo command",lastServoCommand);
         telemetry.addData("state elapsed (s)",stateTimer.seconds());
         telemetry.update();
     }

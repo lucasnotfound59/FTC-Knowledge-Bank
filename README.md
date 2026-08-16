@@ -14,6 +14,7 @@
 
 当前使用 JDK 21 验证的测试套件有 374 项测试全部通过；这是当前快照，测试数量会随功能增长。
 
+
 ## 5 分钟快速开始
 
 ### 1. 获取仓库
@@ -156,6 +157,24 @@ ftckb resolve <knowledge-root> --team 20827 --season 2025-2026 --json
 - [Pedro Pathing 配置、定位与调参](knowledge/guides/tools/pedro-pathing.md)
 - [goBILDA 电机与舵机：从精确 SKU 到代码](knowledge/guides/tools/gobilda-motors-servos.md)
 - [Limelight 3A：接线、pipeline、结果与定位](knowledge/guides/tools/limelight-3a.md)
+
+Pedro 新人 Auto 工作流从完整的 [参数字典](knowledge/guides/tools/pedro-pathing.md#safepedroauto-参数字典) 和 [四阶段实车测试清单](knowledge/guides/tools/pedro-pathing.md#四阶段实车测试清单) 开始。仓库只保留一份 [SafePedroAuto.java](knowledge/examples/pedro/SafePedroAuto.java) 规范示例；它默认锁定，在完成机器人专属配置并逐阶段验证前不可运行。
+
+只检查教程与规范示例的内容契约，可运行快速测试：
+
+```bash
+./gradlew :apps:knowledge-cli:test --tests 'org.ftckb.cli.PedroTutorialAcceptanceTest'
+```
+
+完整发布门还会在隔离 fixture 中使用固定的 FTC SDK 11.2.0 与 Pedro 2.1.2 编译规范示例。它需要 JDK 21，并要求 `ANDROID_HOME` 或 `ANDROID_SDK_ROOT` 指向已安装的 Android SDK；macOS 使用 Android Studio 默认位置时可运行：
+
+```bash
+JAVA_HOME='/Applications/Android Studio.app/Contents/jbr/Contents/Home' \
+ANDROID_HOME="$HOME/Library/Android/sdk" \
+./gradlew clean verifyPedroRelease
+```
+
+快速测试通过只证明内容与源码契约通过；`verifyPedroRelease` 通过进一步证明 Android 编译 fixture 通过。二者都不代表部署或实机验证通过；实机结论必须由队员按四阶段清单在对应机器人上另行验证和记录。本仓库当前没有已完成的 Pedro 实机验证记录。
 
 ### 知识库目录
 
