@@ -14,10 +14,12 @@ fun runCli(
     out:PrintStream=System.out,
     input:BufferedReader=System.`in`.bufferedReader(),
     chatLauncher:ChatLauncher=ProductionChatLauncher(),
-    evalCommand:EvalCommand=EvalCommand()
+    evalCommand:EvalCommand=EvalCommand(),
+    serveCommand:ServeRunner=ServeCommand()
 ):Int {
     if (args.firstOrNull()=="chat") return runChatCommand(args.drop(1),input,out,chatLauncher)
     if (args.firstOrNull()=="eval") return evalCommand.run(args.drop(1),out)
+    if (args.firstOrNull()=="serve") return runServeCommand(args.drop(1),out,serveCommand)
     // In --json mode every failure path emits the same stable error shape:
     // {"schemaVersion":1,"command":"<validate|resolve>","ok":false,"error":{"code","message"}}.
     val jsonMode=args.contains("--json")

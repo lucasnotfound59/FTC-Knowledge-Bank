@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FTC 知识库 Agent</title>
+<style>
+  :root { --bg:#f6f7f9; --panel:#ffffff; --ink:#1c2733; --muted:#64748b; --line:#e2e8f0;
+          --accent:#0e7c5a; --accent-soft:#e3f4ee; --danger:#b3261e; --warn:#8a5a00; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif;
+         background:var(--bg); color:var(--ink); height:100vh; display:flex; flex-direction:column; }
+  header { background:var(--panel); border-bottom:1px solid var(--line); padding:10px 18px;
+           display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  header h1 { font-size:17px; margin:0; }
+  #status { display:flex; gap:10px; flex-wrap:wrap; font-size:12px; color:var(--muted); margin-left:auto; }
+  .pill { background:var(--accent-soft); color:var(--accent); border-radius:10px; padding:2px 9px; }
+  .pill.warn { background:#fdf3dc; color:var(--warn); }
+  main { flex:1; display:flex; gap:12px; padding:12px 18px; min-height:0; }
+  #left { flex:1; display:flex; flex-direction:column; min-width:0; }
+  #chat { flex:1; overflow-y:auto; background:var(--panel); border:1px solid var(--line);
+          border-radius:10px; padding:14px; display:flex; flex-direction:column; gap:12px; }
+  .msg { max-width:92%; }
+  .msg.user { align-self:flex-end; }
+  .msg.assistant { align-self:flex-start; }
+  .bubble { border-radius:10px; padding:9px 12px; font-size:14px; line-height:1.55; white-space:pre-wrap;
+            overflow-wrap:anywhere; }
+  .msg.user .bubble { background:var(--accent); color:#ffffff; }
+  .msg.assistant .bubble { background:#eef1f5; color:var(--ink); }
+  .claim-kind { display:inline-block; font-size:11px; border-radius:8px; padding:1px 8px; margin-right:6px;
+                background:var(--accent-soft); color:var(--accent); vertical-align:middle; }
+  .citations { font-size:11px; color:var(--muted); margin-top:4px; }
+  .error-bubble { background:#fdecea; color:var(--danger); }
+  #composer { display:flex; gap:8px; margin-top:10px; }
+  #question { flex:1; padding:10px 12px; border:1px solid var(--line); border-radius:8px; font-size:14px;
+              font-family:inherit; resize:none; min-height:44px; max-height:160px; }
+  button { cursor:pointer; border:1px solid var(--line); background:var(--panel); color:var(--ink);
+           border-radius:8px; padding:7px 12px; font-size:13px; font-family:inherit; }
+  button:hover { border-color:var(--accent); }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  #toolbar { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; align-items:center; }
+  #right { width:340px; min-width:280px; display:flex; flex-direction:column; gap:10px; overflow-y:auto; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; }
+  .card h2 { font-size:14px; margin:0 0 8px; }
+  .field { display:flex; flex-direction:column; gap:4px; margin-bottom:8px; }
+  .field label { font-size:12px; color:var(--muted); }
+  .field input { padding:7px 9px; border:1px solid var(--line); border-radius:7px; font-size:13px; font-family:inherit; }
+  #diff { white-space:pre-wrap; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12px;
+          background:#101418; color:#d7e2ec; border-radius:8px; padding:10px; max-height:280px; overflow:auto;
+          display:none; overflow-wrap:anywhere; }
+  #info { font-size:12px; color:var(--muted); white-space:pre-wrap; overflow-wrap:anywhere; }
+</style>
+</head>
+<body>
+<header>
+  <h1>FTC 知识库 Agent</h1>
+  <div id="status"></div>
+</header>
+<main>
+  <div id="left">
+    <div id="chat"></div>
+    <div id="composer">
+      <textarea id="question" placeholder="输入问题，Enter 发送（Shift+Enter 换行）"></textarea>
+      <button id="send" class="primary">发送</button>
+    </div>
+    <div id="toolbar">
+      <button id="mode-ask" class="primary">询问模式</button>
+      <button id="mode-edit">编辑模式</button>
+      <button id="undo">撤销</button>
+      <button id="discard">放弃</button>
+      <button id="diff-btn">差异</button>
+      <button id="save">保存会话</button>
+      <button id="clear">清空对话</button>
+      <button id="shutdown">关闭服务</button>
+    </div>
+  </div>
+  <div id="right">
+    <div class="card">
+      <h2>会话设置（修改后对话历史保留）</h2>
+      <div class="field"><label>队伍编号</label><input id="cfg-team"></div>
+      <div class="field"><label>赛季（YYYY-YYYY）</label><input id="cfg-season"></div>
+      <div class="field"><label>Provider 名称</label><input id="cfg-provider"></div>
+      <div class="field"><label>仓库路径（有编辑改动时不可改）</label><input id="cfg-repo"></div>
+      <div class="field"><label>知识库路径</label><input id="cfg-knowledge"></div>
+      <button id="apply-cfg">应用设置</button>
+    </div>
+    <div class="card">
+      <h2>Agent 差异</h2>
+      <pre id="diff"></pre>
+    </div>
+    <div class="card">
+      <h2>信息</h2>
+      <div id="info"></div>
+    </div>
+  </div>
+</main>
+<script>
+"use strict";
+const token=new URLSearchParams(location.search).get("token")||"";
+const $=id=>document.getElementById(id);
+const KIND_LABEL={APPROVED_RULE:"已批准规则",CODE_OBSERVATION:"代码观察",MODEL_INFERENCE:"模型推断",INSUFFICIENT_EVIDENCE:"证据不足"};
+let busy=false;
+let currentMode="ask";
+
+async function api(path,body){
+  const opts={method:body===undefined?"GET":"POST",headers:{"X-FTCKB-Token":token}};
+  if(body!==undefined){opts.headers["Content-Type"]="application/json";opts.body=JSON.stringify(body);}
+  const res=await fetch(path,opts);
+  return await res.json();
+}
+
+function appendMessage(role,text,extra){
+  const chat=$("chat");
+  const wrap=document.createElement("div");
+  wrap.className="msg "+role;
+  const bubble=document.createElement("div");
+  bubble.className="bubble";
+  if(extra&&extra.kind){
+    const kind=document.createElement("span");
+    kind.className="claim-kind";
+    kind.textContent=KIND_LABEL[extra.kind]||extra.kind;
+    bubble.appendChild(kind);
+  }
+  bubble.appendChild(document.createTextNode(text));
+  wrap.appendChild(bubble);
+  if(extra&&extra.citations&&extra.citations.length){
+    const cites=document.createElement("div");
+    cites.className="citations";
+    cites.textContent="引用: "+extra.citations.join(" ");
+    wrap.appendChild(cites);
+  }
+  chat.appendChild(wrap);
+  chat.scrollTop=chat.scrollHeight;
+  return bubble;
+}
+
+function appendError(text){
+  const chat=$("chat");
+  const wrap=document.createElement("div");
+  wrap.className="msg assistant";
+  const bubble=document.createElement("div");
+  bubble.className="bubble error-bubble";
+  bubble.textContent=text;
+  wrap.appendChild(bubble);
+  chat.appendChild(wrap);
+  chat.scrollTop=chat.scrollHeight;
+}
+
+function renderAnswer(data){
+  if(!data.ok){appendError(data.error?data.error.message:"请求失败");return;}
+  if(!data.claims||!data.claims.length){appendMessage("assistant","（空回答）");return;}
+  data.claims.forEach(c=>appendMessage("assistant",c.text,{kind:c.kind,citations:c.citations||[]}));
+}
+
+function renderEdit(data){
+  if(!data.ok){appendError(data.error?data.error.message:"请求失败");return;}
+  appendMessage("assistant","已完成修改: "+data.summary);
+  appendMessage("assistant","修改文件: "+(data.changedPaths||[]).join(", ")+
+    "\n理由: "+(data.reasons||[]).join("; ")+
+    "\n引用: "+(data.citations||[]).join(" ")+
+    (data.warnings&&data.warnings.length?"\n警告: "+data.warnings.join("; "):""));
+  if(data.diff){$("diff").textContent=data.diff;$("diff").style.display="block";}
+  refreshStatus();
+}
+
+async function send(){
+  if(busy)return;
+  const box=$("question");
+  const text=box.value.trim();
+  if(!text)return;
+  box.value="";
+  appendMessage("user",text);
+  busy=true;$("send").disabled=true;
+  try{
+    const path=currentMode==="edit"?"/api/submit":"/api/ask";
+    const body=currentMode==="edit"?{message:text}:{question:text};
+    const data=await api(path,body);
+    if(data.ok&&data.claims)renderAnswer(data);else renderEdit(data);
+  }catch(e){appendError("网络错误: "+e);}
+  busy=false;$("send").disabled=false;refreshStatus();
+}
+
+async function setMode(mode){
+  const data=await api("/api/mode",{mode:mode});
+  if(!data.ok){appendError(data.error.message);return;}
+  currentMode=data.mode||mode;
+  refreshStatus();
+}
+
+async function historyCommand(path,label){
+  const data=await api(path);
+  if(!data.ok){appendError(label+"被拒绝: "+data.error.message);return;}
+  if(data.conflicts){appendError(label+"冲突，未覆盖任何文件: "+(data.conflictPaths||[]).join(", "));}
+  else appendMessage("assistant",label+"完成。文件: "+(data.changedPaths||[]).join(", "));
+  if(data.warnings&&data.warnings.length)appendMessage("assistant","警告: "+data.warnings.join("; "));
+  refreshStatus();
+}
+
+async function showDiff(){
+  const data=await api("/api/diff");
+  const pre=$("diff");
+  pre.textContent=data.ok?(data.diff||"（没有 Agent 改动）"):"差异获取失败";
+  pre.style.display="block";
+}
+
+async function saveSession(){
+  const data=await api("/api/save",{});
+  if(!data.ok){appendError("保存失败: "+data.error.message);return;}
+  $("info").textContent="已保存会话: "+data.savedPath;
+}
+
+async function clearChat(){
+  const data=await api("/api/clear");
+  if(!data.ok){appendError(data.error.message);return;}
+  $("chat").textContent="";
+  appendMessage("assistant","对话已清空。");
+  refreshStatus();
+}
+
+async function refreshStatus(){
+  try{
+    const data=await api("/api/status");
+    if(!data.ok){$("status").textContent="状态不可用";return;}
+    currentMode=data.mode||"ask";
+    $("status").textContent="";
+    const items=[
+      ["模式: "+(data.mode==="edit"?"编辑":"询问"),data.mode==="edit"?"warn":""],
+      ["队伍 "+data.team,""],
+      [data.season,""],
+      ["模型 "+data.provider+"/"+data.model,""],
+      data.hasChanges?["有未提交的 Agent 改动","warn"]:null
+    ].filter(Boolean);
+    items.forEach(([text,cls])=>{
+      const span=document.createElement("span");
+      span.className="pill"+(cls?" "+cls:"");
+      span.textContent=text;
+      $("status").appendChild(span);
+    });
+    $("mode-ask").className=data.mode==="ask"?"primary":"";
+    $("mode-edit").className=data.mode==="edit"?"primary":"";
+    $("cfg-team").value=$("cfg-team").value||data.team;
+    $("cfg-season").value=$("cfg-season").value||data.season;
+    $("cfg-provider").value=$("cfg-provider").value||data.provider;
+    $("cfg-repo").placeholder="当前: "+data.repository;
+    $("info").textContent="仓库: "+data.repository;
+  }catch(e){}
+}
+
+async function applyConfig(){
+  const body={};
+  const team=$("cfg-team").value.trim();if(team)body.team=team;
+  const season=$("cfg-season").value.trim();if(season)body.season=season;
+  const provider=$("cfg-provider").value.trim();if(provider)body.provider=provider;
+  const repo=$("cfg-repo").value.trim();if(repo)body.repo=repo;
+  const knowledge=$("cfg-knowledge").value.trim();if(knowledge)body.knowledge=knowledge;
+  const data=await api("/api/configure",body);
+  if(!data.ok){appendError("设置失败: "+data.error.message);return;}
+  appendMessage("assistant","设置已应用。");
+  refreshStatus();
+}
+
+$("send").addEventListener("click",send);
+$("question").addEventListener("keydown",e=>{
+  if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}
+});
+$("mode-ask").addEventListener("click",()=>setMode("ask"));
+$("mode-edit").addEventListener("click",()=>setMode("edit"));
+$("undo").addEventListener("click",()=>historyCommand("/api/undo","撤销"));
+$("discard").addEventListener("click",()=>historyCommand("/api/discard","放弃"));
+$("diff-btn").addEventListener("click",showDiff);
+$("save").addEventListener("click",saveSession);
+$("clear").addEventListener("click",clearChat);
+$("apply-cfg").addEventListener("click",applyConfig);
+$("shutdown").addEventListener("click",async()=>{
+  if(!confirm("关闭本地服务？"))return;
+  try{await api("/api/shutdown");}catch(e){}
+  $("send").disabled=true;$("question").disabled=true;
+  appendMessage("assistant","服务已关闭，可以关闭此页面。");
+});
+appendMessage("assistant","你好！我是 FTC 知识库 Agent。我可以根据已批准的知识规则回答问题（询问模式），或在当前 git 分支上修改代码（编辑模式）。");
+refreshStatus();
+</script>
+</body>
+</html>
