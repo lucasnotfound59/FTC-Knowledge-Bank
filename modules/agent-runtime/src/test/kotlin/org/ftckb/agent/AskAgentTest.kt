@@ -118,7 +118,7 @@ class AskAgentTest {
 
         assertThrows(ModelProviderException.RequestLimit::class.java) { agent.ask("planning limit") }
 
-        assertEquals(listOf(4096),provider.requests.map { it.maxOutputTokens })
+        assertEquals(listOf(16384),provider.requests.map { it.maxOutputTokens })
         assertEquals(listOf("planning limit"),agent.conversation.context().pendingQuestions)
     }
 
@@ -129,7 +129,7 @@ class AskAgentTest {
 
         assertThrows(ModelProviderException.RequestLimit::class.java) { agent.ask("answer limit") }
 
-        assertEquals(listOf(4096),provider.requests.map { it.maxOutputTokens })
+        assertEquals(listOf(16384),provider.requests.map { it.maxOutputTokens })
         assertEquals(listOf("answer limit"),agent.conversation.context().pendingQuestions)
     }
 

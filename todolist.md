@@ -18,7 +18,7 @@
 - [x] 保护仓库外路径、凭据和 `.git`；允许当前 branch 有既有改动，但 Agent 不得自动 commit、push 或 merge；
 - [x] 稳定机器接口：`ftckb validate/resolve --json`（schemaVersion=1、确定性排序、统一 JSON 错误形状），供外部 Agent 把知识库当确定性“策略裁决器”调用（契约文档 `docs/kernel-contract.md`）；
 - [x] 本地网页会话 `ftckb serve`：127.0.0.1 单会话中文界面，随机端口 + 一次性 token，页内改参数保留对话历史，API key 只进内存；
-- [x] 固定场景质量评估 `ftckb eval`（5 个场景、逐条 PASS/FAIL）；离线脚本化全绿，线上真实模型通过率仍在调优（当前 1/5–3/5）；
+- [x] 固定场景质量评估 `ftckb eval`（5 个场景、逐条 PASS/FAIL）；离线脚本化全绿，线上 deepseek-v4-pro 连续多轮 5/5（预算提升 + 检索兜底 + 提示词加固后稳定）；
 - [ ] 建立测试样例，验证 Agent 不会把遗留代码、重复依赖或单次写法误判为正式规范（现有 eval 场景尚未覆盖此类负例）；
 - [ ] 制作 Android Studio 插件的最小交互界面；
 
