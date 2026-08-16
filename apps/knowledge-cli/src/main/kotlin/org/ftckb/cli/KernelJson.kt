@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.json.JsonMapper
 import org.ftckb.domain.GitRuleEvidence
 import org.ftckb.domain.KnowledgeRule
 import org.ftckb.domain.RuleConflict
+import org.ftckb.domain.RuleViolation
 import org.ftckb.domain.WebRuleEvidence
 
 /**
@@ -22,6 +23,38 @@ object KernelJson {
         root.put("ok",true)
         root.put("ruleCount",ruleCount)
         root.putArray("violations")
+        return mapper.writeValueAsString(root)
+    }
+
+    fun errorJson(command:String?,code:String,message:String):String {
+        val root=mapper.createObjectNode()
+        root.put("schemaVersion",SCHEMA_VERSION)
+        if (command in setOf("validate","resolve")) root.put("command",command)
+        root.put("ok",false)
+        root.putObject("error").apply {
+            put("code",code)
+            put("message",message)
+        }
+        return mapper.writeValueAsString(root)
+    }
+
+    fun violationsJson(command:String,violations:List<RuleViolation>):String {
+        val root=mapper.createObjectNode()
+        root.put("schemaVersion",SCHEMA_VERSION)
+        root.put("command",command)
+        root.put("ok",false)
+        val array=root.putArray("violations")
+        violations.sortedWith(compareBy({ it.ruleId },{ it.field })).forEach { violation ->
+            array.addObject().apply {
+                put("ruleId",violation.ruleId)
+                put("field",violation.field)
+                put("message",violation.message)
+            }
+        }
+        root.putObject("error").apply {
+            put("code","invalid-knowledge")
+            put("message","${violations.size} rule violation(s)")
+        }
         return mapper.writeValueAsString(root)
     }
 

@@ -107,7 +107,7 @@ ftckb resolve knowledge --team 20827 --season 2025-2026 --json
 - 顶层含 schemaVersion（当前 1）、command、ok；破坏性变更必须提升版本号。
 - 输出确定性：activeRules 按 id 排序、conflicts 按 topic 排序、规则内的 teams/seasons/evidence 顺序固定——同样的输入永远得到同样的输出。
 - resolve 返回每条 active 规则的 id/topic/title/instruction/rationale/status/authority/applicability/evidence（git 与 web 两种证据形态），以及 conflicts（topic + authority + ruleIds）。
-- 退出码：成功 0；知识加载/校验失败或存在冲突 2；参数错误 64。错误信息仍是文本，外部 Agent 应以退出码 + JSON 解析为准。
+- 退出码：成功 0；知识加载/校验失败或存在冲突 2；参数错误 64。带 `--json` 时失败路径同样是 JSON（统一 error 形状：usage / load-error / invalid-knowledge），不带时是文本行。完整契约见 [docs/kernel-contract.md](kernel-contract.md)，契约的可执行定义在 `KernelJsonAcceptanceTest`。
 
 未来将在此契约上继续增加：check 裁决器（对代码/diff 做可机器判定的硬规则检查）、native 单文件可执行、MCP 薄适配层。
 
