@@ -1,0 +1,3 @@
+#!/bin/sh
+touch forbidden-process-ran
+exit 97

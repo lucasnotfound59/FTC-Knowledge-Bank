@@ -2,11 +2,20 @@
 kotlin = "2.4.10"
 junit = "5.14.3"
 snakeyaml = "3.0.1"
+jackson = "2.22.0"
+jgit = "7.7.0.202606012155-r"
+slf4j = "2.0.18"
+java-diff-utils = "4.17"
 
 [libraries]
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
 snakeyaml-engine = { module = "org.snakeyaml:snakeyaml-engine", version.ref = "snakeyaml" }
+jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
+jgit = { module = "org.eclipse.jgit:org.eclipse.jgit", version.ref = "jgit" }
+slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+slf4j-nop = { module = "org.slf4j:slf4j-nop", version.ref = "slf4j" }
+java-diff-utils = { module = "io.github.java-diff-utils:java-diff-utils", version.ref = "java-diff-utils" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

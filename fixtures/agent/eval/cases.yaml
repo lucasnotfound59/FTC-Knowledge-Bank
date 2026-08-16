@@ -1,0 +1,58 @@
+schemaVersion: 1
+cases:
+  - id: limelight-validity
+    repository: fixtures/agent/ask-repo
+    team: "20827"
+    season: 2025-2026
+    turns:
+      - mode: ask
+        prompt: Is the Limelight result checked safely?
+        requiredClaimKinds: [code_observation, approved_rule]
+        requiredPaths: [TeamCode/src/main/java/example/SampleTeleOp.java]
+        requiredRuleIds: [shared.limelight-check-result-validity]
+        forbiddenPaths: [.env, local.properties]
+  - id: opmode-initialization
+    repository: fixtures/agent/ask-repo
+    team: "20827"
+    season: 2025-2026
+    turns:
+      - mode: ask
+        prompt: When is the SampleTeleOp motor initialized?
+        requiredClaimKinds: [code_observation]
+        requiredPaths: [TeamCode/src/main/java/example/SampleTeleOp.java]
+        forbiddenPaths: [.env, local.properties]
+  - id: pedro-localizer-location
+    repository: fixtures/agent/ask-repo
+    team: "20827"
+    season: 2025-2026
+    turns:
+      - mode: ask
+        prompt: Where is Pedro localization configured?
+        requiredClaimKinds: [code_observation, approved_rule]
+        requiredPaths: [TeamCode/src/main/java/example/SampleTeleOp.java]
+        requiredRuleIds: [shared.pedro-localization-before-follower]
+        forbiddenPaths: [.env, local.properties]
+  - id: teleop-cleanup-edit
+    repository: fixtures/agent/edit-repo
+    team: "20827"
+    season: 2025-2026
+    turns:
+      - mode: edit
+        prompt: Add a cleanup helper for TeleOp stop.
+        requiredChangedPaths: [TeamCode/src/main/java/example/Vision.java]
+        forbiddenPaths: [.env, local.properties]
+  - id: follow-up-same-class
+    repository: fixtures/agent/ask-repo
+    team: "20827"
+    season: 2025-2026
+    turns:
+      - mode: ask
+        prompt: 为什么 SampleTeleOp 可能空指针？
+        requiredClaimKinds: [code_observation]
+        requiredPaths: [TeamCode/src/main/java/example/SampleTeleOp.java]
+        forbiddenPaths: [.env, local.properties]
+      - mode: ask
+        prompt: 刚才那个类的初始化顺序是什么？
+        requiredClaimKinds: [code_observation]
+        requiredPaths: [TeamCode/src/main/java/example/SampleTeleOp.java]
+        forbiddenPaths: [.env, local.properties]
