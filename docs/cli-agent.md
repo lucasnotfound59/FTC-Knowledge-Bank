@@ -10,7 +10,7 @@
 ./gradlew :apps:knowledge-cli:installDist
 ```
 
-生成的启动脚本位于 apps/knowledge-cli/build/install/knowledge-cli/bin/ftckb。把它加入 PATH，或直接以完整路径调用。
+生成的启动脚本位于 apps/knowledge-cli/build/install/ftckb/bin/ftckb。把它加入 PATH，或直接以完整路径调用。
 
 ## 配置与密钥
 

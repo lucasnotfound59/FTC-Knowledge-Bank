@@ -1,0 +1,115 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/lucasnotfound59/FTC-Knowledge-Bank/blob/main/docs/kernel-contract.schema.json",
+  "title": "ftckb kernel JSON contract (schemaVersion 1)",
+  "description": "Single-line JSON emitted by `ftckb validate|resolve --json`. Success, conflict, and error outputs all validate against this schema. Additive fields are allowed (the contract only adds fields without bumping schemaVersion), so additionalProperties is not restricted.",
+  "type": "object",
+  "oneOf": [
+    {
+      "title": "validate",
+      "required": ["schemaVersion", "command", "ok", "ruleCount", "violations"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "command": { "const": "validate" },
+        "ok": { "type": "boolean" },
+        "ruleCount": { "type": "integer", "minimum": 0 },
+        "violations": { "type": "array" }
+      }
+    },
+    {
+      "title": "resolve",
+      "required": ["schemaVersion", "command", "team", "season", "ok", "activeRules", "conflicts"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "command": { "const": "resolve" },
+        "team": { "type": "string", "pattern": "^[0-9]+$" },
+        "season": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{4}$" },
+        "ok": { "type": "boolean" },
+        "activeRules": { "type": "array", "items": { "$ref": "#/definitions/rule" } },
+        "conflicts": { "type": "array", "items": { "$ref": "#/definitions/conflict" } }
+      }
+    },
+    {
+      "title": "error",
+      "required": ["schemaVersion", "ok", "error"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "command": { "enum": ["validate", "resolve"] },
+        "ok": { "const": false },
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": { "enum": ["usage", "load-error", "invalid-knowledge"] },
+            "message": { "type": "string" }
+          }
+        },
+        "violations": { "type": "array" }
+      }
+    }
+  ],
+  "definitions": {
+    "rule": {
+      "type": "object",
+      "required": ["id", "topic", "title", "instruction", "rationale", "status", "authority", "applicability", "evidence"],
+      "properties": {
+        "id": { "type": "string" },
+        "topic": { "type": "string" },
+        "title": { "type": "string" },
+        "instruction": { "type": "string" },
+        "rationale": { "type": "string" },
+        "status": { "enum": ["approved", "candidate", "deprecated", "rejected"] },
+        "authority": { "enum": ["official", "shared", "team"] },
+        "applicability": {
+          "type": "object",
+          "required": ["teams", "seasons"],
+          "properties": {
+            "teams": { "type": "array", "items": { "type": "string" } },
+            "seasons": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "evidence": { "type": "array", "items": { "$ref": "#/definitions/evidence" } }
+      }
+    },
+    "evidence": {
+      "oneOf": [
+        {
+          "title": "git",
+          "required": ["type", "repository", "commit", "file"],
+          "properties": {
+            "type": { "const": "git" },
+            "repository": { "type": "string" },
+            "commit": { "type": "string", "pattern": "^[0-9a-fA-F]{7,64}$" },
+            "file": { "type": "string" },
+            "symbol": { "type": "string" },
+            "line": { "type": "integer", "minimum": 1 }
+          }
+        },
+        {
+          "title": "web",
+          "required": ["type", "url", "title", "publisher", "accessedAt", "section"],
+          "properties": {
+            "type": { "const": "web" },
+            "url": { "type": "string" },
+            "title": { "type": "string" },
+            "publisher": { "type": "string" },
+            "accessedAt": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+            "section": { "type": "string" },
+            "version": { "type": "string" },
+            "product": { "type": "string" },
+            "sku": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "conflict": {
+      "type": "object",
+      "required": ["topic", "authority", "ruleIds"],
+      "properties": {
+        "topic": { "type": "string" },
+        "authority": { "type": "string" },
+        "ruleIds": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

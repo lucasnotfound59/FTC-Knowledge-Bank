@@ -1,0 +1,3 @@
+kotlin version: 2.4.10
+error message: java.nio.file.FileSystemException: /Users/xinlu/Library/Application Support/kotlin/daemon/kotlin-daemon-client-tsmarker9455476994796172982.tmp: Operation not permitted
+

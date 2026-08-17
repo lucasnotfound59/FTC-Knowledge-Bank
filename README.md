@@ -91,14 +91,14 @@ active shared.pedro-tune-current-robot
 ### 用法一：开盖即食（队员直接用聊天 Agent）
 
 1. **环境**：JDK 21 + Git（Edit 模式要求目标仓库是 Git 仓库）。
-2. **拿代码**：从 GitHub 新克隆时先 `git clone` 再 `git checkout codex/cli-agent`（最新成果在该分支，详见下方用法二第 1 步）。
+2. **拿代码**：`git clone https://github.com/lucasnotfound59/FTC-Knowledge-Bank.git`（默认分支 `main` 即最新；`codex/cli-agent` 仅作为开发分支存在）。
 3. **构建安装**：
 
 ```bash
 ./gradlew :apps:knowledge-cli:installDist
 ```
 
-生成的启动脚本在 `apps/knowledge-cli/build/install/knowledge-cli/bin/ftckb`。
+生成的启动脚本在 `apps/knowledge-cli/build/install/ftckb/bin/ftckb`。
 
 4. **一次性配置**：把 [`config/ftckb-config.example.yaml`](config/ftckb-config.example.yaml) 复制为 `${user.home}/.ftckb/config.yaml`（示例已指向 `deepseek-v4-pro`，可按需改模型名）。
 5. **密钥只进环境变量**：`export DEEPSEEK_API_KEY=<你的key>`——绝不写进配置文件。
@@ -123,31 +123,30 @@ Codex / Claude Code / 其他 harness 不应把规则当普通文本读——那�
 
 ### 从零开始：新机器上拿到可用的 ftckb
 
-仓库只包含源码，`build/` 构建产物不入库；最新契约文档、网页会话与入口文件目前在 `codex/cli-agent` 分支（默认分支 `main` 可能滞后）。新机器按下面步骤走一遍即可：
+仓库只包含源码，`build/` 构建产物不入库；默认分支 `main` 就是最新（开发分支 `codex/cli-agent` 会合并回 `main`）。新机器按下面步骤走一遍即可：
 
-1. **拿代码并切分支**：
+1. **拿代码**：
 
 ```bash
 git clone https://github.com/lucasnotfound59/FTC-Knowledge-Bank.git
 cd FTC-Knowledge-Bank
-git checkout codex/cli-agent
 ```
 
-> 当 `main` 已合并最新分支后，`git checkout` 一步可以省略。
-
-2. **装环境**：JDK 21（用 `java -version` 确认）+ Git。
+2. **装环境**：任意 JDK（能跑 Gradle 即可，JDK 21 工具链会由 Foojay resolver 自动下载）+ Git。
 3. **构建**：
 
 ```bash
 ./gradlew :apps:knowledge-cli:installDist
 ```
 
-产物在 `apps/knowledge-cli/build/install/knowledge-cli/bin/ftckb`。可选：软链到 PATH（`ln -s "$(pwd)/apps/knowledge-cli/build/install/knowledge-cli/bin/ftckb" /usr/local/bin/ftckb`）。
+> 受限环境提示：如果沙箱/CI 禁止写 `~/.gradle`，用 `GRADLE_USER_HOME=/tmp/xxx ./gradlew :apps:knowledge-cli:installDist` 重定向到可写目录即可。
+
+产物在 `apps/knowledge-cli/build/install/ftckb/bin/ftckb`。可选：软链到 PATH（`ln -s "$(pwd)/apps/knowledge-cli/build/install/ftckb/bin/ftckb" /usr/local/bin/ftckb`）。
 
 4. **自检**（应输出 `"ok":true`）：
 
 ```bash
-apps/knowledge-cli/build/install/knowledge-cli/bin/ftckb validate knowledge --json
+apps/knowledge-cli/build/install/ftckb/bin/ftckb validate knowledge --json
 ```
 
 5. **开始对接**：按下面的契约命令调用；Agent 自动发现的项目约定在 [AGENTS.md](AGENTS.md)（Claude Code 走 [CLAUDE.md](CLAUDE.md)）。

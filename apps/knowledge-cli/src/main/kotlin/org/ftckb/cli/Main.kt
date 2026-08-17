@@ -18,6 +18,14 @@ fun runCli(
     serveCommand:ServeRunner=ServeCommand(),
     extractCommand:ExtractRunner=ExtractCommand()
 ):Int {
+    if (args.isEmpty() || args==listOf("--help") || args==listOf("-h") || args==listOf("help")) {
+        printTopLevelHelp(out)
+        return 0
+    }
+    if (args==listOf("--version") || args==listOf("-V") || args==listOf("version")) {
+        out.println("ftckb $FTCKB_VERSION")
+        return 0
+    }
     if (args.firstOrNull()=="chat") return runChatCommand(args.drop(1),input,out,chatLauncher)
     if (args.firstOrNull()=="eval") return evalCommand.run(args.drop(1),out)
     if (args.firstOrNull()=="serve") return runServeCommand(args.drop(1),out,serveCommand)
@@ -110,6 +118,34 @@ fun runCli(
         }
         else -> error("unreachable command: ${args[0]}")
     }
+}
+
+const val FTCKB_VERSION="1.0.0"
+
+private fun printTopLevelHelp(out:PrintStream) {
+    out.println("ftckb - FTC Knowledge Bank command line agent (v$FTCKB_VERSION)")
+    out.println()
+    out.println("commands:")
+    out.println("  validate <knowledge-root> [--json]")
+    out.println("      load and validate knowledge rules")
+    out.println("  resolve <knowledge-root> --team N --season YYYY-YYYY [--json]")
+    out.println("      resolve active rules deterministically (OFFICIAL > TEAM > SHARED)")
+    out.println("  candidates <knowledge-root> [--json]")
+    out.println("      list candidate rules awaiting approval")
+    out.println("  approve | reject <knowledge-root> --id X --approver NAME --role ROLE [--team N]")
+    out.println("      approve or reject a candidate rule")
+    out.println("  extract --repo PATH --team N --provider NAME [options]")
+    out.println("      propose candidate rules from a repository")
+    out.println("  chat --knowledge PATH --team N --season YYYY-YYYY --provider NAME [options]")
+    out.println("      interactive chat agent (Ask / Edit modes)")
+    out.println("  serve --knowledge PATH --team N --season YYYY-YYYY --provider NAME [options]")
+    out.println("      local web session on 127.0.0.1")
+    out.println("  eval --cases PATH --knowledge PATH --provider NAME --output PATH")
+    out.println("      run the fixed evaluation scenarios")
+    out.println()
+    out.println("exit codes: 0 ok | 2 knowledge/conflict failure | 64 usage error")
+    out.println("machine contract for external agents: docs/kernel-contract.md")
+    out.println("run 'ftckb <command> --help' for command usage")
 }
 
 fun main(args:Array<String>) {

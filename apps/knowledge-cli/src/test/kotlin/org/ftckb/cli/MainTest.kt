@@ -246,6 +246,23 @@ class MainTest {
     }
 
     @Test
+    fun `top level help and version are first class commands`() {
+        val help=ByteArrayOutputStream()
+        assertEquals(0,runCli(listOf("--help"),PrintStream(help)))
+        assertTrue(help.toString().contains("commands:"))
+        assertTrue(help.toString().contains("resolve"))
+        assertTrue(help.toString().contains("docs/kernel-contract.md"))
+
+        val version=ByteArrayOutputStream()
+        assertEquals(0,runCli(listOf("--version"),PrintStream(version)))
+        assertEquals("ftckb $FTCKB_VERSION\n",version.toString())
+
+        val empty=ByteArrayOutputStream()
+        assertEquals(0,runCli(emptyList(),PrintStream(empty)))
+        assertTrue(empty.toString().contains("commands:"))
+    }
+
+    @Test
     fun `resolve rejects flag as value with real root`() {
         val output=ByteArrayOutputStream()
         val code=runCli(

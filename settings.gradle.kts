@@ -5,6 +5,12 @@ pluginManagement {
     }
 }
 
+// Auto-provision a missing JDK 21 toolchain (e.g. machines that only have newer
+// JDKs) instead of failing with "Cannot find a Java installation matching 21".
+plugins {
+    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
+}
+
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories { mavenCentral() }

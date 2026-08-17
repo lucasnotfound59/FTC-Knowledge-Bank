@@ -11,10 +11,10 @@
 ```bash
 # 正常环境（能跑 gradle 时）：
 cd .worktrees/cli-agent
-./gradlew :apps:knowledge-cli:installDist   # 产物在 apps/knowledge-cli/build/install/knowledge-cli/bin/ftckb
+./gradlew :apps:knowledge-cli:installDist   # 产物在 apps/knowledge-cli/build/install/ftckb/bin/ftckb
 
 # 无 gradle 的受限环境（如本机 DSH sandbox）：直接使用已构建的启动器：
-./.worktrees/cli-agent/apps/knowledge-cli/build/install/knowledge-cli/bin/ftckb --help
+./.worktrees/cli-agent/apps/knowledge-cli/build/install/ftckb/bin/ftckb --help
 ```
 
 知识根目录：`.worktrees/cli-agent/knowledge`（27 条规则：20 条已批准 + 7 条候选，候选规则不会进入 resolve 结果）。
@@ -178,6 +178,7 @@ conflict topic=build-customization-location rules=official.a,shared.b   # 退出
 ## 7. 边界与已知限制
 
 - 候选规则（status=candidate）只出现在 `validate` 的 `ruleCount` 里，不会进入 `resolve`。
+- **当前 `knowledge/teams/` 下的队伍规则全部是 candidate**，因此现阶段不同 `--team` 得到的 `activeRules` 完全相同（只有顶层 `team` 字段不同）；队伍规则获批后 `--team` 才会真正改变结果。这不是 bug，对接方无需核对。
 - 程序输出的错误消息为英文；规则正文（title/instruction/rationale）为英文，界面文案（web 会话等）另做中文化。
 - `chat` / `eval` / `serve` 不在本契约内：它们基于同一内核构建，但不是给机器消费的接口。
 - 规则冲突目前只能检测（退出码 2），不能自动裁决；由上层 Agent 决定如何处理。
