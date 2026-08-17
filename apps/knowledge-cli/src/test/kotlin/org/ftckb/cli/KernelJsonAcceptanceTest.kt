@@ -139,6 +139,27 @@ class KernelJsonAcceptanceTest {
     }
 
     @Test
+    fun `kernel contract fixtures parse and carry the expected shapes`() {
+        val base=Path.of("..","..","fixtures","kernel")
+
+        val validate=mapper.readTree(Files.readString(base.resolve("validate-ok.json")))
+        assertEquals(1,validate["schemaVersion"].asInt())
+        assertEquals("validate",validate["command"].asText())
+        assertTrue(validate["ok"].booleanValue())
+        assertTrue(validate["ruleCount"].asInt()>=1)
+
+        val resolve=mapper.readTree(Files.readString(base.resolve("resolve-ok.json")))
+        assertEquals("resolve",resolve["command"].asText())
+        assertTrue(resolve["activeRules"].isArray)
+        assertTrue(resolve["activeRules"].size()>=1)
+        assertTrue(resolve["conflicts"].isArray)
+
+        val error=mapper.readTree(Files.readString(base.resolve("error-usage.json")))
+        assertFalse(error["ok"].booleanValue())
+        assertEquals("usage",error["error"]["code"].asText())
+    }
+
+    @Test
     fun `json mode usage errors keep the stable error shape`() {
         val out=ByteArrayOutputStream()
 
