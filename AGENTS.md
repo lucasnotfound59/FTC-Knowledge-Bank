@@ -19,8 +19,7 @@
 # GRADLE_USER_HOME=/tmp/xxx ./gradlew :apps:knowledge-cli:installDist
 ```
 
-本仓库 `.worktrees/cli-agent/apps/knowledge-cli/build/install/ftckb/bin/ftckb`
-有本机已构建的启动器（`build/` 不入库，新环境必须重新构建）。
+（`build/` 不入库，新环境必须重新构建；本机已构建的产物可直接复用。）
 
 ### 2. 契约调用（稳定、版本化、确定性）
 
@@ -44,7 +43,7 @@ ftckb resolve knowledge --team 20827 --season 2025-2026 --json
 - 修改任何规则/知识文件后，必须 `ftckb validate knowledge --json` 通过（`ok:true`）才算数。
 - `chat` / `eval` / `serve` 是给人用的本地交互模式，不属于机器契约；对接只用 validate/resolve。
 - 契约破坏性变更必须提升 `schemaVersion`；消费方看到 `schemaVersion!=1` 应停止并报错。
-- 文档中的规则数/测试数快照（当前 27 条规则、404 项测试）随改动同步更新。
+- 文档中的规则数/测试数快照（当前 27 条规则、406 项测试）随改动同步更新。
 - 已知现状：`knowledge/teams/` 下的队伍规则目前全部是 `candidate`，所以 `resolve` 的结果暂时与 `--team` 无关（activeRules 相同），对接方不要误判为 bug。
 - 机器可消费工件：`docs/kernel-contract.schema.json`（JSON Schema）与 `fixtures/kernel/*.json`（真实输出示例）可直接用来对拍你的解析器。
 

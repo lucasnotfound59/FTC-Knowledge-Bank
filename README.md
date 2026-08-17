@@ -12,7 +12,7 @@
 | 部分完成 | `knowledge/` 当前包含 27 条规则：20 条已批准规则（1 条官方规则、19 条共享规则）和 7 条候选规则（含 4 条 Control Hub LED 官方候选）；候选规则保持 inactive，已有 6 篇 FTC SDK、依赖与工具教程，队伍知识内容仍需扩充 |
 | 尚未实现 | 候选规范自动提取、审批 UI/历史、Run 模式、官方文档联网检索、Android Studio 插件、Control Hub 部署 |
 
-当前使用 JDK 21 验证的测试套件有 389 项测试全部通过；这是当前快照，测试数量会随功能增长。
+当前测试套件有 406 项测试全部通过（JDK 21 工具链构建时自动下载）；这是当前快照，测试数量会随功能增长。
 
 
 ## 5 分钟快速开始
@@ -31,7 +31,7 @@ cd FTC-Knowledge-Bank
 需要安装：
 
 - Git；
-- JDK 21；
+- 任意 JDK（JDK 21 工具链由构建自动下载）；
 - 无需安装系统级 Gradle，仓库已包含 Gradle Wrapper。
 
 先确认当前 Java 版本：
@@ -77,7 +77,7 @@ Windows PowerShell 使用 wrapper 的 `.bat` 文件：
 关键输出会包括：
 
 ```text
-validation=ok rules=23
+validation=ok rules=27
 active official.keep-customizations-in-teamcode
 active shared.dashboard-pin-stable-dependency
 ...
@@ -90,7 +90,7 @@ active shared.pedro-tune-current-robot
 
 ### 用法一：开盖即食（队员直接用聊天 Agent）
 
-1. **环境**：JDK 21 + Git（Edit 模式要求目标仓库是 Git 仓库）。
+1. **环境**：任意 JDK（缺 JDK 21 工具链时构建会自动下载）+ Git（Edit 模式要求目标仓库是 Git 仓库）。
 2. **拿代码**：`git clone https://github.com/lucasnotfound59/FTC-Knowledge-Bank.git`（默认分支 `main` 即最新；`codex/cli-agent` 仅作为开发分支存在）。
 3. **构建安装**：
 
@@ -480,7 +480,7 @@ CLI 的错误信息写到标准输出；脚本应同时检查退出码，不要�
 
 | 现象 | 常见原因 | 处理方法 |
 | --- | --- | --- |
-| Gradle 找不到 JDK 21 toolchain | `JAVA_HOME` 或本机 Java 版本不对 | 运行 `java -version`；把 `JAVA_HOME` 指向 JDK 21。macOS 可使用上文 Android Studio JBR 路径 |
+| Gradle 找不到 JDK 21 toolchain | 旧版仓库或网络受限 | 通常构建会自动下载 JDK 21 工具链（Foojay）；如仍失败，运行 `java -version` 确认有任意 JDK 可跑 Gradle，或把 `JAVA_HOME` 指向 JDK 21 |
 | `error loading knowledge`（退出 `2`） | YAML 语法错误、重复键、未知字段、类型错误、错误 schema 版本，或 `<knowledge-root>` 指向不存在/非目录路径 | 阅读冒号后的首行详情，确认目录存在并检查最近编辑的 `.yaml`/`.yml`，再运行 `validate` |
 | `invalid rule id` 或 `topic must be a canonical slug` | `id`/`topic` 含大写、空格、下划线或不允许的分隔方式 | 按上文正则改成小写 canonical 格式；`id` 可用 `.`/`-`，`topic` 只用 `-` |
 | `commit must be a Git SHA` 或 evidence file 错误 | commit 不是 7–64 位十六进制，或 file 是绝对路径、含反斜杠、空段、`.`/`..` | 使用真实 commit SHA 和 `/` 分隔的仓库相对路径 |
@@ -511,7 +511,7 @@ CLI 的错误信息写到标准输出；脚本应同时检查退出码，不要�
 ./gradlew clean test
 ```
 
-2026-08-16 的当前快照为 389 项测试全部通过；测试数量会随功能增长，以本地最新结果为准。
+2026-08-17 的当前快照为 406 项测试全部通过；测试数量会随功能增长，以本地最新结果为准。
 
 ## 为什么需要这个项目
 
