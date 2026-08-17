@@ -110,6 +110,31 @@ ftckb serve --knowledge PATH --team 20827 --season 2025-2026 --provider deepseek
 - 关闭服务：点「关闭服务」按钮，或 Ctrl-C 结束进程。
 
 HTTP 接口（`/api/status|ask|submit|mode|undo|discard|diff|save|clear|configure|shutdown`）返回统一 JSON：成功 `{ok:true,...}`；业务拒绝 `{ok:false,error:{code,message}}`；未授权 HTTP 401。模型调用在后台线程串行执行，网页不会卡死。
+
+## 候选提取与审批（ftckb extract / candidates / approve / reject）
+
+知识库的自动增长闭环：从队伍代码仓库提取候选规则（带 Git 证据与 confidence），由负责人审批后生效：
+
+```bash
+# 从仓库提取候选规则（模型提议 + 主机强校验，写入 YAML）
+ftckb extract --repo /path/to/FtcRobotController --team 20827 --provider deepseek \
+             [--knowledge knowledge] [--output PATH] [--max-candidates 8]
+
+# 审批前审查
+ftckb candidates knowledge [--json]
+
+# 审批 / 驳回（ApprovalPolicy 强校验角色与队伍）
+ftckb approve knowledge --id team-20827.some-topic --approver NAME \
+             --role team_software_lead --team 20827
+ftckb reject knowledge --id team-20827.some-topic --approver NAME \
+             --role team_software_lead --team 20827
+```
+
+- 提取的每条 evidence 由主机校验：文件必须在索引内、symbol 真实出现在非注释行、line 存在且非空、commit 用仓库 HEAD。
+- 主机侧负例守卫：topic 与既有规则重复 → 跳过；单点证据 → confidence 降为 low 并标记 `# needs-stronger-evidence`；提示词禁止一次性修补、注释代码、遗留工件与依赖版本。
+- 审批 = 外科式 YAML 编辑（只改目标规则块的 status 并插入 approval 块），先写临时文件、校验通过才替换原文件；失败时原文件不动。
+- 授权：official/shared 规则只能 `overall_software_lead` 审批；team 规则只能该队 `team_software_lead` 审批。
+- 完整设计见 [docs/candidate-extraction.md](candidate-extraction.md)。
 ## 机器接口（供外部 Agent 使用）
 
 validate 与 resolve 支持 --json 输出稳定、版本化的 JSON 契约，供 Codex / Claude Code / 其他 Agent 把知识库当作确定性"策略裁决器"调用，而不是把规则当普通文本读：

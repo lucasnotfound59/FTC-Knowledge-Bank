@@ -8,8 +8,8 @@
 - [x] 定义共享规范、队号专属规范和赛季配置的覆盖规则；
 - [x] 建立 `20827` 与 `16093` 队号档案；
 - [x] 导入代码仓库并识别 FTC SDK 版本、依赖、目录和代码结构（repository-analysis 模块 + RepositoryIndex）；
-- [ ] 从代码中提取带文件证据和可信度的候选规范；
-- [ ] 实现总软件负责人和队伍软件负责人的审批流程；
+- [x] 从代码中提取带文件证据和可信度的候选规范（`ftckb extract`：模型提议 + 主机强校验，单点证据降级、话题去重）；
+- [x] 实现总软件负责人和队伍软件负责人的审批流程（`ftckb candidates/approve/reject`，ApprovalPolicy 授权 + 外科式原子编辑）；
 - [x] 实现命令行连续聊天 Agent，由本地 Kotlin Runtime 管理会话、检索、引用和权限；
 - [x] 实现 OpenAI-compatible Chat Completions provider，支持 OpenAI、DeepSeek 和自定义 `baseUrl` / `model`；
 - [x] 实现 Ask 模式：使用两阶段本地检索解释现有代码，并区分正式规则、代码观察和模型推测；
@@ -19,7 +19,7 @@
 - [x] 稳定机器接口：`ftckb validate/resolve --json`（schemaVersion=1、确定性排序、统一 JSON 错误形状），供外部 Agent 把知识库当确定性“策略裁决器”调用（契约文档 `docs/kernel-contract.md`）；
 - [x] 本地网页会话 `ftckb serve`：127.0.0.1 单会话中文界面，随机端口 + 一次性 token，页内改参数保留对话历史，API key 只进内存；
 - [x] 固定场景质量评估 `ftckb eval`（5 个场景、逐条 PASS/FAIL）；离线脚本化全绿，线上 deepseek-v4-pro 连续多轮 5/5（预算提升 + 检索兜底 + 提示词加固后稳定）；
-- [ ] 建立测试样例，验证 Agent 不会把遗留代码、重复依赖或单次写法误判为正式规范（现有 eval 场景尚未覆盖此类负例）；
+- [x] 建立测试样例，验证 Agent 不会把遗留代码、重复依赖或单次写法误判为正式规范（`ExtractAcceptanceTest` 覆盖：提示词禁令契约、注释符号证据丢弃、话题重复跳过、单点证据降级）；
 - [ ] 制作 Android Studio 插件的最小交互界面；
 
 ## 后续组件：联网查询官方文档
