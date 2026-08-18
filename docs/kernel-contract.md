@@ -188,5 +188,6 @@ conflict topic=build-customization-location rules=official.a,shared.b   # 退出
 
 - 知识规则：27 条（20 approved + 7 candidate；candidate 含 4 条 Control Hub LED 官方候选）。
 - 契约测试与全套离线测试（当前 406 项）随 `build/kotlinc-verify/verify-all.sh` 运行，当前全绿。
-- 机器可消费工件：`docs/kernel-contract.schema.json`（JSON Schema）与 `fixtures/kernel/*.json`（真实输出示例）。
-- 上次更新：2026-08-17。
+- 机器可消费工件：`docs/kernel-contract.schema.json`（JSON Schema）与 `fixtures/kernel/*.json`（validate-ok / resolve-ok / resolve-conflict / error-usage / error-invalid-knowledge 五种真实输出示例）。
+- 所有命令支持 `--help`（退出码 0）；`ftckb --version` 输出的 CLI 版本（当前 1.0.0）与契约 `schemaVersion`（当前 1）互相独立。
+- 上次更新：2026-08-18。

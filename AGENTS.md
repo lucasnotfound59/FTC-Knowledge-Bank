@@ -17,6 +17,8 @@
 # 产物在 apps/knowledge-cli/build/install/ftckb/bin/ftckb
 # JDK 21 工具链缺省时由 Foojay resolver 自动下载；沙箱禁写 ~/.gradle 时：
 # GRADLE_USER_HOME=/tmp/xxx ./gradlew :apps:knowledge-cli:installDist
+# macOS 沙箱出现 Kotlin daemon 的 FileSystemException 告警可忽略（自动降级无 daemon 编译）
+# 一键自检：scripts/smoke.sh
 ```
 
 （`build/` 不入库，新环境必须重新构建；本机已构建的产物可直接复用。）
@@ -45,7 +47,7 @@ ftckb resolve knowledge --team 20827 --season 2025-2026 --json
 - 契约破坏性变更必须提升 `schemaVersion`；消费方看到 `schemaVersion!=1` 应停止并报错。
 - 文档中的规则数/测试数快照（当前 27 条规则、406 项测试）随改动同步更新。
 - 已知现状：`knowledge/teams/` 下的队伍规则目前全部是 `candidate`，所以 `resolve` 的结果暂时与 `--team` 无关（activeRules 相同），对接方不要误判为 bug。
-- 机器可消费工件：`docs/kernel-contract.schema.json`（JSON Schema）与 `fixtures/kernel/*.json`（真实输出示例）可直接用来对拍你的解析器。
+- 机器可消费工件：`docs/kernel-contract.schema.json`（JSON Schema）与 `fixtures/kernel/*.json`（真实输出示例：validate-ok / resolve-ok / resolve-conflict / error-usage / error-invalid-knowledge）可直接用来对拍你的解析器。
 
 ## 目录速览
 

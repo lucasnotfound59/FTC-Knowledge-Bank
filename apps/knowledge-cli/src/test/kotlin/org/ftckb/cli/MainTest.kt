@@ -255,11 +255,18 @@ class MainTest {
 
         val version=ByteArrayOutputStream()
         assertEquals(0,runCli(listOf("--version"),PrintStream(version)))
-        assertEquals("ftckb $FTCKB_VERSION\n",version.toString())
+        assertEquals("ftckb $FTCKB_VERSION (kernel contract schemaVersion 1)\n",version.toString())
 
         val empty=ByteArrayOutputStream()
         assertEquals(0,runCli(emptyList(),PrintStream(empty)))
         assertTrue(empty.toString().contains("commands:"))
+
+        val validateHelp=ByteArrayOutputStream()
+        assertEquals(0,runCli(listOf("validate","--help"),PrintStream(validateHelp)))
+        assertTrue(validateHelp.toString().startsWith("usage: knowledge-cli <validate|resolve>"))
+        val resolveHelp=ByteArrayOutputStream()
+        assertEquals(0,runCli(listOf("resolve","--help"),PrintStream(resolveHelp)))
+        assertTrue(resolveHelp.toString().startsWith("usage: knowledge-cli <validate|resolve>"))
     }
 
     @Test

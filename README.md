@@ -139,7 +139,9 @@ cd FTC-Knowledge-Bank
 ./gradlew :apps:knowledge-cli:installDist
 ```
 
-> 受限环境提示：如果沙箱/CI 禁止写 `~/.gradle`，用 `GRADLE_USER_HOME=/tmp/xxx ./gradlew :apps:knowledge-cli:installDist` 重定向到可写目录即可。
+> 受限环境提示：如果沙箱/CI 禁止写 `~/.gradle`，用 `GRADLE_USER_HOME=/tmp/xxx ./gradlew :apps:knowledge-cli:installDist` 重定向到可写目录即可；macOS 沙箱还可能出现 Kotlin daemon 的 `FileSystemException: Operation not permitted` 告警（写入 `~/Library/Application Support/kotlin` 被拒），**该告警可忽略**，构建会自动降级为无 daemon 编译并继续成功。
+>
+> 一键自检：`scripts/smoke.sh`（构建 + validate/resolve + 错误路径 + 退出码，逐项 PASS/FAIL）。
 
 产物在 `apps/knowledge-cli/build/install/ftckb/bin/ftckb`。可选：软链到 PATH（`ln -s "$(pwd)/apps/knowledge-cli/build/install/ftckb/bin/ftckb" /usr/local/bin/ftckb`）。
 

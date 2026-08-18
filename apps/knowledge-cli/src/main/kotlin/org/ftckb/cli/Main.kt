@@ -23,7 +23,7 @@ fun runCli(
         return 0
     }
     if (args==listOf("--version") || args==listOf("-V") || args==listOf("version")) {
-        out.println("ftckb $FTCKB_VERSION")
+        out.println("ftckb $FTCKB_VERSION (kernel contract schemaVersion ${KernelJson.SCHEMA_VERSION})")
         return 0
     }
     if (args.firstOrNull()=="chat") return runChatCommand(args.drop(1),input,out,chatLauncher)
@@ -32,6 +32,10 @@ fun runCli(
     if (args.firstOrNull()=="extract") return runExtractCommand(args.drop(1),out,extractCommand)
     if (args.firstOrNull() in setOf("candidates","approve","reject")) {
         return runApprovalCommand(args.first(),args.drop(1),out)
+    }
+    if (args.firstOrNull() in setOf("validate","resolve") && args.contains("--help")) {
+        out.println("usage: knowledge-cli <validate|resolve> <knowledge-root> [--team N --season S] [--json]")
+        return 0
     }
     // In --json mode every failure path emits the same stable error shape:
     // {"schemaVersion":1,"command":"<validate|resolve>","ok":false,"error":{"code","message"}}.
@@ -145,6 +149,7 @@ private fun printTopLevelHelp(out:PrintStream) {
     out.println()
     out.println("exit codes: 0 ok | 2 knowledge/conflict failure | 64 usage error")
     out.println("machine contract for external agents: docs/kernel-contract.md")
+    out.println("note: the CLI version ($FTCKB_VERSION) is independent of the kernel contract schemaVersion (${KernelJson.SCHEMA_VERSION})")
     out.println("run 'ftckb <command> --help' for command usage")
 }
 
