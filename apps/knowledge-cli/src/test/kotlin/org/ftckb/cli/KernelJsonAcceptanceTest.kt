@@ -157,6 +157,18 @@ class KernelJsonAcceptanceTest {
         val error=mapper.readTree(Files.readString(base.resolve("error-usage.json")))
         assertFalse(error["ok"].booleanValue())
         assertEquals("usage",error["error"]["code"].asText())
+
+        val conflict=mapper.readTree(Files.readString(base.resolve("resolve-conflict.json")))
+        assertEquals("resolve",conflict["command"].asText())
+        assertFalse(conflict["ok"].booleanValue())
+        assertTrue(conflict["conflicts"].size()>=1)
+        assertEquals("same-topic",conflict["conflicts"][0]["topic"].asText())
+
+        val invalid=mapper.readTree(Files.readString(base.resolve("error-invalid-knowledge.json")))
+        assertFalse(invalid["ok"].booleanValue())
+        assertEquals("invalid-knowledge",invalid["error"]["code"].asText())
+        assertTrue(invalid["violations"].size()>=1)
+        assertEquals("shared.invalid-commit",invalid["violations"][0]["ruleId"].asText())
     }
 
     @Test

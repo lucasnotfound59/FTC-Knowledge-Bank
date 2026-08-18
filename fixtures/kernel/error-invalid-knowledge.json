@@ -1,0 +1,1 @@
+{"schemaVersion":1,"command":"validate","ok":false,"violations":[{"ruleId":"shared.invalid-commit","field":"evidence[0].commit","message":"commit must be a Git SHA"}],"error":{"code":"invalid-knowledge","message":"1 rule violation(s)"}}
