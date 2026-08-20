@@ -8,6 +8,8 @@ import org.ftckb.model.ProviderProfile
 import org.ftckb.model.SecretResolver
 import org.ftckb.model.openai.ProviderFactory
 import org.ftckb.repository.RepositoryIndex
+import org.ftckb.session.SessionAssemblyException
+import org.ftckb.session.SessionRuntime
 
 class ProductionChatLauncher(
     private val environment:(String)->String?={ name -> System.getenv(name) },

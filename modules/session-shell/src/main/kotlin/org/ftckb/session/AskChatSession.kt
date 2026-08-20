@@ -1,4 +1,4 @@
-package org.ftckb.cli
+package org.ftckb.session
 
 import java.nio.file.Path
 import org.ftckb.agent.AgentAnswer
