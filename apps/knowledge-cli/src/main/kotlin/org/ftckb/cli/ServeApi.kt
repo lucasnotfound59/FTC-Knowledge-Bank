@@ -15,6 +15,9 @@ import org.ftckb.agent.EditResult
 import org.ftckb.agent.HistoryAppliedResult
 import org.ftckb.agent.RejectedResult
 import org.ftckb.model.ModelProviderException
+import org.ftckb.session.AskChatSessionException
+import org.ftckb.session.SessionAssemblyException
+import org.ftckb.session.SessionRuntime
 
 /**
  * Single-session HTTP API for the local web session. All API endpoints require

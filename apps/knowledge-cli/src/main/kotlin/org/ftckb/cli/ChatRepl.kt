@@ -19,6 +19,9 @@ import org.ftckb.git.GitBranchState
 import org.ftckb.git.GitCommitService
 import org.ftckb.git.GitWorkspace
 import org.ftckb.model.ModelProviderException
+import org.ftckb.session.AskChatSession
+import org.ftckb.session.AskChatSessionException
+import org.ftckb.session.ChatStatus
 
 class ChatRepl(
     private val session:AskChatSession,

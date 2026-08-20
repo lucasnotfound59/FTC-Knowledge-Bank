@@ -14,6 +14,8 @@ import org.ftckb.model.ProviderProfile
 import org.ftckb.model.SecretResolver
 import org.ftckb.model.openai.ProviderFactory
 import org.ftckb.repository.RepositoryIndex
+import org.ftckb.session.SessionAssemblyException
+import org.ftckb.session.SessionRuntime
 
 /**
  * Production runner for `ftckb serve`: binds a loopback-only HTTP server,

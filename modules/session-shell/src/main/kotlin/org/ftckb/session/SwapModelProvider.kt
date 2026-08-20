@@ -1,4 +1,4 @@
-package org.ftckb.cli
+package org.ftckb.session
 
 import org.ftckb.agent.CredentialRedactor
 import org.ftckb.model.ModelProvider
