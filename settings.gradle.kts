@@ -12,7 +12,7 @@ plugins {
 }
 
 dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
     repositories { mavenCentral() }
 }
 
@@ -26,3 +26,4 @@ include(":modules:tooling-git")
 include(":modules:agent-runtime")
 include(":modules:session-shell")
 include(":apps:knowledge-cli")
+include(":apps:android-studio-plugin")

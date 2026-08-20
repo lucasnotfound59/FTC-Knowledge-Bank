@@ -1,0 +1,13 @@
+<idea-plugin>
+    <id>org.ftckb.as</id>
+    <name>FTC Knowledge Bank</name>
+    <vendor url="https://github.com/lucasnotfound59/FTC-Knowledge-Bank">FTC Knowledge Bank</vendor>
+    <description><![CDATA[
+        FTC 知识库 Agent：在 Android Studio 里向代码提问（Ask），并按已批准的知识规则做事务式修改（Edit）。
+    ]]></description>
+    <depends>com.intellij.modules.platform</depends>
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow id="FTC 知识库" anchor="right" factoryClass="org.ftckb.intellij.FtckbToolWindowFactory"/>
+        <projectService serviceImplementation="org.ftckb.intellij.FtckbService"/>
+    </extensions>
+</idea-plugin>
