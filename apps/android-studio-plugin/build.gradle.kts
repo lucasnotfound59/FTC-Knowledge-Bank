@@ -5,6 +5,31 @@ plugins {
 
 kotlin { jvmToolchain(21) }
 
+// Bundle the knowledge base into the plugin jar so Ask/Edit work out of the box;
+// users can override the root in settings to use a live knowledge checkout.
+val knowledgeFileList = tasks.register("knowledgeFileList") {
+    val knowledgeDir = rootProject.file("knowledge")
+    val outputDir = layout.buildDirectory.dir("generated/knowledgeResources")
+    outputs.dir(outputDir)
+    doLast {
+        val files = knowledgeDir.walkTopDown().filter { it.isFile }
+            .map { it.relativeTo(knowledgeDir).invariantSeparatorsPath }
+            .sorted()
+        val out = outputDir.get().file("knowledge-file-list.txt").asFile
+        out.parentFile.mkdirs()
+        out.writeText(files.joinToString("\n"))
+    }
+}
+
+sourceSets {
+    main {
+        resources {
+            srcDir(rootProject.file("knowledge"))
+            srcDir(knowledgeFileList)
+        }
+    }
+}
+
 repositories {
     mavenCentral()
     intellijPlatform { defaultRepositories() }

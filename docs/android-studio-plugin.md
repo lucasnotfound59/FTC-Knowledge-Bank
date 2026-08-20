@@ -52,8 +52,9 @@ apps/android-studio-plugin/
 
 1. **平台版本**：IntelliJ Gradle 插件以 Community SDK 为目标；`sinceBuild/untilBuild` 按当前
    Android Studio 对应的 IntelliJ 版本设定（实施时确认你本机 AS 版本后锁定）。
-2. **Kotlin stdlib**：IntelliJ 自带 Kotlin runtime，插件依赖里把 kotlin-stdlib 标为不打包
-   （避免双 stdlib 冲突）；插件代码用与核心一致的 Kotlin 2.x 编译。
+2. **Kotlin stdlib（已改为随插件打包）**：实测平台没有把 stdlib 暴露到编译 classpath，v1 选择随插件
+   打包 kotlin-stdlib 2.4.10（zip 内可见）。若 runIde 实测出现与 IDE 自带 stdlib 的冲突，再改
+   relocate 方案；目前设计文档以此为准。
 3. **JGit 冲突（已知风险点）**：`tooling-git` 依赖 jgit 7.7；IDE 自带的 git4idea 也用 jgit。
    第一版选择：把我们的 jgit 版本随插件打包（插件类加载器优先），并在 README 注明已知风险；
    若实测冲突，退路是给插件内 jgit 做 relocate，或把 branch/dirty/HEAD 检查改用 IDE VCS API。
@@ -104,3 +105,32 @@ apps/android-studio-plugin/
 3. M3 会话接通：FtckbService + 聊天 UI + 设置（Ask 先跑通）；
 4. M4 Edit + IDE diff viewer + undo/discard；
 5. M5 文档（docs/android-studio-plugin.md 使用说明 + 验收清单）+ 推送合并。
+## 7. 状态与使用（M1–M4 已交付，M5 文档即本节）
+
+当前状态：
+
+- ✅ M1 session-shell 抽取（406 项离线测试全绿）；
+- ✅ M2 插件骨架可编译打包（`buildPlugin` 通过，8.5MB zip 含全部核心模块 jar + 内置知识库）；
+- ✅ M3/M4 会话接通：Ask/Edit、undo/discard、IDE diff viewer、设置、PasswordSafe 密钥、内置知识库自动解包。
+
+构建与安装：
+
+```bash
+./gradlew :apps:android-studio-plugin:buildPlugin   # 产物 build/distributions/ftckb-as.zip
+# Android Studio: Settings → Plugins → ⚙ → Install Plugin from Disk → 选择该 zip → 重启 IDE
+# 或开发调试：./gradlew :apps:android-studio-plugin:runIde
+```
+
+首次使用（顺序）：打开 FTC 项目 → 右侧「FTC 知识库」工具窗口 → 若未配置 key 会弹输入框（存入系统钥匙串）→ 状态条显示「队伍…」即就绪。
+
+需要你在本机验证的清单（沙箱无法覆盖）：
+
+- [ ] runIde 或安装 zip 后工具窗口正常出现，无启动报错；
+- [ ] 打开 FTC 项目后状态条初始化成功（或提示仓库不可用）；
+- [ ] 问一个规则问题（Ask），回答带引用徽标；
+- [ ] 切编辑模式改一次，点「显示差异」出现 IDE diff viewer，undo 生效；
+- [ ] 首次 key 输入后，Keychain Access 里出现 `ftckb-as:<env>` 条目。
+
+已知风险（文档已声明）：插件打包自带 jgit 7.7 与 kotlin-stdlib 2.4.10，若与 IDE 自带版本冲突，
+后续方案为 relocate 或改用 IDE VCS API。
+

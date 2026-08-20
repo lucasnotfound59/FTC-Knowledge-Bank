@@ -9,5 +9,6 @@
     <extensions defaultExtensionNs="com.intellij">
         <toolWindow id="FTC 知识库" anchor="right" factoryClass="org.ftckb.intellij.FtckbToolWindowFactory"/>
         <projectService serviceImplementation="org.ftckb.intellij.FtckbService"/>
+        <projectService serviceImplementation="org.ftckb.intellij.FtckbSettings"/>
     </extensions>
 </idea-plugin>
