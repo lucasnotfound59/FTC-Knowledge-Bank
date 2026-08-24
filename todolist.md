@@ -19,6 +19,7 @@
 - [x] 稳定机器接口：`ftckb validate/resolve --json`（schemaVersion=1、确定性排序、统一 JSON 错误形状），供外部 Agent 把知识库当确定性“策略裁决器”调用（契约文档 `docs/kernel-contract.md`）；
 - [x] 本地网页会话 `ftckb serve`：127.0.0.1 单会话中文界面，随机端口 + 一次性 token，页内改参数保留对话历史，API key 只进内存；
 - [x] 固定场景质量评估 `ftckb eval`（5 个场景、逐条 PASS/FAIL）；离线脚本化全绿，线上 deepseek-v4-pro 连续多轮 5/5（预算提升 + 检索兜底 + 提示词加固后稳定）；
+- [x] 规范器 `ftckb check`：对 diff 新增行做确定性执法（path/regex 四类检查，规则自带 `checks` 字段）；7 条规则硬执法 + 行为类规则 soft 提示；AS 插件 Edit 后自动检查；CI 门禁 `scripts/check-gate.sh`；
 - [x] 建立测试样例，验证 Agent 不会把遗留代码、重复依赖或单次写法误判为正式规范（`ExtractAcceptanceTest` 覆盖：提示词禁令契约、注释符号证据丢弃、话题重复跳过、单点证据降级）；
 - [ ] 制作 Android Studio 插件的最小交互界面；
 

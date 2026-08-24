@@ -104,7 +104,11 @@ limelight-synchronize-pipeline-dependent-reads、pedro 三条（坐标转换/定
 
 诚实声明：机器只对“能从 diff 文本确定性判定”的事项执法；行为类规则一律走 soft + 人工确认，不假装全能。
 
-## 4. 分阶段计划
+## 4. 分阶段计划（M1–M4 已交付，M5 即文档合并）
+
+> 状态：M1 schema v3 + checks 模型 ✅；M2 检查引擎 + `ftckb check` + 离线测试 ✅；
+> M3 七条硬检查规则落地 + 正反例冒烟 ✅；M4 standardizer 模块（CLI 与 AS 插件共用）+
+> 插件 Edit 后自动检查 + `scripts/check-gate.sh` CI 门禁 ✅；已合并 main。
 
 - M1 schema v3 + 领域模型：`Checks` 模型、RuleYamlCodec/RuleValidator 扩展、resolve --json 增量输出
   `checks`（契约只增不改）；全部既有测试绿。

@@ -151,7 +151,7 @@ ftckb resolve knowledge --team 20827 --season 2025-2026 --json
 - resolve 返回每条 active 规则的 id/topic/title/instruction/rationale/status/authority/applicability/evidence（git 与 web 两种证据形态），以及 conflicts（topic + authority + ruleIds）。
 - 退出码：成功 0；知识加载/校验失败或存在冲突 2；参数错误 64。带 `--json` 时失败路径同样是 JSON（统一 error 形状：usage / load-error / invalid-knowledge），不带时是文本行。完整契约见 [docs/kernel-contract.md](kernel-contract.md)，契约的可执行定义在 `KernelJsonAcceptanceTest`。
 
-未来将在此契约上继续增加：check 裁决器（对代码/diff 做可机器判定的硬规则检查）、native 单文件可执行、MCP 薄适配层。
+`ftckb check` 规范器已落地：对 diff 新增行做确定性执法（7 条规则带硬检查、其余为 soft 提示），详见 [docs/standardizer-check.md](standardizer-check.md)。未来继续增加：native 单文件可执行、MCP 薄适配层、全库历史扫描（`check --full`）。
 
 ## 当前明确不包含的能力
 
