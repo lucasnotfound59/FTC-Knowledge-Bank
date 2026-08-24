@@ -153,3 +153,8 @@ Runtime 的精确步骤：
 - [FTC Dashboard releases](https://github.com/acmerobotics/ftc-dashboard/releases)
 - [FIRST v11.2 TeamCode build.gradle](https://github.com/FIRST-Tech-Challenge/FtcRobotController/blob/v11.2/TeamCode/build.gradle)
 - [FIRST v11.2 build.common.gradle](https://github.com/FIRST-Tech-Challenge/FtcRobotController/blob/v11.2/build.common.gradle)
+
+## 使用方法
+电脑连接hub的网络
+打开浏览器http://192.168.43.1:8080/dash/
+可以看到了
