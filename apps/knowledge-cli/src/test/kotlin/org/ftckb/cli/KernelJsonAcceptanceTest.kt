@@ -59,9 +59,10 @@ class KernelJsonAcceptanceTest {
         val ids=rules.map { it["id"].asText() }
         assertEquals(ids.sorted(),ids)
         rules.forEach { rule ->
-            listOf("id","topic","title","instruction","rationale","status","authority","applicability","evidence").forEach { field ->
+            listOf("id","topic","title","instruction","rationale","status","authority","applicability","evidence","checks").forEach { field ->
                 assertTrue(rule.has(field),"missing $field")
             }
+            assertTrue(rule["checks"].isArray)
             assertTrue(rule["status"].asText()=="approved")
         }
         assertTrue(node["conflicts"].isArray)

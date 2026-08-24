@@ -30,6 +30,7 @@ fun runCli(
     if (args.firstOrNull()=="eval") return evalCommand.run(args.drop(1),out)
     if (args.firstOrNull()=="serve") return runServeCommand(args.drop(1),out,serveCommand)
     if (args.firstOrNull()=="extract") return runExtractCommand(args.drop(1),out,extractCommand)
+    if (args.firstOrNull()=="check") return runCheckCommand(args.drop(1),out)
     if (args.firstOrNull() in setOf("candidates","approve","reject")) {
         return runApprovalCommand(args.first(),args.drop(1),out)
     }

@@ -9,6 +9,7 @@ tasks.named<JavaExec>("run") { workingDir(rootProject.projectDir) }
 
 dependencies {
     implementation(project(":modules:agent-runtime"))
+    implementation(project(":modules:standardizer"))
     implementation(project(":modules:session-shell"))
     implementation(project(":modules:domain"))
     implementation(project(":modules:knowledge"))

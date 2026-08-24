@@ -1,4 +1,4 @@
-schemaVersion: 2
+schemaVersion: 3
 rules:
   - id: shared.dashboard-pin-stable-dependency
     topic: dashboard-dependency-version
@@ -22,6 +22,11 @@ rules:
         accessedAt: 2026-08-13
         section: Basic Installation
         version: "0.6.0"
+    checks:
+      - kind: regex-forbidden
+        pattern: 'com\.acmerobotics\.dashboard[^\n]*(\+|SNAPSHOT)'
+        appliesTo: "**/*.gradle*"
+        note: Dashboard 依赖必须钉住稳定版本，禁止 + / SNAPSHOT
   - id: shared.dependency-verify-sync-build-run
     topic: ftc-dependency-verification
     title: Verify dependencies through runtime

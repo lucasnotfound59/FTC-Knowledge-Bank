@@ -110,6 +110,7 @@ class PedroTutorialAcceptanceTest {
         return Files.walk(lexicalRoot,FileVisitOption.FOLLOW_LINKS).use { paths ->
             paths.filter(Files::isRegularFile)
                 .filter { it.fileName.toString()=="SafePedroAuto.java" }
+                .filter { "/build/" !in it.toString().replace('\\','/') }
                 .filter { !isInNestedRegisteredWorktree(it,lexicalRoot,registeredWorktreeRoots) }
                 .map { lexicalRoot.relativize(lexicalAbsolute(it)).toString().replace('\\','/') }
                 .toList()

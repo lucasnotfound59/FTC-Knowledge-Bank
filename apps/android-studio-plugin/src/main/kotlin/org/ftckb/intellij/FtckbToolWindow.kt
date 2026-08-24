@@ -95,11 +95,17 @@ class FtckbToolWindow(private val project:Project,toolWindow:ToolWindow):JPanel(
         input.text=""
         append("你",question)
         send.isEnabled=false
-        service.ask(question) { outcome ->
+        service.submit(question) { outcome ->
             send.isEnabled=true
             when (outcome) {
-                is AskOutcome.Answered -> appendAnswer(outcome.answer)
-                is AskOutcome.Failed -> append("错误","[${outcome.code}] ${outcome.message}",true)
+                is SubmitOutcome.Answered -> appendAnswer(outcome.answer)
+                is SubmitOutcome.Edited -> {
+                    append("助手","已完成修改："+outcome.summary+"\n文件："+outcome.changedPaths.joinToString(", "))
+                    val violations=service.checkChanges()
+                    if (violations.isEmpty()) append("助手","标准检查：通过")
+                    else violations.forEach { append("标准检查",it,true) }
+                }
+                is SubmitOutcome.Failed -> append("错误","[${outcome.code}] ${outcome.message}",true)
             }
             refreshStatus()
         }

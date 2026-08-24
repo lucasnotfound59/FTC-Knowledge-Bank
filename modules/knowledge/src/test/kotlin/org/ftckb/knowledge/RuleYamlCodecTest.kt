@@ -3,6 +3,7 @@ package org.ftckb.knowledge
 import java.time.LocalDate
 import org.ftckb.domain.GitRuleEvidence
 import org.ftckb.domain.RuleAuthority
+import org.ftckb.domain.RuleCheckKind
 import org.ftckb.domain.RuleStatus
 import org.ftckb.domain.WebRuleEvidence
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -152,7 +153,7 @@ class RuleYamlCodecTest {
     @Test
     fun `rejects unsupported schema versions`() {
         val exception=assertThrows(IllegalArgumentException::class.java) {
-            RuleYamlCodec.decode("schemaVersion: 3\nrules: []")
+            RuleYamlCodec.decode("schemaVersion: 4\nrules: []")
         }
 
         assertEquals("unsupported schemaVersion",exception.message)
@@ -237,6 +238,99 @@ class RuleYamlCodecTest {
         assertThrows(RuntimeException::class.java) {
             RuleYamlCodec.decode("!!java.net.URL [https://example.com]")
         }
+    }
+
+    @Test
+    fun `decodes schema three checks on rules`() {
+        val rules=RuleYamlCodec.decode("""
+            schemaVersion: 3
+            rules:
+              - id: shared.example-checked
+                topic: example-checked
+                title: Checked rule
+                instruction: Keep it checked.
+                rationale: Enforcement.
+                status: approved
+                authority: shared
+                applicability: {}
+                evidence:
+                  - type: git
+                    repository: owner/repo
+                    commit: abcdef1
+                    file: TeamCode/Example.java
+                    symbol: Example
+                approval:
+                  approver: overall-lead
+                  role: overall_software_lead
+                  approvedAt: 2026-08-13T00:00:00Z
+                checks:
+                  - kind: path-forbidden
+                    pattern: build.common.gradle
+                    note: SDK reserved
+                  - kind: regex-required
+                    pattern: "\\.isValid\\(\\)"
+                    appliesTo: "**/*.java"
+                    note: Validity check required
+        """.trimIndent())
+        val rule=rules.single()
+        assertEquals(2,rule.checks.size)
+        assertEquals(RuleCheckKind.PATH_FORBIDDEN,rule.checks[0].kind)
+        assertEquals("build.common.gradle",rule.checks[0].pattern)
+        assertEquals(null,rule.checks[0].appliesTo)
+        assertEquals(RuleCheckKind.REGEX_REQUIRED,rule.checks[1].kind)
+        assertEquals("**/*.java",rule.checks[1].appliesTo)
+    }
+
+    @Test
+    fun `checks require schema version three`() {
+        val yaml="""
+            schemaVersion: 2
+            rules:
+              - id: shared.checked-too-early
+                topic: checked-too-early
+                title: Too early
+                instruction: Nope.
+                rationale: Nope.
+                status: candidate
+                authority: shared
+                applicability: {}
+                evidence:
+                  - type: git
+                    repository: owner/repo
+                    commit: abcdef1
+                    file: TeamCode/Example.java
+                checks:
+                  - kind: path-forbidden
+                    pattern: build.gradle
+                    note: Nope
+        """.trimIndent()
+        assertThrows(RuntimeException::class.java) { RuleYamlCodec.decode(yaml) }
+    }
+
+    @Test
+    fun `schema three without checks decodes to an empty check list`() {
+        val rules=RuleYamlCodec.decode("""
+            schemaVersion: 3
+            rules:
+              - id: shared.plain
+                topic: plain
+                title: Plain rule
+                instruction: Plain.
+                rationale: Plain.
+                status: approved
+                authority: shared
+                applicability: {}
+                evidence:
+                  - type: git
+                    repository: owner/repo
+                    commit: abcdef1
+                    file: TeamCode/Example.java
+                approval:
+                  approver: overall-lead
+                  role: overall_software_lead
+                  approvedAt: 2026-08-13T00:00:00Z
+        """.trimIndent())
+        assertEquals(0,rules.single().checks.size)
     }
 
     @Test

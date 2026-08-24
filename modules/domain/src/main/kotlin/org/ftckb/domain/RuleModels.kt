@@ -7,6 +7,30 @@ import java.util.Collections
 enum class RuleStatus { CANDIDATE,APPROVED,DEPRECATED,REJECTED }
 enum class RuleAuthority { OFFICIAL,SHARED,TEAM }
 enum class ApproverRole { OVERALL_SOFTWARE_LEAD,TEAM_SOFTWARE_LEAD }
+enum class RuleCheckKind { PATH_FORBIDDEN,PATH_REQUIRED,REGEX_REQUIRED,REGEX_FORBIDDEN }
+
+/** A machine-enforceable check attached to a rule (ftckb check).
+ *  pattern is a glob for PATH_* kinds and a regex for REGEX_* kinds;
+ *  appliesTo is an optional path glob limiting REGEX_* checks. */
+class RuleCheck(
+    val kind:RuleCheckKind,
+    val pattern:String,
+    val appliesTo:String?,
+    val note:String
+) {
+    override fun equals(other:Any?):Boolean=this===other || other is RuleCheck &&
+        kind==other.kind && pattern==other.pattern && appliesTo==other.appliesTo && note==other.note
+
+    override fun hashCode():Int {
+        var result=kind.hashCode()
+        result=31*result+pattern.hashCode()
+        result=31*result+(appliesTo?.hashCode() ?: 0)
+        result=31*result+note.hashCode()
+        return result
+    }
+
+    override fun toString()="RuleCheck(kind=$kind, pattern=$pattern, appliesTo=$appliesTo, note=$note)"
+}
 
 sealed interface RuleEvidence
 
@@ -69,9 +93,11 @@ class KnowledgeRule(
     val approval:Approval?=null,
     val supersedes:String?=null,
     val positiveExample:String?=null,
-    val negativeExample:String?=null
+    val negativeExample:String?=null,
+    checks:List<RuleCheck> =emptyList()
 ) {
     val evidence:List<RuleEvidence> =immutableListSnapshot(evidence)
+    val checks:List<RuleCheck> =immutableListSnapshot(checks)
 
     fun copy(
         id:String=this.id,
@@ -86,10 +112,11 @@ class KnowledgeRule(
         approval:Approval?=this.approval,
         supersedes:String?=this.supersedes,
         positiveExample:String?=this.positiveExample,
-        negativeExample:String?=this.negativeExample
+        negativeExample:String?=this.negativeExample,
+        checks:List<RuleCheck> =this.checks
     )=KnowledgeRule(
         id,topic,title,instruction,rationale,status,authority,applicability,evidence,approval,
-        supersedes,positiveExample,negativeExample
+        supersedes,positiveExample,negativeExample,checks
     )
 
     override fun equals(other:Any?):Boolean=this===other || other is KnowledgeRule &&
@@ -105,7 +132,8 @@ class KnowledgeRule(
         approval==other.approval &&
         supersedes==other.supersedes &&
         positiveExample==other.positiveExample &&
-        negativeExample==other.negativeExample
+        negativeExample==other.negativeExample &&
+        checks==other.checks
 
     override fun hashCode():Int {
         var result=id.hashCode()
@@ -121,13 +149,14 @@ class KnowledgeRule(
         result=31*result+(supersedes?.hashCode() ?: 0)
         result=31*result+(positiveExample?.hashCode() ?: 0)
         result=31*result+(negativeExample?.hashCode() ?: 0)
+        result=31*result+checks.hashCode()
         return result
     }
 
     override fun toString()="KnowledgeRule(id=$id, topic=$topic, title=$title, instruction=$instruction, "+
         "rationale=$rationale, status=$status, authority=$authority, applicability=$applicability, "+
         "evidence=$evidence, approval=$approval, supersedes=$supersedes, positiveExample=$positiveExample, "+
-        "negativeExample=$negativeExample)"
+        "negativeExample=$negativeExample, checks=$checks)"
 }
 
 private fun <T> immutableSetSnapshot(values:Set<T>):Set<T> =
