@@ -39,6 +39,7 @@ dependencies {
     intellijPlatform {
         intellijIdea("2025.2.6.1")
     }
+    implementation(project(":modules:standardizer"))
     implementation(project(":modules:session-shell"))
 }
 

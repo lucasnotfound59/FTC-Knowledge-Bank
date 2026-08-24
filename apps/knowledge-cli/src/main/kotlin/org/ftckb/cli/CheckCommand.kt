@@ -4,26 +4,11 @@ import com.fasterxml.jackson.databind.json.JsonMapper
 import java.io.PrintStream
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.FileSystems
-import org.eclipse.jgit.api.Git
-import org.eclipse.jgit.diff.DiffFormatter
-import org.eclipse.jgit.diff.Edit
-import org.eclipse.jgit.diff.RawTextComparator
-import org.eclipse.jgit.util.io.DisabledOutputStream
-import org.ftckb.domain.RuleCheck
-import org.ftckb.domain.RuleCheckKind
 import org.ftckb.domain.RuleContext
 import org.ftckb.domain.RuleResolver
 import org.ftckb.domain.RuleIdentity
 import org.ftckb.knowledge.FileKnowledgeRepository
-
-data class DiffChange(val path:String,val addedLines:List<Pair<Int,String>>)
-
-data class CheckViolation(
-    val ruleId:String,val check:String,val path:String?,val line:Int?,val pattern:String,val detail:String
-)
-
-data class CheckOutcome(val violations:List<CheckViolation>,val soft:List<Pair<String,String>>)
+import org.ftckb.standardizer.Standardizer
 
 internal fun runCheckCommand(args:List<String>,out:PrintStream):Int {
     val jsonMode=args.contains("--json")
@@ -81,12 +66,12 @@ internal fun runCheckCommand(args:List<String>,out:PrintStream):Int {
         return fail(detail,"conflict",2)
     }
     val changes=try {
-        values["--diff"]?.let { parsePatch(Files.readString(Path.of(it))) } ?: worktreeChanges(repoRoot)
+        values["--diff"]?.let { Standardizer.parsePatch(Files.readString(Path.of(it))) } ?: Standardizer.worktreeChanges(repoRoot)
     } catch (exception:Exception) {
         val detail=exception.message?.lineSequence()?.firstOrNull()?.trim().orEmpty()
         return fail("error reading diff: ${detail.ifEmpty { exception.javaClass.simpleName }}","load-error",2)
     }
-    val outcome=evaluate(resolved.activeRules,changes)
+    val outcome=Standardizer.evaluate(resolved.activeRules,changes)
     val mapper=JsonMapper.builder().build()
     if (jsonMode) {
         val root=mapper.createObjectNode()
@@ -128,135 +113,4 @@ internal fun runCheckCommand(args:List<String>,out:PrintStream):Int {
     }
     out.println("check=${if (outcome.violations.isEmpty()) "pass" else "fail"} violations=${outcome.violations.size} soft=${outcome.soft.size}")
     return if (outcome.violations.isEmpty()) 0 else 1
-}
-
-internal fun evaluate(rules:List<org.ftckb.domain.KnowledgeRule>,changes:List<DiffChange>):CheckOutcome {
-    val violations=mutableListOf<CheckViolation>()
-    val soft=mutableListOf<Pair<String,String>>()
-    val matchers={ glob:String ->
-        runCatching { FileSystems.getDefault().getPathMatcher("glob:$glob") }.getOrNull()
-    }
-    rules.forEach { rule ->
-        if (rule.checks.isEmpty()) {
-            soft+=rule.id to rule.instruction
-        } else {
-            rule.checks.forEach { check -> evaluateCheck(rule.id,check,changes,matchers,violations) }
-        }
-    }
-    return CheckOutcome(violations,soft)
-}
-
-private fun evaluateCheck(
-    ruleId:String,check:RuleCheck,changes:List<DiffChange>,
-    matchers:(String)->java.nio.file.PathMatcher?,
-    violations:MutableList<CheckViolation>
-) {
-    val appliesTo=check.appliesTo?.let(matchers)
-    fun pathMatches(path:String):Boolean {
-        val pathMatcher=matchers(check.pattern) ?: return false
-        return pathMatcher.matches(Path.of(path))
-    }
-    fun fileApplies(path:String):Boolean=appliesTo==null || appliesTo.matches(Path.of(path))
-    when (check.kind) {
-        RuleCheckKind.PATH_FORBIDDEN -> {
-            changes.filter { pathMatches(it.path) }.forEach { change ->
-                violations+=CheckViolation(
-                    ruleId,"path-forbidden",change.path,change.addedLines.firstOrNull()?.first,
-                    check.pattern,check.note
-                )
-            }
-        }
-        RuleCheckKind.PATH_REQUIRED -> {
-            if (changes.none { pathMatches(it.path) }) {
-                violations+=CheckViolation(ruleId,"path-required",null,null,check.pattern,check.note)
-            }
-        }
-        RuleCheckKind.REGEX_REQUIRED -> {
-            val regex=runCatching { Regex(check.pattern) }.getOrNull() ?: return
-            val applicable=changes.filter { fileApplies(it.path) && it.addedLines.isNotEmpty() }
-            if (applicable.isEmpty()) return // nothing was added in applicable files
-            val matched=applicable.any { change ->
-                change.addedLines.any { (_,text) -> regex.containsMatchIn(text) }
-            }
-            if (!matched) {
-                val first=applicable.first()
-                violations+=CheckViolation(
-                    ruleId,"regex-required",first.path,first.addedLines.firstOrNull()?.first,
-                    check.pattern,check.note
-                )
-            }
-        }
-        RuleCheckKind.REGEX_FORBIDDEN -> {
-            val regex=runCatching { Regex(check.pattern) }.getOrNull() ?: return
-            changes.filter { fileApplies(it.path) }.forEach { change ->
-                val hit=change.addedLines.firstOrNull { (_,text) -> regex.containsMatchIn(text) } ?: return@forEach
-                violations+=CheckViolation(ruleId,"regex-forbidden",change.path,hit.first,check.pattern,check.note)
-            }
-        }
-    }
-}
-
-internal fun parsePatch(text:String):List<DiffChange> {
-    val changes=mutableListOf<DiffChange>()
-    var currentPath:String?=null
-    var currentLines=mutableListOf<Pair<Int,String>>()
-    var newLineNumber=0
-    fun flush() {
-        val path=currentPath ?: return
-        if (currentLines.isNotEmpty()) changes+=DiffChange(path,currentLines.toList())
-        currentPath=null
-        currentLines=mutableListOf()
-        newLineNumber=0
-    }
-    text.lineSequence().forEach { line ->
-        when {
-            line.startsWith("+++ ") -> {
-                flush()
-                val target=line.removePrefix("+++ ").substringBefore('\t')
-                if (target!="/dev/null") currentPath=target.removePrefix("b/")
-            }
-            line.startsWith("@@ ") -> {
-                val range=Regex("@@ -[0-9]+(?:,[0-9]+)? \\+([0-9]+)(?:,([0-9]+))? @@").find(line)
-                newLineNumber=(range?.groupValues?.get(1)?.toIntOrNull() ?: 1)
-            }
-            line.startsWith("+") && !line.startsWith("+++") -> {
-                if (currentPath!=null) {
-                    currentLines+=newLineNumber to line.removePrefix("+")
-                    newLineNumber++
-                }
-            }
-            line.startsWith("-") && !line.startsWith("---") -> Unit
-            else -> {
-                if (currentPath!=null && line.isNotEmpty()) newLineNumber++
-            }
-        }
-    }
-    flush()
-    return changes
-}
-
-private fun worktreeChanges(root:Path):List<DiffChange> {
-    val git=Git.open(root.toFile())
-    git.use {
-        val entries=git.diff().setCached(false).call()
-        val changes=mutableListOf<DiffChange>()
-        entries.forEach { entry ->
-            val newPath=entry.newPath
-            if (newPath==org.eclipse.jgit.diff.DiffEntry.DEV_NULL) return@forEach
-            val newLines=runCatching { Files.readAllLines(root.resolve(newPath)) }.getOrElse { emptyList() }
-            val oldLines=if (entry.oldId==org.eclipse.jgit.lib.ObjectId.zeroId()) emptyList()
-            else runCatching { String(git.repository.open(entry.oldId.toObjectId()).bytes).lines() }.getOrElse { emptyList() }
-            val patch=com.github.difflib.DiffUtils.diff(oldLines,newLines)
-            val added=mutableListOf<Pair<Int,String>>()
-            patch.deltas.forEach { delta ->
-                if (delta.type==com.github.difflib.patch.DeltaType.INSERT || delta.type==com.github.difflib.patch.DeltaType.CHANGE) {
-                    delta.target.lines.forEachIndexed { index,line ->
-                        added+=(delta.target.position+index+1) to line
-                    }
-                }
-            }
-            if (added.isNotEmpty()) changes+=DiffChange(newPath,added)
-        }
-        return changes
-    }
 }

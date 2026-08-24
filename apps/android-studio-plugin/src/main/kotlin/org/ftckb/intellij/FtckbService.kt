@@ -10,8 +10,15 @@ import java.nio.file.Path
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import org.ftckb.agent.AgentAnswer
+import org.ftckb.agent.AskResult
 import org.ftckb.agent.CitationValidationException
+import org.ftckb.agent.EditResult
+import org.ftckb.agent.RejectedResult
+import org.ftckb.domain.RuleContext
+import org.ftckb.domain.RuleResolver
+import org.ftckb.knowledge.FileKnowledgeRepository
 import org.ftckb.session.AskChatSessionException
+import org.ftckb.standardizer.Standardizer
 import org.ftckb.model.ModelProvider
 import org.ftckb.model.ModelProviderException
 import org.ftckb.model.ProviderProfile
@@ -24,6 +31,12 @@ import org.ftckb.session.SessionRuntime
 sealed interface AskOutcome {
     data class Answered(val answer:AgentAnswer):AskOutcome
     data class Failed(val code:String,val message:String):AskOutcome
+}
+
+sealed interface SubmitOutcome {
+    data class Answered(val answer:AgentAnswer):SubmitOutcome
+    data class Edited(val summary:String,val changedPaths:List<String>):SubmitOutcome
+    data class Failed(val code:String,val message:String):SubmitOutcome
 }
 
 /** Owns the SessionRuntime, the serial executor, configuration state, and
@@ -108,6 +121,55 @@ class FtckbService(private val project:Project):Disposable {
                 }
             }
             ApplicationManager.getApplication().invokeLater { onDone(outcome) }
+        }
+    }
+
+    /** Mode-aware submission: Ask answers, Edit applies a transaction and returns
+     *  the changed paths (the UI then runs the standardizer against the diff). */
+    fun submit(message:String,onDone:(SubmitOutcome)->Unit) {
+        executor.submit {
+            val active=runtime
+            val outcome=when {
+                active==null -> SubmitOutcome.Failed("configure","会话未初始化，请先检查设置与密钥")
+                else -> try {
+                    when (val result=active.controller().submit(message)) {
+                        is AskResult -> SubmitOutcome.Answered(result.answer)
+                        is EditResult -> SubmitOutcome.Edited(result.report.summary,result.report.changedPaths.sorted())
+                        is RejectedResult -> SubmitOutcome.Failed("refused",result.message)
+                    }
+                } catch (_:ModelProviderException) {
+                    SubmitOutcome.Failed("provider","模型请求失败")
+                } catch (_:Exception) {
+                    SubmitOutcome.Failed("internal","请求未能完成")
+                }
+            }
+            ApplicationManager.getApplication().invokeLater { onDone(outcome) }
+        }
+    }
+
+    /** Runs the standardizer (ftckb check) against the current project diff and
+     *  returns human-readable violation lines (empty when clean). */
+    fun checkChanges():List<String> {
+        val root=project.basePath?.let(Path::of) ?: return listOf("无法读取当前项目路径")
+        val state=settings.snapshot()
+        val knowledgePath=state.knowledgePath.ifBlank { KnowledgeResources.extractOrDefault().toString() }
+        return try {
+            val loaded=FileKnowledgeRepository.load(Path.of(knowledgePath))
+            if (loaded.violations.isNotEmpty()) return listOf("知识库校验失败，无法执行标准检查")
+            val resolved=RuleResolver.resolve(loaded.rules,RuleContext(state.team,state.season))
+            if (resolved.conflicts.isNotEmpty()) return listOf("规则存在冲突，无法执行标准检查")
+            val changes=Standardizer.worktreeChanges(root)
+            Standardizer.evaluate(resolved.activeRules,changes).violations
+                .sortedWith(compareBy({ it.ruleId },{ it.path.orEmpty() },{ it.line ?: 0 }))
+                .map { violation ->
+                    val location=buildString {
+                        violation.path?.let { append(" @").append(it) }
+                        violation.line?.let { append(":").append(it) }
+                    }
+                    "[${violation.check}] ${violation.ruleId}$location：${violation.detail}"
+                }
+        } catch (failure:Exception) {
+            listOf("标准检查失败：${failure.message}")
         }
     }
 

@@ -119,7 +119,14 @@ ftckb chat --knowledge knowledge --team 20827 --season 2025-2026 --provider deep
 
 ### 用法二：对接外部 Agent（把知识库当确定性"策略裁决器"）
 
-Codex / Claude Code / 其他 harness 不应把规则当普通文本读——那样会丢掉 `OFFICIAL > TEAM > SHARED` 的确定性解析。正确姿势是调用下面的稳定 JSON 接口，把"哪条规则生效、证据是什么"交给确定性代码判决：
+Codex / Claude Code / 其他 harness 不应把规则当普通文本读——那样会丢掉 `OFFICIAL > TEAM > SHARED` 的确定性解析。正确姿势是调用下面的稳定 JSON 接口，把"哪条规则生效、证据是什么"交给确定性代码判决；提交前再跑 `check`，让所有 Agent 写出同一标准的代码：
+
+```bash
+# 执法：对改动做确定性机器检查（违规退出码 1，soft 为需人工确认的提示）
+ftckb check <repo-root> --knowledge knowledge --team 20827 --season 2025-2026 [--diff file.patch] --json
+```
+
+规范器完整说明见 [docs/standardizer-check.md](docs/standardizer-check.md)；CI 门禁示例脚本 `scripts/check-gate.sh`。
 
 ### 从零开始：新机器上拿到可用的 ftckb
 

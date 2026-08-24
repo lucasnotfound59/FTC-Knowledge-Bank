@@ -5,8 +5,9 @@
 
 ## 一句话
 
-本仓库 = FTC 知识库 + 确定性“策略裁决器”CLI（`ftckb`）+ 本地聊天/网页 Agent。
-你（Agent）不要自己读规则文本做裁决 —— 调用 `ftckb resolve --json` 拿确定性结果。
+本仓库 = FTC 知识库 + 确定性“策略裁决器 + 规范器”CLI（`ftckb`）+ 本地聊天/网页 Agent。
+你（Agent）不要自己读规则文本做裁决 —— 写码前调用 `ftckb resolve --json` 拿确定性规则，
+提交前调用 `ftckb check` 对自己的 diff 执法，让所有 Agent 写出同一标准的代码。
 
 ## 快速接入
 
@@ -28,13 +29,16 @@
 ```bash
 ftckb validate knowledge --json
 ftckb resolve knowledge --team 20827 --season 2025-2026 --json
+ftckb check <repo-root> --knowledge knowledge --team 20827 --season 2025-2026 --json
 ```
 
 - `validate`：加载并校验全部规则 → `{schemaVersion,command,ok,ruleCount,violations}`。
 - `resolve`：按队伍+赛季裁决出生效规则 → `{activeRules:[…],conflicts:[…]}`，
   每条规则含 id/topic/title/instruction/rationale/status/authority/applicability/evidence。
-- 退出码：`0` 成功；`2` 加载/校验失败或存在冲突；`64` 参数错误。
+- 退出码：validate/resolve 为 `0` 成功；`2` 加载/校验失败或存在冲突；`64` 参数错误。
+  `check` 为 `0` 通过；`1` 存在硬违规；`2` 加载失败/冲突；`64` 参数错误。
 - 带 `--json` 时**所有失败路径也是 JSON**（`error.code`: `usage` | `load-error` | `invalid-knowledge`）。
+- **规范器**：`check` 对 diff 新增行做确定性执法（`path-forbidden/path-required/regex-required/regex-forbidden`，规则内的 `checks` 字段定义）；无 checks 的规则输出为 `soft` 提示。详见 `docs/standardizer-check.md`。
 - 确定性：activeRules 按 id 排序、conflicts 按 topic 排序——同输入同输出，可以缓存。
 - 完整字段表、示例与变更策略见 `docs/kernel-contract.md`；摘要见 README「用法二」。
 
@@ -43,9 +47,9 @@ ftckb resolve knowledge --team 20827 --season 2025-2026 --json
 - 不要把 `knowledge/*.yaml` 当普通文本解释裁决：规则优先级 OFFICIAL > TEAM > SHARED 与
   冲突检测由 `ftckb resolve` 的确定性代码执行，绕过它会得到错误结论。
 - 修改任何规则/知识文件后，必须 `ftckb validate knowledge --json` 通过（`ok:true`）才算数。
-- `chat` / `eval` / `serve` 是给人用的本地交互模式，不属于机器契约；对接只用 validate/resolve。
+- `chat` / `eval` / `serve` / `extract` / `candidates` / `approve` 是给人用的交互模式；机器契约只用 validate/resolve/check。
 - 契约破坏性变更必须提升 `schemaVersion`；消费方看到 `schemaVersion!=1` 应停止并报错。
-- 文档中的规则数/测试数快照（当前 27 条规则、406 项测试）随改动同步更新。
+- 文档中的规则数/测试数快照（当前 27 条规则、417 项测试）随改动同步更新。
 - 已知现状：`knowledge/teams/` 下的队伍规则目前全部是 `candidate`，所以 `resolve` 的结果暂时与 `--team` 无关（activeRules 相同），对接方不要误判为 bug。
 - 机器可消费工件：`docs/kernel-contract.schema.json`（JSON Schema）与 `fixtures/kernel/*.json`（真实输出示例：validate-ok / resolve-ok / resolve-conflict / error-usage / error-invalid-knowledge）可直接用来对拍你的解析器。
 
