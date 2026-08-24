@@ -1,6 +1,7 @@
 package org.ftckb.domain
 
 import java.net.URI
+import java.nio.file.FileSystems
 
 data class RuleViolation(val ruleId:String,val field:String,val message:String)
 
@@ -52,6 +53,27 @@ object RuleValidator {
                 is GitRuleEvidence -> validateGitEvidence(index,evidence,::reject)
                 is WebRuleEvidence -> validateWebEvidence(index,evidence,::reject)
             }
+        }
+        rule.checks.forEachIndexed { index,check ->
+            if (check.pattern.isBlank()) reject("checks[$index].pattern","check pattern must not be blank")
+            else when (check.kind) {
+                RuleCheckKind.PATH_FORBIDDEN,RuleCheckKind.PATH_REQUIRED -> {
+                    if (runCatching { FileSystems.getDefault().getPathMatcher("glob:${check.pattern}") }.isFailure) {
+                        reject("checks[$index].pattern","path check pattern must be a valid glob")
+                    }
+                }
+                RuleCheckKind.REGEX_REQUIRED,RuleCheckKind.REGEX_FORBIDDEN -> {
+                    if (runCatching { Regex(check.pattern) }.isFailure) {
+                        reject("checks[$index].pattern","regex check pattern must compile")
+                    }
+                }
+            }
+            check.appliesTo?.let { appliesTo ->
+                if (runCatching { FileSystems.getDefault().getPathMatcher("glob:$appliesTo") }.isFailure) {
+                    reject("checks[$index].appliesTo","appliesTo must be a valid glob")
+                }
+            }
+            if (check.note.isBlank()) reject("checks[$index].note","check note must not be blank")
         }
     }
 

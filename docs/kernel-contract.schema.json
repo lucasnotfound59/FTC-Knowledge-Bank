@@ -68,7 +68,8 @@
             "seasons": { "type": "array", "items": { "type": "string" } }
           }
         },
-        "evidence": { "type": "array", "items": { "$ref": "#/definitions/evidence" } }
+        "evidence": { "type": "array", "items": { "$ref": "#/definitions/evidence" } },
+        "checks": { "type": "array", "items": { "$ref": "#/definitions/check" } }
       }
     },
     "evidence": {
@@ -101,6 +102,16 @@
           }
         }
       ]
+    },
+    "check": {
+      "type": "object",
+      "required": ["kind", "pattern", "note"],
+      "properties": {
+        "kind": { "enum": ["path-forbidden", "path-required", "regex-required", "regex-forbidden"] },
+        "pattern": { "type": "string" },
+        "appliesTo": { "type": "string" },
+        "note": { "type": "string" }
+      }
     },
     "conflict": {
       "type": "object",

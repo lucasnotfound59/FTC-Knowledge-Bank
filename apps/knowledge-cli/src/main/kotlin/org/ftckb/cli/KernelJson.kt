@@ -100,6 +100,16 @@ object KernelJson {
                 add(evidenceNode(evidence))
             }
         }
+        putArray("checks").apply {
+            rule.checks.forEach { check ->
+                addObject().apply {
+                    put("kind",check.kind.name.lowercase())
+                    put("pattern",check.pattern)
+                    check.appliesTo?.let { put("appliesTo",it) }
+                    put("note",check.note)
+                }
+            }
+        }
     }
 
     private fun evidenceNode(evidence:org.ftckb.domain.RuleEvidence)=mapper.createObjectNode().apply {

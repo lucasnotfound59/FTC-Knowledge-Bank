@@ -9,6 +9,8 @@ import org.ftckb.domain.KnowledgeRule
 import org.ftckb.domain.GitRuleEvidence
 import org.ftckb.domain.RuleApplicability
 import org.ftckb.domain.RuleAuthority
+import org.ftckb.domain.RuleCheck
+import org.ftckb.domain.RuleCheckKind
 import org.ftckb.domain.RuleEvidence
 import org.ftckb.domain.RuleStatus
 import org.ftckb.domain.WebRuleEvidence
@@ -20,14 +22,14 @@ object RuleYamlCodec {
     private val load=Load(LoadSettings.builder().setAllowDuplicateKeys(false).build())
     private val ruleKeys=setOf(
         "id","topic","title","instruction","rationale","status","authority","applicability",
-        "evidence","approval","supersedes","positiveExample","negativeExample"
+        "evidence","approval","supersedes","positiveExample","negativeExample","checks"
     )
 
     fun decode(text:String):List<KnowledgeRule> {
         val root=load.loadFromString(text).asMap("root")
         root.rejectUnknownFields(setOf("schemaVersion","rules"),"root")
         val schemaVersion=root.int("schemaVersion")
-        require(schemaVersion in 1..2) { "unsupported schemaVersion" }
+        require(schemaVersion in 1..3) { "unsupported schemaVersion" }
         return root.requiredList("rules").mapIndexed { index,value ->
             val name="rules[$index]"
             decodeRule(value.asMap(name),name,schemaVersion)
@@ -61,8 +63,27 @@ object RuleYamlCodec {
                 decodeEvidence(item,evidenceName,schemaVersion)
             },
             approval=approval,supersedes=map.optionalString("supersedes"),
-            positiveExample=map.optionalString("positiveExample"),negativeExample=map.optionalString("negativeExample")
+            positiveExample=map.optionalString("positiveExample"),negativeExample=map.optionalString("negativeExample"),
+            checks=decodeChecks(map,name,schemaVersion)
         )
+    }
+
+    private fun decodeChecks(map:Map<String,Any?>,name:String,schemaVersion:Int):List<RuleCheck> {
+        if (schemaVersion<3) {
+            if ("checks" in map) error("$name.checks requires schemaVersion 3")
+            return emptyList()
+        }
+        return map.optionalList("checks").mapIndexed { index,value ->
+            val checkName="$name.checks[$index]"
+            val item=value.asMap(checkName)
+            item.rejectUnknownFields(setOf("kind","pattern","appliesTo","note"),checkName)
+            RuleCheck(
+                kind=RuleCheckKind.valueOf(item.string("kind").uppercase().replace('-','_')),
+                pattern=item.string("pattern"),
+                appliesTo=item.optionalString("appliesTo"),
+                note=item.string("note")
+            )
+        }
     }
 
     private fun decodeEvidence(map:Map<String,Any?>,name:String,schemaVersion:Int):RuleEvidence {

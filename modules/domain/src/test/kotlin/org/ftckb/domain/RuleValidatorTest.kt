@@ -304,6 +304,30 @@ class RuleValidatorTest {
         }
     }
 
+    @Test
+    fun `valid rule checks produce no violations`() {
+        val rule=candidateWithEvidence(listOf(GitRuleEvidence("owner/repo","abcdef1","TeamCode/Example.java","Example"))).copy(
+            checks=listOf(
+                RuleCheck(RuleCheckKind.PATH_FORBIDDEN,"build.common.gradle",null,"SDK reserved"),
+                RuleCheck(RuleCheckKind.REGEX_REQUIRED,"\\.isValid\\(\\)","**/*.java","Validity check required"),
+            )
+        )
+        assertTrue(RuleValidator.validate(rule).isEmpty())
+    }
+
+    @Test
+    fun `invalid rule checks are rejected per field`() {
+        val base=candidateWithEvidence(listOf(GitRuleEvidence("owner/repo","abcdef1","TeamCode/Example.java","Example")))
+        val badGlob=base.copy(checks=listOf(RuleCheck(RuleCheckKind.PATH_FORBIDDEN,"[",null,"broken glob")))
+        assertEquals(listOf("path check pattern must be a valid glob"),RuleValidator.validate(badGlob).map { it.message })
+        val badRegex=base.copy(checks=listOf(RuleCheck(RuleCheckKind.REGEX_FORBIDDEN,"(","**/*.java","broken regex")))
+        assertEquals(listOf("regex check pattern must compile"),RuleValidator.validate(badRegex).map { it.message })
+        val blankNote=base.copy(checks=listOf(RuleCheck(RuleCheckKind.PATH_FORBIDDEN,"build.gradle",null," ")))
+        assertEquals(listOf("check note must not be blank"),RuleValidator.validate(blankNote).map { it.message })
+        val badAppliesTo=base.copy(checks=listOf(RuleCheck(RuleCheckKind.REGEX_REQUIRED,"x","[","note")))
+        assertEquals(listOf("appliesTo must be a valid glob"),RuleValidator.validate(badAppliesTo).map { it.message })
+    }
+
     private fun candidateWithEvidence(evidence:List<RuleEvidence>)=KnowledgeRule(
         id="shared.web-evidence",
         topic="web-evidence",
