@@ -1,4 +1,4 @@
-schemaVersion: 2
+schemaVersion: 3
 rules:
   - id: shared.ftclib-check-current-prerequisites
     topic: ftclib-prerequisite-editing
@@ -43,3 +43,8 @@ rules:
         accessedAt: 2026-08-13
         section: Installation dependencies
         version: core 2.1.1; vision 2.1.0
+    checks:
+      - kind: regex-forbidden
+        pattern: '(com\.pedropathing|org\.ftclib)[^\n]*(\+|SNAPSHOT)'
+        appliesTo: "**/*.gradle*"
+        note: FTCLib/Pedro 依赖必须使用文档的精确版本，禁止 + / SNAPSHOT

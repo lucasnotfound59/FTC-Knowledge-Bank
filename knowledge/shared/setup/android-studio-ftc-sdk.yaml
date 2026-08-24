@@ -1,4 +1,4 @@
-schemaVersion: 2
+schemaVersion: 3
 rules:
   - id: shared.ftc-sdk-pin-release
     topic: ftc-sdk-version-source
@@ -22,6 +22,11 @@ rules:
         accessedAt: 2026-08-13
         section: v11.2 release
         version: v11.2
+    checks:
+      - kind: regex-forbidden
+        pattern: 'org\.firstinspires\.ftc[^\n]*(\+|SNAPSHOT)'
+        appliesTo: "**/*.gradle*"
+        note: FTC SDK 依赖必须钉住正式 release，禁止 + / SNAPSHOT
   - id: shared.ftc-sdk-preserve-build-tooling
     topic: ftc-sdk-build-tooling
     title: Preserve release-supplied build tooling
@@ -51,6 +56,16 @@ rules:
         accessedAt: 2026-08-13
         section: distributionUrl
         version: v11.2
+    checks:
+      - kind: path-forbidden
+        pattern: gradlew
+        note: 使用 SDK 发行版自带的 Gradle Wrapper，勿替换
+      - kind: path-forbidden
+        pattern: gradlew.bat
+        note: 使用 SDK 发行版自带的 Gradle Wrapper，勿替换
+      - kind: path-forbidden
+        pattern: "gradle/wrapper/**"
+        note: 使用 SDK 发行版自带的 Wrapper 配置，勿替换
   - id: shared.ftc-sdk-separate-toolchain-versions
     topic: ftc-toolchain-version-record
     title: Record FTC toolchain versions separately

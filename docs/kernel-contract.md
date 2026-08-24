@@ -103,6 +103,7 @@ GRADLE_USER_HOME=/tmp/xxx ./gradlew :apps:knowledge-cli:installDist
 | authority | string | `official` / `shared` / `team` |
 | applicability.teams / applicability.seasons | string[] | 空数组 = 对所有队伍/赛季生效 |
 | evidence | array | 每条证据带 `type` 字段，见下 |
+| checks | array | 规则附带的机器可执行检查（`kind`/`pattern`/`appliesTo`/`note`；可能为空数组；见 docs/standardizer-check.md 与 `ftckb check`） |
 
 证据两种形态（按 `type` 区分）：
 

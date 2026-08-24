@@ -1,4 +1,4 @@
-schemaVersion: 1
+schemaVersion: 3
 rules:
   - id: official.keep-customizations-in-teamcode
     topic: build-customization-location
@@ -11,7 +11,8 @@ rules:
       teams: []
       seasons: []
     evidence:
-      - repository: FIRST-Tech-Challenge/FtcRobotController
+      - type: git
+        repository: FIRST-Tech-Challenge/FtcRobotController
         commit: 26cd1fdd2a3c4b26173d9ff33a3279c27d1c7ad1
         file: build.common.gradle
         symbol: build.common.gradle
@@ -19,3 +20,10 @@ rules:
       approver: overall-software-lead
       role: overall_software_lead
       approvedAt: 2026-08-13T00:00:00Z
+    checks:
+      - kind: path-forbidden
+        pattern: build.common.gradle
+        note: SDK 保留 build.common.gradle；定制放进 TeamCode/build.gradle
+      - kind: path-forbidden
+        pattern: build.dependencies.gradle
+        note: SDK 保留 build.dependencies.gradle；依赖定制放进 TeamCode/build.gradle

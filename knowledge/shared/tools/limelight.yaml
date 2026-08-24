@@ -1,4 +1,4 @@
-schemaVersion: 2
+schemaVersion: 3
 rules:
   - id: shared.limelight-check-result-validity
     topic: limelight-result-validity
@@ -22,6 +22,11 @@ rules:
         accessedAt: 2026-08-13
         section: Getting and Using Results
         product: Limelight 3A
+    checks:
+      - kind: regex-required
+        pattern: '\.isValid\(\)'
+        appliesTo: "**/*.java"
+        note: 新增的 Limelight 结果读取必须先做有效性检查（isValid）
   - id: shared.limelight-enforce-freshness-policy
     topic: limelight-result-freshness
     title: Enforce a Limelight freshness policy
@@ -44,6 +49,11 @@ rules:
         accessedAt: 2026-08-13
         section: Is The Data Fresh?
         product: Limelight 3A
+    checks:
+      - kind: regex-required
+        pattern: "getTargetTimestamp"
+        appliesTo: "**/*.java"
+        note: 新增的 Limelight 闭环/定位读取必须先做新鲜度检查（时间戳）
   - id: shared.limelight-synchronize-pipeline-dependent-reads
     topic: limelight-pipeline-synchronization
     title: Synchronize pipeline-dependent reads
