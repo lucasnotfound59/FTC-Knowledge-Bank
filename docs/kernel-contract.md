@@ -18,7 +18,7 @@ cd FTC-Knowledge-Bank
 GRADLE_USER_HOME=/tmp/xxx ./gradlew :apps:knowledge-cli:installDist
 ```
 
-知识根目录：仓库内 `knowledge/`（27 条规则：20 条已批准 + 7 条候选，候选规则不会进入 resolve 结果）。
+知识根目录：仓库内 `knowledge/`（33 条规则：20 条已批准 + 13 条候选，候选规则不会进入 resolve 结果）。
 
 ## 2. 命令与退出码
 

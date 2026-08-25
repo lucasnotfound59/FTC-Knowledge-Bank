@@ -9,7 +9,7 @@
 | 状态 | 能力 |
 | --- | --- |
 | 已实现 | schema v1/v2 规则模型、Git/官方网页证据、严格本地 YAML 加载、证据与审批校验、规则优先级和冲突解析、`validate` / `resolve` CLI、连续聊天 Agent（Ask 两阶段检索 + 引用校验、Edit 事务写入 + undo/discard）、OpenAI-compatible provider（DeepSeek/OpenAI/自定义端点）、提示注入与上下文预算防御、固定 FTC 质量评估（`eval`）、`ftckb` 分发与用户文档 |
-| 部分完成 | `knowledge/` 当前包含 27 条规则：20 条已批准规则（1 条官方规则、19 条共享规则）和 7 条候选规则（含 4 条 Control Hub LED 官方候选）；候选规则保持 inactive，已有 6 篇 FTC SDK、依赖与工具教程，队伍知识内容仍需扩充 |
+| 部分完成 | `knowledge/` 当前包含 33 条规则：20 条已批准规则（1 条官方规则、19 条共享规则）和 13 条候选规则（含 4 条 Control Hub LED 官方候选 + 6 条 20827 风格候选）；候选规则保持 inactive，已有 6 篇 FTC SDK、依赖与工具教程，队伍知识内容仍需扩充 |
 | 尚未实现 | 候选规范自动提取、审批 UI/历史、Run 模式、官方文档联网检索、Android Studio 插件、Control Hub 部署 |
 
 当前测试套件有 406 项测试全部通过（JDK 21 工具链构建时自动下载）；这是当前快照，测试数量会随功能增长。
