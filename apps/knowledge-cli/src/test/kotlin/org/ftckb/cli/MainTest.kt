@@ -310,6 +310,12 @@ class MainTest {
             active shared.pedro-explicit-coordinate-conversion
             active shared.pedro-localization-before-follower
             active shared.pedro-tune-current-robot
+            active team-20827.chinese-javadoc
+            active team-20827.constants-centralized
+            active team-20827.hardware-container
+            active team-20827.motor-init-safety
+            active team-20827.naming-conventions
+            active team-20827.telemetry-multiple
             """.trimIndent()+"\n",
             output.toString()
         )

@@ -7,7 +7,12 @@ rules:
     title: Centralize hardware in one Hardwares container
     instruction: 所有硬件引用集中在一个 Hardwares 容器类中（按 Sensors/Motors/Servos 分组），子系统只接收容器、不直接使用 HardwareMap。
     rationale: 统一初始化与命名，避免各子系统重复取硬件导致配置漂移。
-    status: candidate
+    status: approved
+    approval:
+      approver: "lucasnotfound59"
+      role: team_software_lead
+      team: "20827"
+      approvedAt: 2026-08-27T11:09:36.390654Z
     authority: team
     applicability:
       teams: ["20827"]
@@ -23,7 +28,12 @@ rules:
     title: Initialize motors with BRAKE and explicit direction
     instruction: 每个子系统的 init() 必须集中设置电机的 ZeroPowerBehavior.BRAKE 与转动方向。
     rationale: 防止停机滑行与方向错乱，方向设置集中在初始化阶段便于排查。
-    status: candidate
+    status: approved
+    approval:
+      approver: "lucasnotfound59"
+      role: team_software_lead
+      team: "20827"
+      approvedAt: 2026-08-27T11:09:36.722832Z
     authority: team
     applicability:
       teams: ["20827"]
@@ -39,7 +49,12 @@ rules:
     title: Centralize tuning constants
     instruction: 调参常量集中存放（Pedro 参数在 pedroPathing/Constants，子系统常量分节集中），不在逻辑代码中散落魔数。
     rationale: 调参只需改一处；散落的魔数难以复现与评审。
-    status: candidate
+    status: approved
+    approval:
+      approver: "lucasnotfound59"
+      role: team_software_lead
+      team: "20827"
+      approvedAt: 2026-08-27T11:09:37.064018Z
     authority: team
     applicability:
       teams: ["20827"]
@@ -55,7 +70,12 @@ rules:
     title: Chinese Javadoc with sectioned comments
     instruction: 子系统与工具类使用中文 Javadoc，并用分节注释划分“常量配置 / 成员变量”等区域。
     rationale: 队内以中文交流，统一注释语言与结构降低新人阅读成本。
-    status: candidate
+    status: approved
+    approval:
+      approver: "lucasnotfound59"
+      role: team_software_lead
+      team: "20827"
+      approvedAt: 2026-08-27T11:09:37.403584Z
     authority: team
     applicability:
       teams: ["20827"]
@@ -71,7 +91,12 @@ rules:
     title: Use MultipleTelemetry with section separators
     instruction: OpMode 使用 MultipleTelemetry（Driver Station + FtcDashboard），并按 “---” 分节展示关键数据。
     rationale: 同一套遥测同时服务驾驶员与调参者，分节让数据可读。
-    status: candidate
+    status: approved
+    approval:
+      approver: "lucasnotfound59"
+      role: team_software_lead
+      team: "20827"
+      approvedAt: 2026-08-27T11:09:37.746027Z
     authority: team
     applicability:
       teams: ["20827"]
@@ -87,7 +112,12 @@ rules:
     title: Team naming conventions
     instruction: 电机成员用 m 前缀（mLeftFront 等）、硬件配置名用小写驼峰（leftFront）、类用 PascalCase；自动类按 <Side><Color>[Mini] + Base 抽象命名（TopAutoBlue、BottomAutoBaseMini）。
     rationale: 命名一致让硬件配置与代码互相对应，减少接线与代码的错位。
-    status: candidate
+    status: approved
+    approval:
+      approver: "lucasnotfound59"
+      role: team_software_lead
+      team: "20827"
+      approvedAt: 2026-08-27T11:09:38.091448Z
     authority: team
     applicability:
       teams: ["20827"]
@@ -103,3 +133,9 @@ rules:
         file: TeamCode/src/main/java/org/firstinspires/ftc/teamcode/autos/TopAutoBase.java
         symbol: TopAutoBase
         line: 25
+
+
+
+
+
+

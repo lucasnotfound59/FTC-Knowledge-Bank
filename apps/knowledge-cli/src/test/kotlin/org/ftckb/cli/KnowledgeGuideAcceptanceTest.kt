@@ -123,6 +123,10 @@ class KnowledgeGuideAcceptanceTest {
         assertEquals(19,expectedIds.size)
         assertEquals(expectedIds,loaded.rules.map { it.id }.filter { it in expectedIds }.toSet())
         val expectedActiveIds=listOf("official.keep-customizations-in-teamcode")+expectedIds.sorted()
+        val team20827ActiveIds=expectedActiveIds+listOf(
+            "team-20827.chinese-javadoc","team-20827.constants-centralized","team-20827.hardware-container",
+            "team-20827.motor-init-safety","team-20827.naming-conventions","team-20827.telemetry-multiple"
+        ).sorted()
 
         expected.forEach { (guidePath,ids) ->
             val guide=Files.readString(root.resolve(guidePath))
@@ -142,7 +146,7 @@ class KnowledgeGuideAcceptanceTest {
         for (team in listOf("20827","16093")) {
             val resolution=RuleResolver.resolve(loaded.rules,RuleContext(team,"2025-2026"))
             assertTrue(resolution.conflicts.isEmpty(),resolution.conflicts.joinToString())
-            assertEquals(expectedActiveIds,resolution.activeRules.map { it.id },team)
+            assertEquals(if (team=="20827") team20827ActiveIds else expectedActiveIds,resolution.activeRules.map { it.id },team)
         }
     }
 
