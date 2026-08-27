@@ -18,7 +18,7 @@ cd FTC-Knowledge-Bank
 GRADLE_USER_HOME=/tmp/xxx ./gradlew :apps:knowledge-cli:installDist
 ```
 
-知识根目录：仓库内 `knowledge/`（33 条规则：20 条已批准 + 13 条候选，候选规则不会进入 resolve 结果）。
+知识根目录：仓库内 `knowledge/`（33 条规则：26 条已批准 + 7 条候选，候选规则不会进入 resolve 结果）。
 
 ## 2. 命令与退出码
 
@@ -180,7 +180,7 @@ conflict topic=build-customization-location rules=official.a,shared.b   # 退出
 ## 7. 边界与已知限制
 
 - 候选规则（status=candidate）只出现在 `validate` 的 `ruleCount` 里，不会进入 `resolve`。
-- **当前 `knowledge/teams/` 下的队伍规则全部是 candidate**，因此现阶段不同 `--team` 得到的 `activeRules` 完全相同（只有顶层 `team` 字段不同）；队伍规则获批后 `--team` 才会真正改变结果。这不是 bug，对接方无需核对。
+- **`--team` 会改变结果**：20827 已批准 6 条队伍风格规则（比 16093 多 6 条 active 规则）；16093 的队伍规则仍全部是 candidate。对接方请按队号分别裁决。
 - 程序输出的错误消息为英文；规则正文（title/instruction/rationale）为英文，界面文案（web 会话等）另做中文化。
 - `chat` / `eval` / `serve` 不在本契约内：它们基于同一内核构建，但不是给机器消费的接口。
 - 规则冲突目前只能检测（退出码 2），不能自动裁决；由上层 Agent 决定如何处理。

@@ -49,8 +49,8 @@ ftckb check <repo-root> --knowledge knowledge --team 20827 --season 2025-2026 --
 - 修改任何规则/知识文件后，必须 `ftckb validate knowledge --json` 通过（`ok:true`）才算数。
 - `chat` / `eval` / `serve` / `extract` / `candidates` / `approve` 是给人用的交互模式；机器契约只用 validate/resolve/check。
 - 契约破坏性变更必须提升 `schemaVersion`；消费方看到 `schemaVersion!=1` 应停止并报错。
-- 文档中的规则数/测试数快照（当前 33 条规则、417 项测试）随改动同步更新。
-- 已知现状：`knowledge/teams/` 下的队伍规则目前全部是 `candidate`，所以 `resolve` 的结果暂时与 `--team` 无关（activeRules 相同），对接方不要误判为 bug。
+- 文档中的规则数/测试数快照（当前 33 条规则：26 条已批准 + 7 条候选、417 项测试）随改动同步更新。
+- 已知现状：20827 已批准 6 条队伍风格规则（`--team 20827` 比 16093 多 6 条 active 规则）；16093 与其余队伍规则仍是 candidate。不要假设两个队号的 resolve 结果相同。
 - 机器可消费工件：`docs/kernel-contract.schema.json`（JSON Schema）与 `fixtures/kernel/*.json`（真实输出示例：validate-ok / resolve-ok / resolve-conflict / error-usage / error-invalid-knowledge）可直接用来对拍你的解析器。
 
 ## 目录速览
