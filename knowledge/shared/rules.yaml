@@ -3,9 +3,13 @@ rules:
   - id: shared.ftclib-command-candidate
     topic: command-framework
     title: Use FTCLib Command
-    instruction: Use FTCLib Command for scheduled robot actions.
-    rationale: Both reference repositories declare and use FTCLib Command.
-    status: candidate
+    instruction: 使用 subsystem + CommandOpMode 架构：机器人动作组织为 subsystem，由 CommandScheduler 统一调度执行。
+    rationale: 统一的 subsystem/命令架构让动作可组合、可测试，是队内代码的标准组织方式。
+    status: approved
+    approval:
+      approver: "lucasnotfound59"
+      role: overall_software_lead
+      approvedAt: 2026-09-06T03:06:57.152813Z
     authority: shared
     applicability:
       teams: []
@@ -19,3 +23,4 @@ rules:
         commit: 3e6de8944081ef347fbb76b2f97c89b89b10b669
         file: TeamCode/build.gradle
         line: 29
+

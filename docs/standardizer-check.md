@@ -92,13 +92,12 @@ YAML 示例：
 | shared.ftc-sdk-pin-release | regex-forbidden 依赖行含 `+`/`SNAPSHOT`（RobotCore/Hardware/Inspection） |
 | shared.ftc-sdk-preserve-build-tooling | path-forbidden gradle/wrapper/*、gradlew、gradlew.bat |
 | shared.dashboard-pin-stable-dependency | regex-forbidden dashboard 依赖行含 `+`/`SNAPSHOT` |
-| shared.ftclib-pin-module-versions | regex-forbidden ftclib/ftc 依赖行含 `+`/`SNAPSHOT` |
 | shared.limelight-check-result-validity | regex-required 新增结果读取必须带有效性检查 |
 | shared.limelight-enforce-freshness-policy | regex-required 新增结果使用必须带 freshness 检查 |
 
 软提示（行为/结构类，机器无法验证，check 输出 soft）：
 
-dependency-verify-sync-build-run、ftc-sdk-separate-toolchain-versions、ftclib-check-current-prerequisites、
+dependency-verify-sync-build-run、ftc-sdk-separate-toolchain-versions、
 gobilda 四条（SKU/档位/伺服/PID）、limelight-back-up-before-os-update、limelight-configure-camera-pose、
 limelight-synchronize-pipeline-dependent-reads、pedro 三条（坐标转换/定位先行/实机调参）。
 

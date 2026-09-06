@@ -136,7 +136,7 @@ class MainTest {
         assertEquals(0,code)
         val text=output.toString()
         assertTrue(text.contains("official.keep-customizations-in-teamcode"))
-        assertFalse(text.contains("shared.ftclib-command-candidate"))
+        assertTrue(text.contains("shared.ftclib-command-candidate"))
         assertFalse(text.contains("team-20827.hardware-layer-candidate"))
         assertFalse(text.contains("team-16093.fsm-candidate"))
     }
@@ -296,8 +296,7 @@ class MainTest {
             active shared.ftc-sdk-pin-release
             active shared.ftc-sdk-preserve-build-tooling
             active shared.ftc-sdk-separate-toolchain-versions
-            active shared.ftclib-check-current-prerequisites
-            active shared.ftclib-pin-module-versions
+            active shared.ftclib-command-candidate
             active shared.gobilda-identify-exact-sku
             active shared.gobilda-separate-stall-and-operating-values
             active shared.gobilda-servo-mode-and-pwm-range
