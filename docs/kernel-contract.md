@@ -18,7 +18,7 @@ cd FTC-Knowledge-Bank
 GRADLE_USER_HOME=/tmp/xxx ./gradlew :apps:knowledge-cli:installDist
 ```
 
-知识根目录：仓库内 `knowledge/`（43 条规则：25 条已批准 + 18 条候选，候选规则不会进入 resolve 结果）。
+知识根目录：仓库内 `knowledge/`（43 条规则：37 条已批准 + 6 条候选，候选规则不会进入 resolve 结果）。
 
 ## 2. 命令与退出码
 
@@ -187,8 +187,8 @@ conflict topic=build-customization-location rules=official.a,shared.b   # 退出
 
 ## 8. 当前快照
 
-- 知识规则：43 条（25 approved + 18 candidate；candidate 含 4 条 Control Hub LED 官方候选及 12 条 RookieBot 项目实践）。
+- 知识规则：43 条（37 approved + 6 candidate；12 条 RookieBot 项目实践已批准，candidate 仍含 4 条 Control Hub LED 官方候选）。
 - 契约测试与全套离线测试（当前 406 项）随 `build/kotlinc-verify/verify-all.sh` 运行，当前全绿。
 - 机器可消费工件：`docs/kernel-contract.schema.json`（JSON Schema）与 `fixtures/kernel/*.json`（validate-ok / resolve-ok / resolve-conflict / error-usage / error-invalid-knowledge 五种真实输出示例）。
 - 所有命令支持 `--help`（退出码 0）；`ftckb --version` 输出的 CLI 版本（当前 1.0.0）与契约 `schemaVersion`（当前 1）互相独立。
-- 知识规则快照更新：2026-09-06。
+- 知识规则快照更新：2026-09-07。

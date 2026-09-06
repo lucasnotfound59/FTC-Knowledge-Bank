@@ -5,12 +5,12 @@
 ## 状态、来源与适用范围
 
 - 已确认的项目实践：集中 Hardwares、公开分组字段、简洁 OpMode、逐步中文注释、0~360 度舵机变量。
-- 本知识库的机器规则：[rookiebot-tutorial.yaml](../../shared/practices/rookiebot-tutorial.yaml)，12 条均为 `candidate`。项目采用不等于跨队正式审批；未填写或推断审批人角色，`resolve` 暂不将这些新条目列为 active。
+- 本知识库的机器规则：[rookiebot-tutorial.yaml](../../shared/practices/rookiebot-tutorial.yaml)，12 条已于 2026-09-07 经用户明确确认改为 `approved`，审批人为 `lucasnotfound59`（沿用库中 `overall_software_lead` 角色）；`resolve` 会返回这些 active 条目。审批仅覆盖这 12 条，其他来源的 6 条候选规则保持不变。
 - 参考实现：[RookieBot 5581415](https://github.com/OLeslieO/FTC2026-RookieBot/tree/558141588e2a0eb766e195ab71df3c188e942891)，FTC SDK 11.2.1、Pedro 2.1.2；这是来源项目版本，不改动本知识库已有编译 fixture 的版本。
 - 结构参考：[FTC16093 Premier 888b0c7](https://github.com/lucasnotfound59/FTC16093-2026DECODE-Premier/tree/888b0c7894c8badfc6a7bdb4fa558db67446eaed/TeamCode/src/main/java/org/firstinspires/ftc/teamcode)。学习硬件分组和 Pedro 调用，不沿用 `XKCommandOpmode` 命名或复制参考车参数。
 - 已标记的旧版：[flaw 对应 ee45dd0](https://github.com/OLeslieO/FTC2026-RookieBot/commit/ee45dd043aa542e50f7f27f60fae3af0d18e62e3)。它是此前已发布的有缺陷版本，不能继续推荐其无条件抛错的 Follower 工厂。标签只标记该提交，未重写历史。
 
-本约定面向采用 RookieBot 风格的新手教程。当前 `shared.ftclib-command-candidate` 虽然名称带 candidate，状态已是 approved，要求适用项目使用 subsystem + CommandOpMode；20827 也有已批准的硬件分组规范。本文的简洁写法只作为 RookieBot 新手教程候选约定保存，不覆盖正式规则。实际项目先按队号和赛季调用 `ftckb resolve --json`；若需改变已批准架构，须另走审批流程。已有 [Pedro 安全教程](../tools/pedro-pathing.md) 是独立 API/安全教学资料；本文是应用项目的代码组织约定，不替换其唯一编译 fixture。
+本约定面向采用 RookieBot 风格的新手教程。当前 `shared.ftclib-command-candidate` 虽然名称带 candidate，状态已是 approved，要求适用项目使用 subsystem + CommandOpMode；20827 也有已批准的硬件分组规范。本次批准的简洁写法是采用 RookieBot 新手教程约定时的限定做法，不废止其他项目的命令框架和队伍规范。实际项目先按队号和赛季调用 `ftckb resolve --json`，再遵守 instruction 中的项目范围。当前解析器只按队号/赛季筛选，不能自动识别 RookieBot 项目；返回 active 不等于所有项目都要采用该风格。需要更改其他项目架构时，仍须另走审批流程。已有 [Pedro 安全教程](../tools/pedro-pathing.md) 是独立 API/安全教学资料；本文是应用项目的代码组织约定，不替换其唯一编译 fixture。
 
 ## 1. 所有硬件声明和初始化集中在 Hardwares
 

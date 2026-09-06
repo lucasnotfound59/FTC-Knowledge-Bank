@@ -309,6 +309,18 @@ class MainTest {
             active shared.pedro-explicit-coordinate-conversion
             active shared.pedro-localization-before-follower
             active shared.pedro-tune-current-robot
+            active shared.rookiebot-hardware-groups
+            active shared.rookiebot-hardware-init
+            active shared.rookiebot-java-imports
+            active shared.rookiebot-nonblocking-auto
+            active shared.rookiebot-pedro-complete-builder
+            active shared.rookiebot-sdk-path-hygiene
+            active shared.rookiebot-servo-degrees
+            active shared.rookiebot-simple-opmode
+            active shared.rookiebot-source-provenance
+            active shared.rookiebot-step-comments
+            active shared.rookiebot-template-activation
+            active shared.rookiebot-verification-evidence
             active team-20827.chinese-javadoc
             active team-20827.constants-centralized
             active team-20827.hardware-container

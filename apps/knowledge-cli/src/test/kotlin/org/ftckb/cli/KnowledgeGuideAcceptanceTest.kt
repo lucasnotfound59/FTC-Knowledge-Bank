@@ -18,6 +18,20 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 
 class KnowledgeGuideAcceptanceTest {
+    private val rookieIds=setOf(
+        "shared.rookiebot-hardware-init",
+        "shared.rookiebot-hardware-groups",
+        "shared.rookiebot-simple-opmode",
+        "shared.rookiebot-step-comments",
+        "shared.rookiebot-servo-degrees",
+        "shared.rookiebot-template-activation",
+        "shared.rookiebot-pedro-complete-builder",
+        "shared.rookiebot-nonblocking-auto",
+        "shared.rookiebot-sdk-path-hygiene",
+        "shared.rookiebot-java-imports",
+        "shared.rookiebot-verification-evidence",
+        "shared.rookiebot-source-provenance"
+    )
     private val root=Path.of("..","..","knowledge").normalize()
     private val repositoryRoot=root.parent.toAbsolutePath().normalize()
     private val linkPattern=Regex("""\[[^]]+]\(([^)]+)\)""")
@@ -121,7 +135,7 @@ class KnowledgeGuideAcceptanceTest {
 
         assertEquals(18,expectedIds.size)
         assertEquals(expectedIds,loaded.rules.map { it.id }.filter { it in expectedIds }.toSet())
-        val expectedActiveIds=listOf("official.keep-customizations-in-teamcode")+expectedIds.sorted()
+        val expectedActiveIds=listOf("official.keep-customizations-in-teamcode")+(expectedIds+rookieIds).sorted()
         val team20827ActiveIds=expectedActiveIds+listOf(
             "team-20827.chinese-javadoc","team-20827.constants-centralized","team-20827.hardware-container",
             "team-20827.motor-init-safety","team-20827.naming-conventions","team-20827.telemetry-multiple"
@@ -146,6 +160,25 @@ class KnowledgeGuideAcceptanceTest {
             val resolution=RuleResolver.resolve(loaded.rules,RuleContext(team,"2025-2026"))
             assertTrue(resolution.conflicts.isEmpty(),resolution.conflicts.joinToString())
             assertEquals(if (team=="20827") team20827ActiveIds else expectedActiveIds,resolution.activeRules.map { it.id },team)
+        }
+    }
+
+    @Test
+    fun `RookieBot approval covers exactly twelve scoped rules and preserves remaining candidates`() {
+        val loaded=FileKnowledgeRepository.load(root)
+        assertTrue(loaded.violations.isEmpty(),loaded.violations.joinToString())
+        val rookie=loaded.rules.filter { it.id.startsWith("shared.rookiebot-") }
+        assertEquals(rookieIds,rookie.map { it.id }.toSet())
+        assertEquals(43,loaded.rules.size)
+        assertEquals(37,loaded.rules.count { it.status==RuleStatus.APPROVED })
+        assertEquals(6,loaded.rules.count { it.status==RuleStatus.CANDIDATE })
+        rookie.forEach { rule ->
+            assertEquals(RuleStatus.APPROVED,rule.status,rule.id)
+            assertEquals(RuleAuthority.SHARED,rule.authority,rule.id)
+            assertEquals("lucasnotfound59",rule.approval?.approver,rule.id)
+            assertEquals(ApproverRole.OVERALL_SOFTWARE_LEAD,rule.approval?.role,rule.id)
+            assertNotNull(rule.approval?.approvedAt,rule.id)
+            assertTrue(rule.instruction.startsWith("适用范围：采用 RookieBot 新手教程约定的项目"),rule.id)
         }
     }
 
