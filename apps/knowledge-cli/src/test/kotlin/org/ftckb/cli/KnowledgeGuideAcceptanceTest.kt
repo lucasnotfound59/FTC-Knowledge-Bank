@@ -86,8 +86,7 @@ class KnowledgeGuideAcceptanceTest {
             "shared.ftc-sdk-separate-toolchain-versions"
         ),
         "guides/setup/ftclib.md" to setOf(
-            "shared.ftclib-check-current-prerequisites",
-            "shared.ftclib-pin-module-versions"
+            "shared.ftclib-command-candidate"
         ),
         "guides/setup/ftc-dashboard.md" to setOf(
             "shared.dashboard-pin-stable-dependency",
@@ -120,7 +119,7 @@ class KnowledgeGuideAcceptanceTest {
         val byId=loaded.rules.associateBy { it.id }
         val expectedIds=expected.values.flatten().toSet()
 
-        assertEquals(19,expectedIds.size)
+        assertEquals(18,expectedIds.size)
         assertEquals(expectedIds,loaded.rules.map { it.id }.filter { it in expectedIds }.toSet())
         val expectedActiveIds=listOf("official.keep-customizations-in-teamcode")+expectedIds.sorted()
         val team20827ActiveIds=expectedActiveIds+listOf(

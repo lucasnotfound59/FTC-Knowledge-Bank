@@ -25,7 +25,7 @@ FTCLib 是面向 FTC 的 Java 辅助库，包含 command-based 框架、控制�
 | `core:2.1.1` | FTCLib 页面列出的 core 版本 | 精确加入 `TeamCode/build.gradle` |
 | `vision:2.1.0` | FTCLib 页面列出的可选版本 | 只在确实使用 FTCLib vision 时加入，并完成其官方前置条件 |
 
-这体现两条原则：`shared.ftclib-check-current-prerequisites` 要求先比较；`shared.ftclib-pin-module-versions` 要求只安装需要的模块并固定精确版本。
+版本选择原则：只安装需要的模块并固定精确版本；代码组织上统一使用 subsystem + CommandOpMode 架构（见 `shared.ftclib-command-candidate`）。
 
 ## 安装 core
 
@@ -145,10 +145,9 @@ android {
 
 ## 相关规则
 
-- `shared.ftclib-check-current-prerequisites`
-- `shared.ftclib-pin-module-versions`
+- `shared.ftclib-command-candidate`
 
-这些规则当前都是 `candidate`，尚未自动生效。
+该规则已批准生效：代码统一使用 subsystem + CommandOpMode 架构。
 
 ## 官方来源
 
