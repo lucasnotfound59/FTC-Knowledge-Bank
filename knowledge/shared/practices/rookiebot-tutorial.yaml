@@ -1,0 +1,299 @@
+# RookieBot 项目已确认实践；跨队共享 candidate，不代表 FIRST 官方要求。
+# 新建条目未记录或推断审批人角色；适用项目范围由各 instruction 明确限定。
+schemaVersion: 2
+rules:
+  - id: shared.rookiebot-hardware-init
+    topic: rookiebot-hardware-init
+    title: "集中声明和初始化所有硬件"
+    instruction: "在采用 RookieBot 新手教程约定的项目中，把所有电机、舵机、传感器的字段、配置名称、查找、方向与初始化集中在 Hardwares。Pedro 内部也会初始化设备，因此 Follower 的硬件构造入口同样放在 Hardwares；Constants 仅保存调参数据，Auto/TeleOp 不另建硬件初始化入口。"
+    rationale: "硬件定义只有一个维护位置，避免 Auto、TeleOp 和 Pedro 使用不同名字、方向或重复重置定位器。"
+    status: candidate
+    authority: shared
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - type: git
+        repository: "OLeslieO/FTC2026-RookieBot"
+        commit: "558141588e2a0eb766e195ab71df3c188e942891"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/Hardwares.java"
+        symbol: "Hardwares"
+      - type: git
+        repository: "OLeslieO/FTC2026-RookieBot"
+        commit: "558141588e2a0eb766e195ab71df3c188e942891"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/pedroPathing/Constants.java"
+        symbol: "Constants"
+    positiveExample: |-
+      Hardwares hardwares=new Hardwares(hardwareMap);
+      follower=hardwares.createFollower();
+    negativeExample: "在每个 Auto/TeleOp 内重复 hardwareMap.get() 和 setDirection()。"
+  - id: shared.rookiebot-hardware-groups
+    topic: rookiebot-hardware-groups
+    title: "按 motors、servos、sensors 直接访问设备"
+    instruction: "在 Hardwares 中用 Motors、Servos、Sensors 分组并公开设备字段，通过 hardwares.motors.motor1、hardwares.servos.servo1、hardwares.sensors.pinpoint 直接使用。新增设备时同时增加字段与对应分组构造方法内的初始化；新手示例不强加多层 getter、机构包装或调度器。只加载部分分组时明确记录未初始化字段为 null。Pedro 运行时由 Follower 统一输出底盘功率和更新 Pinpoint；不要同时手动写同一组轮子的功率，也不要重复更新或重置定位器。"
+    rationale: "保留一个容易查找的设备清单，同时让新手能从调用位置直接定位到硬件声明。"
+    status: candidate
+    authority: shared
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - type: git
+        repository: "OLeslieO/FTC2026-RookieBot"
+        commit: "558141588e2a0eb766e195ab71df3c188e942891"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/Hardwares.java"
+        symbol: "Hardwares.Motors"
+      - type: git
+        repository: "OLeslieO/FTC2026-RookieBot"
+        commit: "558141588e2a0eb766e195ab71df3c188e942891"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/MecanumDrive.java"
+        symbol: "MecanumDrive.runOpMode"
+    positiveExample: |-
+      // 仅在底盘没有交给 Follower 控制时手动写轮子功率。
+      hardwares.motors.leftFront.setPower(power);
+      hardwares.servos.servo1.setPosition(Hardwares.servoAngleToPosition(angleDegrees));
+    negativeExample: "只声明 motor1 却不初始化，或在仅加载电机时访问 hardwares.servos。"
+  - id: shared.rookiebot-simple-opmode
+    topic: rookiebot-simple-opmode
+    title: "使用简单生命周期和通用命名"
+    instruction: "RookieBot 新手教程优先直接使用 FTC OpMode 或 LinearOpMode，用少量清晰方法和 switch(step) 表达流程。类名使用 Hardwares、Constants、MecanumDrive、ServoPedroAutoExample 等可理解名称，不沿用 XKCommandOpmode 等来源特定命名，不为演示基础调用引入自定义命令框架和多层嵌套。"
+    rationale: "教程先教清楚 SDK 生命周期、硬件访问和动作顺序；参考代码的组织方式不等于必须复制其框架。"
+    status: candidate
+    authority: shared
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - type: git
+        repository: "OLeslieO/FTC2026-RookieBot"
+        commit: "558141588e2a0eb766e195ab71df3c188e942891"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/examples/autonomous/ServoPedroAutoExample.java"
+        symbol: "ServoPedroAutoExample"
+      - type: git
+        repository: "OLeslieO/FTC2026-RookieBot"
+        commit: "558141588e2a0eb766e195ab71df3c188e942891"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/MecanumDrive.java"
+        symbol: "MecanumDrive"
+    positiveExample: |-
+      public final class ServoPedroAutoExample extends OpMode { /* init/start/loop/stop */ }
+    negativeExample: "只为了执行舵机和两段路径而新增多个自定义 CommandOpMode 基类。"
+  - id: shared.rookiebot-step-comments
+    topic: rookiebot-step-comments
+    title: "逐步解释用途、单位和修改方法"
+    instruction: "给新手示例的每个有意义步骤添加中文注释，解释做什么、何时执行、为什么需要，以及修改时该改哪些字段或方法。覆盖设备声明与查找、Java 字段名与配置名称、角度与距离单位、生命周期、路径构建、等待和状态跳转；重命名设备时同步更新源码和说明文档。"
+    rationale: "注释应帮助读者独立新增设备或调整动作，而不是只把方法名翻译一遍。"
+    status: candidate
+    authority: shared
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - type: git
+        repository: "OLeslieO/FTC2026-RookieBot"
+        commit: "558141588e2a0eb766e195ab71df3c188e942891"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/Hardwares.java"
+        symbol: "Hardwares.Servos"
+      - type: git
+        repository: "OLeslieO/FTC2026-RookieBot"
+        commit: "558141588e2a0eb766e195ab71df3c188e942891"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/examples/README.md"
+        line: 1
+    positiveExample: |-
+      新增 servo3：在 Servos 加字段，在构造方法中查找，然后使用 hardwares.servos.servo3。
+    negativeExample: "注释仍使用已删除的 release 字段，或不说明 NaN/null 是待填写标记。"
+  - id: shared.rookiebot-servo-degrees
+    topic: rookiebot-servo-degrees
+    title: "舵机业务变量用度数并统一换算"
+    instruction: "RookieBot 位置舵机教程的业务变量使用 0~360 度，并使用 CLOSED_ANGLE_DEGREES 等带单位名称。统一调用 Hardwares.servoAngleToPosition(angleDegrees) 计算 angleDegrees/360.0，再传给 Servo.setPosition；拒绝非有限值及范围外角度，360 映射到 1 而不是绕回 0。明确这只是满行程映射约定，真实转角仍由型号、模式、PWM 与标定决定，不适用于 CRServo 的速度命令。"
+    rationale: "新手直接阅读目标角度，换算逻辑只维护一份，同时避免将软件刻度误当作所有舵机的机械能力。"
+    status: candidate
+    authority: shared
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - type: git
+        repository: "OLeslieO/FTC2026-RookieBot"
+        commit: "558141588e2a0eb766e195ab71df3c188e942891"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/Hardwares.java"
+        symbol: "Hardwares.servoAngleToPosition"
+      - type: git
+        repository: "OLeslieO/FTC2026-RookieBot"
+        commit: "558141588e2a0eb766e195ab71df3c188e942891"
+        file: "TeamCode/src/test/java/org/firstinspires/ftc/teamcode/ServoAngleConversionTest.java"
+        symbol: "ServoAngleConversionTest"
+    positiveExample: |-
+      double angleDegrees=180;
+      hardwares.servos.servo1.setPosition(Hardwares.servoAngleToPosition(angleDegrees));
+    negativeExample: "servo1.setPosition(180); 或用 angleDegrees%360 把 360 变回起点。"
+  - id: shared.rookiebot-template-activation
+    topic: rookiebot-template-activation
+    title: "区分安全占位模板和要运行的队伍 Auto"
+    instruction: "仓库教学模板保留 @Disabled、配置锁和未填写参数，初始化前检查配置锁；注释明确：队伍自己要在 Driver Station 中选择运行的 Auto 不能添加或保留 @Disabled。先填写并验证当前机器人配置，再开启配置锁并移除该注解；不得只删注解就直接运行占位模板。"
+    rationale: "模板应能编译和展示调用，但不能因被误选就启动未配置的硬件；实际 Auto 则必须能显示在菜单中。"
+    status: candidate
+    authority: shared
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - type: git
+        repository: "OLeslieO/FTC2026-RookieBot"
+        commit: "558141588e2a0eb766e195ab71df3c188e942891"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/examples/autonomous/ServoPedroAutoExample.java"
+        symbol: "ServoPedroAutoExample"
+    positiveExample: |-
+      // 只有示例使用 @Disabled；队伍自己要运行的 Auto 不能添加或保留它。
+    negativeExample: "用 @Disabled 隐藏真正要运行的 Auto，却没有解释为什么 Driver Station 看不到它。"
+  - id: shared.rookiebot-pedro-complete-builder
+    topic: rookiebot-pedro-complete-builder
+    title: "Pedro 构造必须接入底盘和定位器"
+    instruction: "参考代码前先核对所选 Pedro 版本。RookieBot 的 Pedro 2.1.2 构造链必须实际提供 drivetrain 和 localizer，再 build()；其麦轮和 Pinpoint 初始化入口在 Hardwares.createFollower。禁止把空 FollowerBuilder.build() 或永远抛错的函数当成完整可配置示例；条件配置锁可保留，但锁后须有真实构造实现。不要照抄参考车的机器人专属调参。"
+    rationale: "编译通过只能证明签名可用；缺少底盘或定位器的构造链不能完成初始化。"
+    status: candidate
+    authority: shared
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - type: git
+        repository: "OLeslieO/FTC2026-RookieBot"
+        commit: "558141588e2a0eb766e195ab71df3c188e942891"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/Hardwares.java"
+        symbol: "Hardwares.createFollower"
+      - type: git
+        repository: "OLeslieO/FTC2026-RookieBot"
+        commit: "558141588e2a0eb766e195ab71df3c188e942891"
+        file: "build.dependencies.gradle"
+        line: 17
+    positiveExample: |-
+      new FollowerBuilder(Constants.followerConstants(),hardwareMap)
+              .mecanumDrivetrain(driveConstants)
+              .pinpointLocalizer(localizerConstants)
+              .build(); // 此段位于 Hardwares 内
+    negativeExample: "new FollowerBuilder(new FollowerConstants(),hardwareMap).build();"
+  - id: shared.rookiebot-nonblocking-auto
+    topic: rookiebot-nonblocking-auto
+    title: "用非阻塞步骤组合舵机与路径"
+    instruction: "在 init 中初始化并建路径，在 start 中启动首段，在每次 loop 中调用 follower.update。只在进入对应步骤时调用 followPath，以 isBusy 和计时器决定跳转；等待舵机时不能 sleep 或忙等，计时器只在进入等待阶段时重置。STOP 或异常时取消跟随，异常后不要在保护范围外继续查询故障对象；isBusy=false 不等于实物已零误差到点。"
+    rationale: "持续更新定位与控制，同时保证舵机等待不会冻结寻路，也避免每帧重启同一路径。"
+    status: candidate
+    authority: shared
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - type: git
+        repository: "OLeslieO/FTC2026-RookieBot"
+        commit: "558141588e2a0eb766e195ab71df3c188e942891"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/examples/autonomous/ServoPedroAutoExample.java"
+        symbol: "ServoPedroAutoExample.loop"
+    positiveExample: |-
+      case 1:
+          if(timer.seconds()<SERVO_WAIT_SECONDS) break;
+          follower.followPath(toPark,PATH_MAX_POWER,false);
+          step=2;
+          break;
+    negativeExample: "在每次 loop 中同时 timer.reset() 和 followPath()，或用 sleep 等待舵机。"
+  - id: shared.rookiebot-sdk-path-hygiene
+    topic: rookiebot-sdk-path-hygiene
+    title: "共享项目不提交个人 SDK 路径与构建产物"
+    instruction: "共享 FTC 项目不得提交个人 sdk.dir 或 local.properties；使用各自机器生成的 local.properties 或 ANDROID_HOME 配置 Android SDK。忽略 Gradle/build、IDE 和临时 worktree 等本机产物，保留项目所需的 wrapper 与构建配置。说明新电脑需要自己的 JDK、SDK 和依赖准备，不能保证任意环境无需配置就可构建。"
+    rationale: "机器专属绝对路径和构建产物会破坏共享仓库的可移植性。"
+    status: candidate
+    authority: shared
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - type: git
+        repository: "OLeslieO/FTC2026-RookieBot"
+        commit: "558141588e2a0eb766e195ab71df3c188e942891"
+        file: ".gitignore"
+        line: 1
+      - type: git
+        repository: "OLeslieO/FTC2026-RookieBot"
+        commit: "558141588e2a0eb766e195ab71df3c188e942891"
+        file: "README.md"
+        line: 15
+    positiveExample: |-
+      local.properties
+      .gradle/
+      **/build/
+      .idea/
+      *.iml
+    negativeExample: "在提交的 local.properties 中写入某个开发者的用户目录。"
+  - id: shared.rookiebot-java-imports
+    topic: rookiebot-java-imports
+    title: "使用正确的项目类与测试断言导入"
+    instruction: "测试使用 org.junit.Assert，不要同时导入 FTC 内部 Assert 的同名静态方法。项目的 Constants 必须解析为本项目的类，不能误导入 com.sun.tools.javac.util.Constants。出现 Android Studio 红线时检查第一条具体报错、import 和 Gradle 配置，并编译生产及测试源集；不要仅靠反复自动补全 imports。"
+    rationale: "同名类型和方法可能被 IDE 错误导入，导致类不存在预期方法或断言调用歧义。"
+    status: candidate
+    authority: shared
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - type: git
+        repository: "OLeslieO/FTC2026-RookieBot"
+        commit: "558141588e2a0eb766e195ab71df3c188e942891"
+        file: "TeamCode/src/test/java/org/firstinspires/ftc/teamcode/examples/autonomous/ServoPedroAutoExampleTest.java"
+        symbol: "ServoPedroAutoExampleTest"
+      - type: git
+        repository: "OLeslieO/FTC2026-RookieBot"
+        commit: "558141588e2a0eb766e195ab71df3c188e942891"
+        file: "TeamCode/src/test/java/org/firstinspires/ftc/teamcode/ServoAngleConversionTest.java"
+        symbol: "ServoAngleConversionTest"
+    positiveExample: |-
+      import org.junit.Assert;
+      Assert.assertEquals(0.5,Hardwares.servoAngleToPosition(180),1e-12);
+    negativeExample: "同时静态导入 org.junit.Assert.assertTrue 和 FTC 内部 Assert.assertTrue。"
+  - id: shared.rookiebot-verification-evidence
+    topic: rookiebot-verification-evidence
+    title: "分别报告编译、测试和真机验证"
+    instruction: "交付 RookieBot 变更时运行与变更相关的单元测试和 :TeamCode:assembleDebug，并报告所验证的提交或工作区、命令、结果与实际覆盖。区分 Android Studio 索引状态、Gradle 编译、单元测试、部署和真机运行；测试或构建通过不能表述为机器人已运行成功，也不能把已删除测试计入当前结果。"
+    rationale: "真实验证证据应与交付版本对应，软件门禁无法替代接线、定位、机械运动或场地测试。"
+    status: candidate
+    authority: shared
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - type: git
+        repository: "OLeslieO/FTC2026-RookieBot"
+        commit: "558141588e2a0eb766e195ab71df3c188e942891"
+        file: "TeamCode/src/test/java/org/firstinspires/ftc/teamcode/ServoAngleConversionTest.java"
+        symbol: "ServoAngleConversionTest"
+      - type: git
+        repository: "OLeslieO/FTC2026-RookieBot"
+        commit: "558141588e2a0eb766e195ab71df3c188e942891"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/examples/README.md"
+        line: 1
+    positiveExample: |-
+      ./gradlew :TeamCode:testDebugUnitTest :TeamCode:assembleDebug
+      报告：测试/构建结果，以及是否实际部署或运行机器人。
+    negativeExample: "仅看到 BUILD SUCCESSFUL 就声称任何机器人均可直接成功运行。"
+  - id: shared.rookiebot-source-provenance
+    topic: rookiebot-source-provenance
+    title: "保留参考来源并排除已标记缺陷版本"
+    instruction: "记录代码参考的仓库与固定提交。RookieBot 当前舵机角度教程来源为 558141588e2a0eb766e195ab71df3c188e942891；其前一已发布版本 ee45dd043aa542e50f7f27f60fae3af0d18e62e3 被用户标记为 flaw，不应作为推荐模板继续复制。学习 Premier 的结构和 API，不复制 XKCommandOpmode 命名或硬件专属值；flaw 标记针对这个旧提交，不表示所有历史版本均有问题。"
+    rationale: "固定提交可以追溯改动，缺陷版本标签防止后续检索重新推荐已替换实现。"
+    status: candidate
+    authority: shared
+    applicability:
+      teams: []
+      seasons: []
+    evidence:
+      - type: git
+        repository: "OLeslieO/FTC2026-RookieBot"
+        commit: "558141588e2a0eb766e195ab71df3c188e942891"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/examples/README.md"
+        line: 1
+      - type: git
+        repository: "OLeslieO/FTC2026-RookieBot"
+        commit: "ee45dd043aa542e50f7f27f60fae3af0d18e62e3"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/pedroPathing/Constants.java"
+        symbol: "Constants.createFollower"
+    positiveExample: |-
+      参考 OLeslieO/FTC2026-RookieBot@558141588e2a0eb766e195ab71df3c188e942891；保留 flaw 标签的历史含义。
+    negativeExample: "继续把 flaw 提交中无条件抛错的 Constants.createFollower 当作已修复实现。"

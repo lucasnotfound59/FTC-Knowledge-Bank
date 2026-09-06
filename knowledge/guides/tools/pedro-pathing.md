@@ -1,5 +1,7 @@
 # Pedro Pathing 新生 Auto 教程
 
+采用 RookieBot 新手项目结构时，另见 [Hardwares 与简洁 Auto 约定](../practices/rookiebot-tutorial.md)。它规定应用项目的硬件集中初始化和命名方式；本页独立 API/安全示例与编译 fixture 保留原有职责，不表示业务 Auto 应分散查找硬件。
+
 > 核验日期：2026-08-14。本教程的目标不是让机器人第一次上电就跑完整 Auto，而是让新队员知道每一个值填什么、从哪里测、单位是什么，以及看到什么才算通过。
 
 ## 适用范围与证据标签

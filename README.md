@@ -9,7 +9,7 @@
 | 状态 | 能力 |
 | --- | --- |
 | 已实现 | schema v1/v2 规则模型、Git/官方网页证据、严格本地 YAML 加载、证据与审批校验、规则优先级和冲突解析、`validate` / `resolve` CLI、连续聊天 Agent（Ask 两阶段检索 + 引用校验、Edit 事务写入 + undo/discard）、OpenAI-compatible provider（DeepSeek/OpenAI/自定义端点）、提示注入与上下文预算防御、固定 FTC 质量评估（`eval`）、`ftckb` 分发与用户文档 |
-| 部分完成 | `knowledge/` 当前包含 31 条规则：25 条已批准规则（1 条官方、18 条共享、6 条 20827 队伍规则）和 6 条候选规则（含 4 条 Control Hub LED 官方候选）；候选规则保持 inactive，已有 6 篇 FTC SDK、依赖与工具教程，队伍知识内容仍需扩充 |
+| 部分完成 | `knowledge/` 当前包含 43 条规则：25 条已批准规则（1 条官方、18 条共享、6 条 20827 队伍规则）和 18 条候选规则（含 4 条 Control Hub LED 官方候选及 12 条 RookieBot 项目实践）；候选规则保持 inactive，已有 8 篇 SDK、工具、故障排查及项目实践教程，队伍知识内容仍需扩充 |
 | 尚未实现 | 候选规范自动提取、审批 UI/历史、Run 模式、官方文档联网检索、Android Studio 插件、Control Hub 部署 |
 
 当前测试套件有 406 项测试全部通过（JDK 21 工具链构建时自动下载）；这是当前快照，测试数量会随功能增长。
@@ -77,14 +77,14 @@ Windows PowerShell 使用 wrapper 的 `.bat` 文件：
 关键输出会包括：
 
 ```text
-validation=ok rules=27
+validation=ok rules=43
 active official.keep-customizations-in-teamcode
 active shared.dashboard-pin-stable-dependency
 ...
 active shared.pedro-tune-current-robot
 ```
 
-该上下文会输出官方规则以及所有适用的已批准共享规则（共 20 条）；其余 3 条规则是 `candidate`，保持 inactive，因此不会出现在 active 输出中。候选规则不会自动生效。
+20827 在该赛季会输出 25 条 active 规则（1 条官方、18 条共享、6 条队伍规则）；16093 为 19 条。其余 18 条规则是 `candidate`，保持 inactive；新增 RookieBot 约定不会自动覆盖已批准架构。
 
 ## ftckb 命令行 Agent：两种用法
 
@@ -200,6 +200,9 @@ ftckb resolve <knowledge-root> --team 20827 --season 2025-2026 --json
 - [Pedro Pathing 配置、定位与调参](knowledge/guides/tools/pedro-pathing.md)
 - [goBILDA 电机与舵机：从精确 SKU 到代码](knowledge/guides/tools/gobilda-motors-servos.md)
 - [Limelight 3A：接线、pipeline、结果与定位](knowledge/guides/tools/limelight-3a.md)
+- [RookieBot 新手代码约定：Hardwares、Auto、中文注释与舵机角度](knowledge/guides/practices/rookiebot-tutorial.md)
+
+RookieBot 已确认的 12 项项目实践记录在 [结构化候选规则](knowledge/shared/practices/rookiebot-tutorial.yaml) 中，来源固定到 `5581415`；它们保留项目适用边界和 `flaw` 旧版记录，尚未填写跨队审批信息，不会自动替代现有正式规则。
 
 Pedro 新人 Auto 工作流从完整的 [参数字典](knowledge/guides/tools/pedro-pathing.md#safepedroauto-参数字典) 和 [四阶段实车测试清单](knowledge/guides/tools/pedro-pathing.md#四阶段实车测试清单) 开始。仓库只保留一份 [SafePedroAuto.java](knowledge/examples/pedro/SafePedroAuto.java) 规范示例；它默认锁定，在完成机器人专属配置并逐阶段验证前不可运行。
 
@@ -229,6 +232,7 @@ CLI 会递归读取知识根目录中扩展名为小写 `.yaml` 或 `.yml` 的�
 | `knowledge/shared/rules.yaml` | 跨队共享规则与候选规则 |
 | `knowledge/shared/setup/` | Android Studio、FTC SDK 与第三方依赖共享规则 |
 | `knowledge/shared/tools/` | Pedro、goBILDA 与 Limelight 工具共享规则 |
+| `knowledge/shared/practices/` | 有固定代码来源、明确适用范围的项目实践候选规则 |
 | `knowledge/guides/` | 面向队员的中文教程；不会被规则加载器解析 |
 | `knowledge/teams/<team>/rules.yaml` | 队号专属规则与候选规则 |
 | `knowledge/schema/examples/rule-example.yaml.example` | schema v1 Git 证据示例；扩展名不会被递归加载 |
