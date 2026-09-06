@@ -1,18 +1,18 @@
 # FTC Knowledge Bank
 
-一个面向 FTC 队伍的知识库与编程 Agent 项目。它将队伍认可的代码规范、常用工具、工程经验和安全约束整理成可检索、可审批、可验证的知识，使 AI Agent 在解释或修改机器人代码时遵循真实的队伍实践。
+一个面向 FTC 队伍的知识库与「规范器」项目：把队伍认可的代码规范、常用工具、工程经验和安全约束整理成可检索、可审批、可验证、**可执法**的知识，让**所有 AI Agent 写出同一标准的机器人代码**。外部 Agent 通过稳定 JSON 契约接入（写码前 `resolve` 拿规则，提交前 `check` 验改动）；队员通过命令行聊天或网页会话直接使用。
 
 ## 项目状态
 
-当前仓库已经完成 **Knowledge Core Foundation** 与 **命令行 Agent（Ask/Edit）**；Run 模式、Android Studio 插件与 IDE 客户端尚未实现。
+当前仓库已完成 **Knowledge Core Foundation**、**命令行 Agent（Ask/Edit）**、**规范器（`ftckb check`）**、**候选提取与审批流**、**网页会话（`ftckb serve`）** 与 **Android Studio 插件**；Run 模式与官方文档联网检索尚未实现。
 
 | 状态 | 能力 |
 | --- | --- |
-| 已实现 | schema v1/v2 规则模型、Git/官方网页证据、严格本地 YAML 加载、证据与审批校验、规则优先级和冲突解析、`validate` / `resolve` CLI、连续聊天 Agent（Ask 两阶段检索 + 引用校验、Edit 事务写入 + undo/discard）、OpenAI-compatible provider（DeepSeek/OpenAI/自定义端点）、提示注入与上下文预算防御、固定 FTC 质量评估（`eval`）、`ftckb` 分发与用户文档 |
-| 部分完成 | `knowledge/` 当前包含 43 条规则：25 条已批准规则（1 条官方、18 条共享、6 条 20827 队伍规则）和 18 条候选规则（含 4 条 Control Hub LED 官方候选及 12 条 RookieBot 项目实践）；候选规则保持 inactive，已有 8 篇 SDK、工具、故障排查及项目实践教程，队伍知识内容仍需扩充 |
-| 尚未实现 | 候选规范自动提取、审批 UI/历史、Run 模式、官方文档联网检索、Android Studio 插件、Control Hub 部署 |
+| 已实现 | schema v1–v3 规则模型（含机器可执行 `checks`）、Git/官方网页证据、严格本地 YAML 加载、证据与审批校验、`OFFICIAL > TEAM > SHARED` 确定性裁决、`validate` / `resolve` / `check` / `candidates` / `approve` / `reject` / `extract` CLI、稳定机器契约（`--json`、统一错误形状、JSON Schema + fixtures）、连续聊天 Agent（Ask 两阶段检索 + 引用校验、Edit 事务写入 + undo/discard）、OpenAI-compatible provider（DeepSeek/OpenAI/自定义端点）、提示注入与上下文预算防御、固定质量评估（`eval`，线上连续 5/5）、网页会话（`serve`）、Android Studio 插件、CI 门禁脚本 |
+| 部分完成 | `knowledge/` 当前包含 43 条规则：25 条已批准（1 条官方、18 条共享、6 条 20827 队伍规则，其中 6 条带硬检查）和 18 条候选（含 4 条 Control Hub LED 官方候选及 12 条 RookieBot 项目实践）；候选规则保持 inactive，已有 8 篇 SDK、工具、故障排查及项目实践教程，队伍知识内容仍需扩充 |
+| 尚未实现 | 审批 UI/历史、Run 模式、官方文档联网检索、Control Hub 部署 |
 
-当前测试套件有 406 项测试全部通过（JDK 21 工具链构建时自动下载）；这是当前快照，测试数量会随功能增长。
+当前测试套件有 417 项测试全部通过（JDK 21 工具链构建时自动下载）；这是当前快照，测试数量会随功能增长。
 
 
 ## 5 分钟快速开始
@@ -86,9 +86,23 @@ active shared.pedro-tune-current-robot
 
 20827 在该赛季会输出 25 条 active 规则（1 条官方、18 条共享、6 条队伍规则）；16093 为 19 条。其余 18 条规则是 `candidate`，保持 inactive；新增 RookieBot 约定不会自动覆盖已批准架构。
 
-## ftckb 命令行 Agent：两种用法
+## ftckb 的两种用法（接入外部 Agent 为第一优先级）
 
-### 用法一：开盖即食（队员直接用聊天 Agent）
+### 用法一：接入外部 Agent（核心用法）
+
+本仓库的核心业务是**规范器**：让所有 Agent（Codex / Claude Code / Qoder / DSH / 任意能跑 shell 的脚本）写出同一标准的 FTC 代码。外部 Agent 不要读规则文本，只调用两个确定性命令，组成完整闭环：
+
+```
+写码前 · 告知   ftckb resolve <knowledge> --team N --season YYYY-YYYY --json
+               → 拿生效规则当权威上下文（OFFICIAL > TEAM > SHARED 由确定性代码裁决）
+写码后 · 执法   ftckb check <repo> --knowledge <knowledge> --team N --season YYYY-YYYY --json
+               → 对 diff 新增行做机器检查；有硬违规退出码 1，行为类规则给 soft 提示
+```
+
+闭环四步：① `resolve` 拿规则 → ② 按规则写码 → ③ `check` 验证改动 → ④ 把 check 结果写进提交说明。
+规则更新后**无需任何重装**：Agent 端不保存规则副本，`git pull` 后下一次 `resolve`/`check` 自动用新规则。
+
+### 用法二：开盖即食（队员直接用聊天 Agent）
 
 1. **环境**：任意 JDK（缺 JDK 21 工具链时构建会自动下载）+ Git（Edit 模式要求目标仓库是 Git 仓库）。
 2. **拿代码**：`git clone https://github.com/lucasnotfound59/FTC-Knowledge-Bank.git`（默认分支 `main` 即最新；`codex/cli-agent` 仅作为开发分支存在）。
@@ -115,18 +129,11 @@ ftckb chat --knowledge knowledge --team 20827 --season 2025-2026 --provider deep
    - **不记命令就用网页**：`ftckb serve --knowledge knowledge --team 20827 --season 2025-2026 --provider deepseek --repo /path/to/FtcRobotController` —— 自动打开浏览器（127.0.0.1 本机），中文界面、按钮操作、一次性 token 防窥探，改参数不清空对话。
 8. **自己体检**：`ftckb eval --cases fixtures/agent/eval/cases.yaml --knowledge knowledge --provider deepseek --output report.md` 会跑 5 个固定场景并给出逐条 PASS/FAIL。
 
-完整命令、配置字段、安全边界与隐私说明见 [docs/cli-agent.md](docs/cli-agent.md)。当前不包含：官方文档联网、Run/Gradle 执行、Control Hub 部署、Android Studio 插件。
+完整命令、配置字段、安全边界与隐私说明见 [docs/cli-agent.md](docs/cli-agent.md)。当前不包含：官方文档联网、Run/Gradle 执行、Control Hub 部署。Android Studio 插件用法见 [docs/android-studio-plugin.md](docs/android-studio-plugin.md)。
 
-### 用法二：对接外部 Agent（把知识库当确定性"策略裁决器"）
+### 规范器与 CI 门禁
 
-Codex / Claude Code / 其他 harness 不应把规则当普通文本读——那样会丢掉 `OFFICIAL > TEAM > SHARED` 的确定性解析。正确姿势是调用下面的稳定 JSON 接口，把"哪条规则生效、证据是什么"交给确定性代码判决；提交前再跑 `check`，让所有 Agent 写出同一标准的代码：
-
-```bash
-# 执法：对改动做确定性机器检查（违规退出码 1，soft 为需人工确认的提示）
-ftckb check <repo-root> --knowledge knowledge --team 20827 --season 2025-2026 [--diff file.patch] --json
-```
-
-规范器完整说明见 [docs/standardizer-check.md](docs/standardizer-check.md)；CI 门禁示例脚本 `scripts/check-gate.sh`。
+`check` 的硬检查（`path-forbidden` / `path-required` / `regex-required` / `regex-forbidden`）由每条规则的 `checks` 字段定义；没有 checks 的行为类规则以 `soft` 提示输出、交给人工确认——机器不假装全能。完整说明见 [docs/standardizer-check.md](docs/standardizer-check.md)；CI 门禁示例脚本 `scripts/check-gate.sh`（PR 有硬违规即失败）。
 
 ### 从零开始：新机器上拿到可用的 ftckb
 
@@ -170,14 +177,14 @@ ftckb resolve <knowledge-root> --team 20827 --season 2025-2026 --json
 - **确定性**：`activeRules` 按 `id` 排序、`conflicts` 按 `topic` 排序——同样输入永远得到同样输出，外部 Agent 可以放心缓存。
 - **退出码**：`0` 成功；`2` 知识加载/校验失败或存在冲突；`64` 参数错误。带 `--json` 时失败路径同样输出统一 JSON 错误（`error.code`: `usage` / `load-error` / `invalid-knowledge`）。
 - **完整契约**：[docs/kernel-contract.md](docs/kernel-contract.md)（命令形式、字段表、确定性保证、变更策略；契约的可执行定义在 `KernelJsonAcceptanceTest`）。
-- **对接建议**：外部 Agent 改代码前先跑 `resolve` 拿 active 规则当权威上下文；`validate` 用于入库前检查；机器可判定的硬规则检查等路线图中的 `check` 子命令。
+- **对接建议**：外部 Agent 改代码前先跑 `resolve` 拿 active 规则当权威上下文；提交前跑 `check` 验证改动；`validate` 用于规则入库前检查。
 - **输出示例**（截取）：
 
 ```json
 {"schemaVersion":1,"command":"resolve","team":"20827","season":"2025-2026","ok":true,"activeRules":[{"id":"official.keep-customizations-in-teamcode","authority":"official","status":"approved","instruction":"..."}],"conflicts":[]}
 ```
 
-契约详情与后续路线（`check` 裁决器、native 单文件可执行、MCP 薄适配）见 [docs/cli-agent.md](docs/cli-agent.md) 的「机器接口」章节。
+契约详情见 [docs/cli-agent.md](docs/cli-agent.md) 的「机器接口」章节；后续路线：native 单文件可执行、MCP 薄适配层。
 
 ## 完整使用手册
 
@@ -524,7 +531,16 @@ CLI 的错误信息写到标准输出；脚本应同时检查退出码，不要�
 ./gradlew clean test
 ```
 
-2026-08-17 的当前快照为 406 项测试全部通过；测试数量会随功能增长，以本地最新结果为准。
+2026-08-20 的当前快照为 417 项测试全部通过；测试数量会随功能增长，以本地最新结果为准。
+
+## 已知问题与致歉
+
+本项目仍在快速迭代中：虽然已通过 417 项离线测试、多轮外部 Agent 从零对接验收和线上 5/5 质量评估，但线上模型行为与 UI 细节仍可能存在 bug（历史上曾出现过：eval 通过率不稳定、推理模型预算不足导致回答失败、构建步骤对新手不够顺畅等）。如果你在使用中遇到任何问题，请直接联系维护者，我们会尽快修复：
+
+- GitHub Issues：[lucasnotfound59/FTC-Knowledge-Bank/issues](https://github.com/lucasnotfound59/FTC-Knowledge-Bank/issues)
+- 私信 / Email：待补充（维护者联系方式）
+
+对于曾经造成的不便，在此致歉；感谢每一位耐心反馈的队员与外部 Agent。
 
 ## 为什么需要这个项目
 
