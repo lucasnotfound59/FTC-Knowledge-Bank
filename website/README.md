@@ -16,7 +16,7 @@ npm run preview
 
 ## 自动构建与部署
 
-网站与知识库共用 GitHub 仓库 `lucasnotfound59/FTC-Knowledge-Bank`。Cloudflare Pages 新项目拟命名为 `ftckb-docs`，生产分支为 `main`。
+网站与知识库共用 GitHub 仓库 `lucasnotfound59/FTC-Knowledge-Bank`。Cloudflare Pages 项目为 `ftckb-docs`，生产分支为 `main`。
 
 Cloudflare 配置：
 
@@ -31,13 +31,13 @@ Cloudflare 配置：
 
 推送 main 后，Cloudflare 自动拉取源码、安装依赖、生成文档并部署。构建失败时保留上一次成功部署。PR 预览以 Cloudflare 项目设置为准。
 
-原 Direct Upload 项目 `ftckb` 保留作为迁移回退。新项目首次构建成功后，将 `ftckb.lucasxl.com` 从旧项目转移到新项目。迁移状态以 Cloudflare Custom domains 页面为准。
+文档域名 `ftckb.lucasxl.com` 已绑定到 `ftckb-docs`，CNAME 指向 `ftckb-docs.pages.dev`。原 Direct Upload 项目 `ftckb` 保留作为迁移回退。
 
 原始 Markdown 的相对链接会映射到网站页面，其他仓库链接使用 scripts/content.mjs 中的固定来源版本；更新来源版本时需要审阅。
 
 ## 已执行验证
 
-2026-09-08：29 个内容页面加 404 页面构建成功，生成搜索索引；输出 HTML 的本地资源与页面链接无缺失；ftckb check 无硬违规。未将这些检查表述为机器人测试或核心 Kotlin 测试。
+2026-09-08：35 个内容页面加 404 页面在本地和 Cloudflare 构建成功，生成搜索索引；输出 HTML 的本地资源与页面链接无缺失；ftckb check 无硬违规。Cloudflare 已从 GitHub main 拉取源码完成首次部署。未将这些检查表述为机器人测试或核心 Kotlin 测试。
 
 
 ## README 内容迁移
