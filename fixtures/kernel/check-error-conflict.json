@@ -1,0 +1,1 @@
+{"schemaVersion":1,"ok":false,"error":{"code":"conflict","message":"conflict topic=same-topic rules=official.first,official.second"}}

@@ -6,3 +6,4 @@
 out/
 .kotlin/
 .intellijPlatform/
+__pycache__/

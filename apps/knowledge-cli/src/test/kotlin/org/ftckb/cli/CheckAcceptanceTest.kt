@@ -7,6 +7,7 @@ import java.io.StringReader
 import java.nio.file.Files
 import java.nio.file.Path
 import org.eclipse.jgit.api.Git
+import org.ftckb.standardizer.Standardizer
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -131,6 +132,17 @@ class CheckAcceptanceTest {
         assertEquals("official.keep-customizations-in-teamcode",violation["ruleId"].asText())
         assertEquals("path-forbidden",violation["check"].asText())
         assertEquals("build.common.gradle",violation["path"].asText())
+    }
+
+    @Test
+    fun `staged violation reverted only in worktree still fails`(@TempDir root:Path) {
+        val repo=writeRepo(root)
+        Files.writeString(repo.resolve("build.common.gradle"),"// sdk\n// staged violation\n")
+        Git.open(repo.toFile()).use { it.add().addFilepattern("build.common.gradle").call() }
+        Files.writeString(repo.resolve("build.common.gradle"),"// sdk\n")
+
+        assertTrue(Standardizer.worktreeChanges(repo).any { it.path=="build.common.gradle" })
+        assertEquals(1,runCheck(repo,writeKnowledge(root),listOf("--json")).first)
     }
 
     @Test

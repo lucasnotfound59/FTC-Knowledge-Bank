@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/lucasnotfound59/FTC-Knowledge-Bank/blob/main/docs/kernel-contract.schema.json",
   "title": "ftckb kernel JSON contract (schemaVersion 1)",
-  "description": "Single-line JSON emitted by `ftckb validate|resolve --json`. Success, conflict, and error outputs all validate against this schema. Additive fields are allowed (the contract only adds fields without bumping schemaVersion), so additionalProperties is not restricted.",
+  "description": "Single-line JSON emitted by `ftckb validate|resolve|check --json`. Success, conflict, and error outputs all validate against this schema. Additive fields are allowed (the contract only adds fields without bumping schemaVersion), so additionalProperties is not restricted.",
   "type": "object",
   "oneOf": [
     {
@@ -30,17 +30,30 @@
       }
     },
     {
+      "title": "check",
+      "required": ["schemaVersion", "command", "team", "season", "ok", "violations", "soft"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "command": { "const": "check" },
+        "team": { "type": "string", "pattern": "^[0-9]+$" },
+        "season": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{4}$" },
+        "ok": { "type": "boolean" },
+        "violations": { "type": "array", "items": { "$ref": "#/definitions/checkViolation" } },
+        "soft": { "type": "array", "items": { "$ref": "#/definitions/soft" } }
+      }
+    },
+    {
       "title": "error",
       "required": ["schemaVersion", "ok", "error"],
       "properties": {
         "schemaVersion": { "const": 1 },
-        "command": { "enum": ["validate", "resolve"] },
+        "command": { "enum": ["validate", "resolve", "check"] },
         "ok": { "const": false },
         "error": {
           "type": "object",
           "required": ["code", "message"],
           "properties": {
-            "code": { "enum": ["usage", "load-error", "invalid-knowledge"] },
+            "code": { "enum": ["usage", "load-error", "invalid-knowledge", "conflict"] },
             "message": { "type": "string" }
           }
         },
@@ -107,7 +120,7 @@
       "type": "object",
       "required": ["kind", "pattern", "note"],
       "properties": {
-        "kind": { "enum": ["path-forbidden", "path-required", "regex-required", "regex-forbidden"] },
+        "kind": { "enum": ["path_forbidden", "path_required", "regex_required", "regex_forbidden"] },
         "pattern": { "type": "string" },
         "appliesTo": { "type": "string" },
         "note": { "type": "string" }
@@ -120,6 +133,26 @@
         "topic": { "type": "string" },
         "authority": { "type": "string" },
         "ruleIds": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "checkViolation": {
+      "type": "object",
+      "required": ["ruleId", "check", "pattern", "detail"],
+      "properties": {
+        "ruleId": { "type": "string" },
+        "check": { "enum": ["path-forbidden", "path-required", "regex-required", "regex-forbidden"] },
+        "path": { "type": "string" },
+        "line": { "type": "integer", "minimum": 1 },
+        "pattern": { "type": "string" },
+        "detail": { "type": "string" }
+      }
+    },
+    "soft": {
+      "type": "object",
+      "required": ["ruleId", "note"],
+      "properties": {
+        "ruleId": { "type": "string" },
+        "note": { "type": "string" }
       }
     }
   }
