@@ -1,0 +1,15 @@
+{
+  "name": "ftckb-docs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "content": "node scripts/content.mjs",
+    "dev": "npm run content && astro dev --host 127.0.0.1",
+    "build": "npm run content && astro build",
+    "preview": "astro preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "0.42.0",
+    "astro": "^7.2.10"
+  }
+}
