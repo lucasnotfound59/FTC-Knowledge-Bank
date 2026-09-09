@@ -55,22 +55,37 @@ data class WebRuleEvidence(
 
 class RuleApplicability(
     teams:Set<String> =emptySet(),
-    seasons:Set<String> =emptySet()
+    seasons:Set<String> =emptySet(),
+    profiles:Set<String> =emptySet()
 ) {
     val teams:Set<String> =immutableSetSnapshot(teams)
     val seasons:Set<String> =immutableSetSnapshot(seasons)
+    val profiles:Set<String> =immutableSetSnapshot(profiles)
 
     fun copy(
         teams:Set<String> =this.teams,
-        seasons:Set<String> =this.seasons
-    )=RuleApplicability(teams,seasons)
+        seasons:Set<String> =this.seasons,
+        profiles:Set<String> =this.profiles
+    )=RuleApplicability(teams,seasons,profiles)
 
     override fun equals(other:Any?):Boolean=
-        this===other || other is RuleApplicability && teams==other.teams && seasons==other.seasons
+        this===other || other is RuleApplicability && teams==other.teams && seasons==other.seasons && profiles==other.profiles
 
-    override fun hashCode():Int=31*teams.hashCode()+seasons.hashCode()
+    override fun hashCode():Int=31*(31*teams.hashCode()+seasons.hashCode())+profiles.hashCode()
 
-    override fun toString()="RuleApplicability(teams=$teams, seasons=$seasons)"
+    override fun toString()="RuleApplicability(teams=$teams, seasons=$seasons, profiles=$profiles)"
+}
+
+class RuleReviewTrigger(paths:List<String>,addedLinePatterns:List<String>) {
+    val paths:List<String> =immutableListSnapshot(paths)
+    val addedLinePatterns:List<String> =immutableListSnapshot(addedLinePatterns)
+
+    override fun equals(other:Any?):Boolean=this===other || other is RuleReviewTrigger &&
+        paths==other.paths && addedLinePatterns==other.addedLinePatterns
+
+    override fun hashCode():Int=31*paths.hashCode()+addedLinePatterns.hashCode()
+
+    override fun toString():String="RuleReviewTrigger(paths=$paths, addedLinePatterns=$addedLinePatterns)"
 }
 
 data class Approval(
@@ -94,10 +109,13 @@ class KnowledgeRule(
     val supersedes:String?=null,
     val positiveExample:String?=null,
     val negativeExample:String?=null,
-    checks:List<RuleCheck> =emptyList()
+    checks:List<RuleCheck> =emptyList(),
+    val policyLevel:PolicyLevel=RulePolicy.legacy(authority),
+    reviewTriggers:List<RuleReviewTrigger> =emptyList()
 ) {
     val evidence:List<RuleEvidence> =immutableListSnapshot(evidence)
     val checks:List<RuleCheck> =immutableListSnapshot(checks)
+    val reviewTriggers:List<RuleReviewTrigger> =immutableListSnapshot(reviewTriggers)
 
     fun copy(
         id:String=this.id,
@@ -113,10 +131,12 @@ class KnowledgeRule(
         supersedes:String?=this.supersedes,
         positiveExample:String?=this.positiveExample,
         negativeExample:String?=this.negativeExample,
-        checks:List<RuleCheck> =this.checks
+        checks:List<RuleCheck> =this.checks,
+        policyLevel:PolicyLevel=this.policyLevel,
+        reviewTriggers:List<RuleReviewTrigger> =this.reviewTriggers
     )=KnowledgeRule(
         id,topic,title,instruction,rationale,status,authority,applicability,evidence,approval,
-        supersedes,positiveExample,negativeExample,checks
+        supersedes,positiveExample,negativeExample,checks,policyLevel,reviewTriggers
     )
 
     override fun equals(other:Any?):Boolean=this===other || other is KnowledgeRule &&
@@ -133,7 +153,9 @@ class KnowledgeRule(
         supersedes==other.supersedes &&
         positiveExample==other.positiveExample &&
         negativeExample==other.negativeExample &&
-        checks==other.checks
+        checks==other.checks &&
+        policyLevel==other.policyLevel &&
+        reviewTriggers==other.reviewTriggers
 
     override fun hashCode():Int {
         var result=id.hashCode()
@@ -150,13 +172,15 @@ class KnowledgeRule(
         result=31*result+(positiveExample?.hashCode() ?: 0)
         result=31*result+(negativeExample?.hashCode() ?: 0)
         result=31*result+checks.hashCode()
+        result=31*result+policyLevel.hashCode()
+        result=31*result+reviewTriggers.hashCode()
         return result
     }
 
     override fun toString()="KnowledgeRule(id=$id, topic=$topic, title=$title, instruction=$instruction, "+
         "rationale=$rationale, status=$status, authority=$authority, applicability=$applicability, "+
         "evidence=$evidence, approval=$approval, supersedes=$supersedes, positiveExample=$positiveExample, "+
-        "negativeExample=$negativeExample, checks=$checks)"
+        "negativeExample=$negativeExample, checks=$checks, policyLevel=$policyLevel, reviewTriggers=$reviewTriggers)"
 }
 
 private fun <T> immutableSetSnapshot(values:Set<T>):Set<T> =

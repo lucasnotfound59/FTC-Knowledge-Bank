@@ -12,7 +12,12 @@ object RuleIdentity {
 
     fun isCanonicalTopic(value:String)=topicPattern.matches(value)
     fun isCanonicalTeam(value:String)=teamPattern.matches(value)
-    fun isCanonicalSeason(value:String)=seasonPattern.matches(value)
+    fun isCanonicalSeason(value:String):Boolean {
+        if (!seasonPattern.matches(value)) return false
+        val first=value.substring(0,4).toInt()
+        val last=value.substring(5,9).toInt()
+        return last==first+1
+    }
 }
 
 object RuleValidator {
@@ -39,6 +44,14 @@ object RuleValidator {
         }
         if (rule.approval?.team?.let(RuleIdentity::isCanonicalTeam)==false) {
             reject("approval.team","approval team must contain digits only")
+        }
+        if (rule.authority==RuleAuthority.TEAM && rule.policyLevel!=PolicyLevel.LOCAL) reject("policyLevel","team rules require local")
+        if (rule.authority==RuleAuthority.OFFICIAL && rule.policyLevel!=PolicyLevel.GLOBAL) reject("policyLevel","official rules require global")
+        if (rule.policyLevel==PolicyLevel.LOCAL && rule.applicability.teams.isEmpty() && rule.applicability.profiles.isEmpty()) {
+            reject("applicability","local rules require teams or profiles")
+        }
+        runCatching { RuleProfiles.normalize(rule.applicability.profiles) }.exceptionOrNull()?.let {
+            reject("applicability.profiles",it.message ?: "invalid profiles")
         }
         if (rule.authority==RuleAuthority.TEAM && rule.applicability.teams.isEmpty()) reject("applicability.teams","team rule requires an applicable team")
         if (rule.status==RuleStatus.APPROVED && rule.approval!=null) {
@@ -74,6 +87,19 @@ object RuleValidator {
                 }
             }
             if (check.note.isBlank()) reject("checks[$index].note","check note must not be blank")
+        }
+        rule.reviewTriggers.forEachIndexed { index,trigger ->
+            if (trigger.paths.isEmpty()) reject("reviewTriggers[$index].paths","paths must not be empty")
+            trigger.paths.forEach { glob ->
+                if (glob.isBlank() || runCatching { FileSystems.getDefault().getPathMatcher("glob:$glob") }.isFailure) {
+                    reject("reviewTriggers[$index].paths","invalid path glob")
+                }
+            }
+            trigger.addedLinePatterns.forEach { pattern ->
+                if (pattern.isBlank() || runCatching { Regex(pattern) }.isFailure) {
+                    reject("reviewTriggers[$index].addedLinePatterns","invalid regex")
+                }
+            }
         }
     }
 

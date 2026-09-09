@@ -162,4 +162,19 @@ class RuleResolverTest {
             RuleResolver.resolve(listOf(approved),RuleContext("20827","2025-2026")).activeRules.map { it.id }
         )
     }
+
+    @Test
+    fun `applicability snapshots mutable profiles at construction and copy`() {
+        val constructorProfiles=linkedSetOf("rookiebot")
+        val constructed=RuleApplicability(profiles=constructorProfiles)
+        val copyProfiles=linkedSetOf("ftclib-command")
+        val copied=constructed.copy(profiles=copyProfiles)
+
+        constructorProfiles.clear()
+        copyProfiles.clear()
+
+        assertEquals(setOf("rookiebot"),constructed.profiles)
+        assertEquals(setOf("ftclib-command"),copied.profiles)
+        assertTrue(constructed.toString().contains("profiles=[rookiebot]"))
+    }
 }

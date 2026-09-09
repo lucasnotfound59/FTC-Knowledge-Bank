@@ -62,7 +62,10 @@ class RuleValidatorTest {
             evidence=listOf(evidence)
         )
 
-        assertEquals(listOf("team rule requires an applicable team"),RuleValidator.validate(rule).map { it.message })
+        assertEquals(
+            listOf("local rules require teams or profiles","team rule requires an applicable team"),
+            RuleValidator.validate(rule).map { it.message }
+        )
     }
 
     @Test
@@ -202,7 +205,7 @@ class RuleValidatorTest {
                 "team=$team"
             )
         }
-        listOf(""," ","2025","2025/2026","２０２５-２０２６").forEach { season ->
+        listOf(""," ","2025","2025/2026","２０２５-２０２６","2025-2027").forEach { season ->
             assertEquals(
                 listOf("season must use YYYY-YYYY"),
                 RuleValidator.validate(
@@ -216,6 +219,7 @@ class RuleValidatorTest {
             id="shared.canonical-approval-team",
             authority=RuleAuthority.SHARED,
             applicability=RuleApplicability(),
+            policyLevel=PolicyLevel.SHARED,
             status=RuleStatus.APPROVED,
             approval=Approval("overall-software-lead",ApproverRole.OVERALL_SOFTWARE_LEAD,approvedAt=Instant.EPOCH)
         )
@@ -326,6 +330,39 @@ class RuleValidatorTest {
         assertEquals(listOf("check note must not be blank"),RuleValidator.validate(blankNote).map { it.message })
         val badAppliesTo=base.copy(checks=listOf(RuleCheck(RuleCheckKind.REGEX_REQUIRED,"x","[","note")))
         assertEquals(listOf("appliesTo must be a valid glob"),RuleValidator.validate(badAppliesTo).map { it.message })
+    }
+
+    @Test
+    fun `authority and policy level combinations are validated independently`() {
+        val teamRule=KnowledgeRule(
+            id="team.policy",topic="policy",title="Policy",instruction="Use local policy.",rationale="Team scope.",
+            status=RuleStatus.CANDIDATE,authority=RuleAuthority.TEAM,
+            applicability=RuleApplicability(teams=setOf("20827")),evidence=listOf(evidence),
+            policyLevel=PolicyLevel.GLOBAL
+        )
+        val localWithoutScope=teamRule.copy(
+            id="shared.local-policy",authority=RuleAuthority.SHARED,applicability=RuleApplicability(),
+            policyLevel=PolicyLevel.LOCAL
+        )
+
+        assertEquals(listOf("team rules require local"),RuleValidator.validate(teamRule).map { it.message })
+        assertEquals(listOf("local rules require teams or profiles"),RuleValidator.validate(localWithoutScope).map { it.message })
+    }
+
+    @Test
+    fun `profiles and review triggers are validated`() {
+        val base=candidateWithEvidence(listOf(evidence))
+        val invalidProfile=base.copy(applicability=RuleApplicability(profiles=setOf("rookiebto")))
+        val invalidTriggers=base.copy(reviewTriggers=listOf(
+            RuleReviewTrigger(emptyList(),emptyList()),
+            RuleReviewTrigger(listOf("["),listOf("("))
+        ))
+
+        assertEquals(listOf("Unknown profiles: rookiebto"),RuleValidator.validate(invalidProfile).map { it.message })
+        assertEquals(
+            listOf("paths must not be empty","invalid path glob","invalid regex"),
+            RuleValidator.validate(invalidTriggers).map { it.message }
+        )
     }
 
     private fun candidateWithEvidence(evidence:List<RuleEvidence>)=KnowledgeRule(
