@@ -3,17 +3,18 @@ package org.ftckb.cli
 import com.fasterxml.jackson.databind.json.JsonMapper
 import org.ftckb.domain.GitRuleEvidence
 import org.ftckb.domain.KnowledgeRule
-import org.ftckb.domain.RuleConflict
+import org.ftckb.domain.ResolutionResult
 import org.ftckb.domain.RuleViolation
 import org.ftckb.domain.WebRuleEvidence
+import org.ftckb.standardizer.Standardizer
 
 /**
  * Stable, versioned JSON contract for external agents that consume the policy kernel.
- * Consumers rely on schemaVersion=1 and on deterministic ordering (rules and conflicts
+ * Consumers rely on schemaVersion=2 and on deterministic ordering (rules and conflicts
  * sorted by id/topic); breaking changes must bump schemaVersion.
  */
 object KernelJson {
-    const val SCHEMA_VERSION=1
+    const val SCHEMA_VERSION=2
     private val mapper=JsonMapper.builder().build()
 
     fun validateJson(ruleCount:Int):String {
@@ -29,7 +30,7 @@ object KernelJson {
     fun errorJson(command:String?,code:String,message:String):String {
         val root=mapper.createObjectNode()
         root.put("schemaVersion",SCHEMA_VERSION)
-        if (command in setOf("validate","resolve")) root.put("command",command)
+        if (command in setOf("validate","resolve","check")) root.put("command",command)
         root.put("ok",false)
         root.putObject("error").apply {
             put("code",code)
@@ -61,24 +62,72 @@ object KernelJson {
     fun resolveJson(
         team:String,
         season:String,
-        activeRules:List<KnowledgeRule>,
-        conflicts:List<RuleConflict>
+        result:ResolutionResult
     ):String {
         val root=mapper.createObjectNode()
         root.put("schemaVersion",SCHEMA_VERSION)
         root.put("command","resolve")
         root.put("team",team)
         root.put("season",season)
-        root.put("ok",conflicts.isEmpty())
+        putSortedStrings(root.putArray("profiles"),result.profiles)
+        root.put("ok",result.conflicts.isEmpty())
         val rules=root.putArray("activeRules")
-        activeRules.sortedBy { it.id }.forEach { rule -> rules.add(ruleNode(rule)) }
+        result.activeRules.sortedBy { it.id }.forEach { rule -> rules.add(ruleNode(rule)) }
+        val excluded=root.putArray("excludedRules")
+        result.excludedRules.sortedBy { it.ruleId }.forEach { rule ->
+            excluded.addObject().apply {
+                put("ruleId",rule.ruleId)
+                putSortedStrings(putArray("reasons"),rule.reasons)
+            }
+        }
+        val overridden=root.putArray("overriddenRules")
+        result.overriddenRules.sortedBy { it.ruleId }.forEach { rule ->
+            overridden.addObject().apply {
+                put("ruleId",rule.ruleId)
+                put("topic",rule.topic)
+                putSortedStrings(putArray("winnerIds"),rule.winnerIds)
+                put("effectiveLevel",rule.effectiveLevel.name.lowercase())
+            }
+        }
         val conflictNodes=root.putArray("conflicts")
-        conflicts.sortedBy { it.topic }.forEach { conflict ->
+        result.conflicts.sortedBy { it.topic }.forEach { conflict ->
             val node=conflictNodes.addObject()
             node.put("topic",conflict.topic)
-            node.put("authority",conflict.authority.name.lowercase())
-            val ids=node.putArray("ruleIds")
-            conflict.ruleIds.sorted().forEach { ids.add(it) }
+            node.put("effectiveLevel",conflict.effectiveLevel.name.lowercase())
+            putSortedStrings(node.putArray("ruleIds"),conflict.ruleIds)
+            val authorities=node.putObject("authorities")
+            conflict.authorities.toSortedMap().forEach { (ruleId,authority) ->
+                authorities.put(ruleId,authority.name.lowercase())
+            }
+        }
+        return mapper.writeValueAsString(root)
+    }
+
+    fun checkJson(team:String,season:String,profiles:Set<String>,outcome:Standardizer.Outcome):String {
+        val root=mapper.createObjectNode()
+        root.put("schemaVersion",SCHEMA_VERSION)
+        root.put("command","check")
+        root.put("team",team)
+        root.put("season",season)
+        putSortedStrings(root.putArray("profiles"),profiles)
+        root.put("ok",outcome.violations.isEmpty())
+        val violations=root.putArray("violations")
+        outcome.violations.sortedWith(compareBy({ it.ruleId },{ it.path.orEmpty() },{ it.line ?: 0 })).forEach { violation ->
+            violations.addObject().apply {
+                put("ruleId",violation.ruleId)
+                put("check",violation.check)
+                violation.path?.let { put("path",it) }
+                violation.line?.let { put("line",it) }
+                put("pattern",violation.pattern)
+                put("detail",violation.detail)
+            }
+        }
+        val soft=root.putArray("soft")
+        outcome.soft.sortedBy { it.first }.forEach { (ruleId,note) ->
+            soft.addObject().apply {
+                put("ruleId",ruleId)
+                put("note",note)
+            }
         }
         return mapper.writeValueAsString(root)
     }
@@ -91,9 +140,11 @@ object KernelJson {
         put("rationale",rule.rationale)
         put("status",rule.status.name.lowercase())
         put("authority",rule.authority.name.lowercase())
+        put("policyLevel",rule.policyLevel.name.lowercase())
         putObject("applicability").apply {
-            putArray("teams").apply { rule.applicability.teams.sorted().forEach { add(it) } }
-            putArray("seasons").apply { rule.applicability.seasons.sorted().forEach { add(it) } }
+            putSortedStrings(putArray("teams"),rule.applicability.teams)
+            putSortedStrings(putArray("seasons"),rule.applicability.seasons)
+            putSortedStrings(putArray("profiles"),rule.applicability.profiles)
         }
         putArray("evidence").apply {
             rule.evidence.forEach { evidence ->
@@ -110,6 +161,18 @@ object KernelJson {
                 }
             }
         }
+        putArray("reviewTriggers").apply {
+            rule.reviewTriggers.forEach { trigger ->
+                addObject().apply {
+                    putSortedStrings(putArray("paths"),trigger.paths)
+                    putSortedStrings(putArray("addedLinePatterns"),trigger.addedLinePatterns)
+                }
+            }
+        }
+    }
+
+    private fun putSortedStrings(node:com.fasterxml.jackson.databind.node.ArrayNode,values:Iterable<String>) {
+        values.sorted().forEach { node.add(it) }
     }
 
     private fun evidenceNode(evidence:org.ftckb.domain.RuleEvidence)=mapper.createObjectNode().apply {

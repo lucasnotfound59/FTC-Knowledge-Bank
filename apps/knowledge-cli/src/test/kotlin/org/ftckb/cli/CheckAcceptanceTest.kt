@@ -107,8 +107,29 @@ class CheckAcceptanceTest {
     private fun runCheck(repo:Path,knowledge:Path,extra:List<String> =emptyList()):Pair<Int,String> {
         val out=ByteArrayOutputStream()
         val code=runCli(listOf("check",repo.toString(),"--knowledge",knowledge.toString(),
-            "--team","20827","--season","2025-2026")+extra,PrintStream(out),StringReader("").buffered())
+            "--team","20827","--season","2025-2026","--generic-profile")+extra,
+            PrintStream(out),StringReader("").buffered())
         return code to out.toString()
+    }
+
+    @Test
+    fun `check missing profile fails with a command-scoped context error`(@TempDir root:Path) {
+        val repo=writeRepo(root)
+        val out=ByteArrayOutputStream()
+        val code=runCli(
+            listOf(
+                "check",repo.toString(),"--knowledge",writeKnowledge(root).toString(),
+                "--team","20827","--season","2025-2026","--json"
+            ),
+            PrintStream(out),StringReader("").buffered()
+        )
+        assertSchemaValid(out.toString())
+        val node=mapper.readTree(out.toString())
+
+        assertEquals(2,code)
+        assertEquals(2,node["schemaVersion"].asInt())
+        assertEquals("check",node["command"].asText())
+        assertEquals("context-required",node["error"]["code"].asText())
     }
 
     @Test
@@ -126,8 +147,11 @@ class CheckAcceptanceTest {
         Files.writeString(repo.resolve("build.common.gradle"),"// sdk\n// agent change\n")
         val (code,out)=runCheck(repo,writeKnowledge(root),listOf("--json"))
         assertEquals(1,code,out)
+        assertSchemaValid(out)
         val node=mapper.readTree(out)
         assertTrue(!node["ok"].booleanValue())
+        assertEquals(2,node["schemaVersion"].asInt())
+        assertEquals(0,node["profiles"].size())
         val violation=node["violations"][0]
         assertEquals("official.keep-customizations-in-teamcode",violation["ruleId"].asText())
         assertEquals("path-forbidden",violation["check"].asText())
@@ -142,7 +166,9 @@ class CheckAcceptanceTest {
         Files.writeString(repo.resolve("build.common.gradle"),"// sdk\n")
 
         assertTrue(Standardizer.worktreeChanges(repo).any { it.path=="build.common.gradle" })
-        assertEquals(1,runCheck(repo,writeKnowledge(root),listOf("--json")).first)
+        val (code,out)=runCheck(repo,writeKnowledge(root),listOf("--json"))
+        assertEquals(1,code)
+        assertSchemaValid(out)
     }
 
     @Test
@@ -152,6 +178,7 @@ class CheckAcceptanceTest {
             "class Vision { void run() { getLatestResult(); } }\n")
         val (code,out)=runCheck(repo,writeKnowledge(root),listOf("--json"))
         assertEquals(1,code,out)
+        assertSchemaValid(out)
         val node=mapper.readTree(out)
         val kinds=node["violations"].map { it["check"].asText() }
         assertTrue("regex-forbidden" in kinds,out)
@@ -165,6 +192,7 @@ class CheckAcceptanceTest {
             "class Vision { void run() { if (getLatestResult().isValid()) { } } }\n")
         val (code,out)=runCheck(repo,writeKnowledge(root),listOf("--json"))
         assertEquals(0,code,out)
+        assertSchemaValid(out)
         val node=mapper.readTree(out)
         assertTrue(node["ok"].booleanValue())
         assertEquals(0,node["violations"].size())
@@ -185,6 +213,7 @@ class CheckAcceptanceTest {
         """.trimIndent()+"\n")
         val (code,out)=runCheck(repo,writeKnowledge(root),listOf("--diff",patch.toString(),"--json"))
         assertEquals(1,code,out)
+        assertSchemaValid(out)
         val node=mapper.readTree(out)
         assertEquals("build.common.gradle",node["violations"][0]["path"].asText())
     }
@@ -194,5 +223,17 @@ class CheckAcceptanceTest {
         val out=ByteArrayOutputStream()
         assertEquals(64,runCli(listOf("check","repo","--knowledge","k","--season","2025-2026"),PrintStream(out),StringReader("").buffered()))
         assertEquals("missing --team\n",out.toString())
+    }
+
+    private fun assertSchemaValid(json:String) {
+        val schema=Path.of("..","..","docs","kernel-contract.schema.json").toAbsolutePath().normalize()
+        val process=ProcessBuilder(
+            "python3","-c",
+            "import json,jsonschema,sys; jsonschema.validate(json.load(sys.stdin),json.load(open(sys.argv[1])))",
+            schema.toString()
+        ).redirectErrorStream(true).start()
+        process.outputStream.bufferedWriter().use { it.write(json) }
+        val diagnostic=process.inputStream.bufferedReader().readText()
+        assertEquals(0,process.waitFor(),"$diagnostic\n$json")
     }
 }

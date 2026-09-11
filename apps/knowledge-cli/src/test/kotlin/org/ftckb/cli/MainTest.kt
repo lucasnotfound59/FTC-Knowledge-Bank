@@ -132,7 +132,10 @@ class MainTest {
     @Test
     fun `resolve prints active IDs for team and season`() {
         val output=ByteArrayOutputStream()
-        val code=runCli(listOf("resolve",knowledgeRoot.toString(),"--team","20827","--season","2025-2026"),PrintStream(output))
+        val code=runCli(
+            listOf("resolve",knowledgeRoot.toString(),"--team","20827","--season","2025-2026","--generic-profile"),
+            PrintStream(output)
+        )
         assertEquals(0,code)
         val text=output.toString()
         assertTrue(text.contains("official.keep-customizations-in-teamcode"))
@@ -163,6 +166,36 @@ class MainTest {
         val code=runCli(listOf("validate","does-not-exist","extra"),PrintStream(output))
         assertEquals(64,code)
         assertEquals("validate accepts exactly one knowledge root\n",output.toString())
+    }
+
+    @Test
+    fun `validate rejects profile selection`() {
+        listOf(listOf("--generic-profile"),listOf("--profile","rookiebot")).forEach { profileArgs ->
+            val output=ByteArrayOutputStream()
+            val code=runCli(listOf("validate","does-not-exist")+profileArgs,PrintStream(output))
+
+            assertEquals(64,code)
+            assertEquals("validate accepts exactly one knowledge root\n",output.toString())
+        }
+    }
+
+    @Test
+    fun `resolve profile syntax errors are usage errors before loading root`() {
+        listOf(
+            listOf("--profile") to "--profile requires a value\n",
+            listOf("--generic-profile","--generic-profile") to "duplicate --generic-profile\n",
+            listOf("--generic-profile","--profile","rookiebot") to
+                "--profile and --generic-profile are mutually exclusive\n"
+        ).forEach { (profileArgs,expected) ->
+            val output=ByteArrayOutputStream()
+            val code=runCli(
+                listOf("resolve","does-not-exist","--team","20827","--season","2025-2026")+profileArgs,
+                PrintStream(output)
+            )
+
+            assertEquals(64,code)
+            assertEquals(expected,output.toString())
+        }
     }
 
     @Test
@@ -255,7 +288,7 @@ class MainTest {
 
         val version=ByteArrayOutputStream()
         assertEquals(0,runCli(listOf("--version"),PrintStream(version)))
-        assertEquals("ftckb $FTCKB_VERSION (kernel contract schemaVersion 1)\n",version.toString())
+        assertEquals("ftckb $FTCKB_VERSION (kernel contract schemaVersion 2)\n",version.toString())
 
         val empty=ByteArrayOutputStream()
         assertEquals(0,runCli(emptyList(),PrintStream(empty)))
@@ -263,10 +296,11 @@ class MainTest {
 
         val validateHelp=ByteArrayOutputStream()
         assertEquals(0,runCli(listOf("validate","--help"),PrintStream(validateHelp)))
-        assertTrue(validateHelp.toString().startsWith("usage: knowledge-cli <validate|resolve>"))
+        assertEquals("usage: knowledge-cli validate <knowledge-root> [--json]\n",validateHelp.toString())
         val resolveHelp=ByteArrayOutputStream()
         assertEquals(0,runCli(listOf("resolve","--help"),PrintStream(resolveHelp)))
-        assertTrue(resolveHelp.toString().startsWith("usage: knowledge-cli <validate|resolve>"))
+        assertTrue(resolveHelp.toString().startsWith("usage: knowledge-cli resolve"))
+        assertTrue(resolveHelp.toString().contains("--profile NAME ... | --generic-profile"))
     }
 
     @Test
@@ -284,7 +318,7 @@ class MainTest {
     fun `resolve accepts reversed flag order`() {
         val output=ByteArrayOutputStream()
         val code=runCli(
-            listOf("resolve",knowledgeRoot.toString(),"--season","2025-2026","--team","20827"),
+            listOf("resolve",knowledgeRoot.toString(),"--season","2025-2026","--team","20827","--generic-profile"),
             PrintStream(output)
         )
         assertEquals(0,code)
@@ -425,7 +459,7 @@ class MainTest {
         """.trimIndent())
         val output=ByteArrayOutputStream()
         val code=runCli(
-            listOf("resolve",root.toString(),"--team","20827","--season","2025-2026"),
+            listOf("resolve",root.toString(),"--team","20827","--season","2025-2026","--generic-profile"),
             PrintStream(output)
         )
         assertEquals(2,code)
@@ -478,7 +512,7 @@ class MainTest {
         val output=ByteArrayOutputStream()
 
         val code=runCli(
-            listOf("resolve",root.toString(),"--team","20827","--season","2025-2026"),
+            listOf("resolve",root.toString(),"--team","20827","--season","2025-2026","--generic-profile"),
             PrintStream(output)
         )
 

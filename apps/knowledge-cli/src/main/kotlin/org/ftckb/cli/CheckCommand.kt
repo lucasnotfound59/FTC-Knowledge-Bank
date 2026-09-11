@@ -1,10 +1,10 @@
 package org.ftckb.cli
 
-import com.fasterxml.jackson.databind.json.JsonMapper
 import java.io.PrintStream
 import java.nio.file.Files
 import java.nio.file.Path
 import org.ftckb.domain.RuleContext
+import org.ftckb.domain.RuleContextException
 import org.ftckb.domain.RuleResolver
 import org.ftckb.domain.RuleIdentity
 import org.ftckb.knowledge.FileKnowledgeRepository
@@ -18,11 +18,16 @@ internal fun runCheckCommand(args:List<String>,out:PrintStream):Int {
         return exit
     }
     if (args==listOf("--help")) {
-        out.println("usage: knowledge-cli check <repo-root> [--knowledge PATH] --team N --season YYYY-YYYY [--diff FILE] [--json]")
+        out.println("usage: knowledge-cli check <repo-root> [--knowledge PATH] --team N --season YYYY-YYYY [--profile NAME ... | --generic-profile] [--diff FILE] [--json]")
         return 0
     }
     if (args.isEmpty()) return fail("missing <repo-root>","usage",64)
-    val optionArgs=args.drop(1).filterNot { it=="--json" }
+    val profileSelection=try {
+        ProfileArguments.extract(args.drop(1).filterNot { it=="--json" })
+    } catch (exception:IllegalArgumentException) {
+        return fail(exception.message.orEmpty(),"usage",64)
+    }
+    val optionArgs=profileSelection.remaining
     if (optionArgs.size%2!=0) return fail("check options must be flag-value pairs","usage",64)
     val optionPairs=optionArgs.chunked(2)
     val allowed=setOf("--knowledge","--team","--season","--diff")
@@ -39,6 +44,11 @@ internal fun runCheckCommand(args:List<String>,out:PrintStream):Int {
     }
     if (!RuleIdentity.isCanonicalSeason(values.getValue("--season"))) {
         return fail("invalid value for --season: expected YYYY-YYYY","usage",64)
+    }
+    val profiles=try {
+        profileSelection.requiredProfiles()
+    } catch (exception:RuleContextException) {
+        return fail(exception.message.orEmpty(),exception.code,2)
     }
     val repoRoot=Path.of(args[0])
     val knowledgeRoot=Path.of(values["--knowledge"] ?: "knowledge")
@@ -58,7 +68,9 @@ internal fun runCheckCommand(args:List<String>,out:PrintStream):Int {
         }
         return 2
     }
-    val resolved=RuleResolver.resolve(loaded.rules,RuleContext(values.getValue("--team"),values.getValue("--season")))
+    val resolved=RuleResolver.resolve(
+        loaded.rules,RuleContext(values.getValue("--team"),values.getValue("--season"),profiles)
+    )
     if (resolved.conflicts.isNotEmpty()) {
         val detail=resolved.conflicts.joinToString("; ") { conflict ->
             "conflict topic=${conflict.topic} rules=${conflict.ruleIds.sorted().joinToString(",")}"
@@ -72,33 +84,8 @@ internal fun runCheckCommand(args:List<String>,out:PrintStream):Int {
         return fail("error reading diff: ${detail.ifEmpty { exception.javaClass.simpleName }}","load-error",2)
     }
     val outcome=Standardizer.evaluate(resolved.activeRules,changes)
-    val mapper=JsonMapper.builder().build()
     if (jsonMode) {
-        val root=mapper.createObjectNode()
-        root.put("schemaVersion",1)
-        root.put("command","check")
-        root.put("team",values.getValue("--team"))
-        root.put("season",values.getValue("--season"))
-        root.put("ok",outcome.violations.isEmpty())
-        val violations=root.putArray("violations")
-        outcome.violations.sortedWith(compareBy({ it.ruleId },{ it.path.orEmpty() },{ it.line ?: 0 })).forEach { violation ->
-            violations.addObject().apply {
-                put("ruleId",violation.ruleId)
-                put("check",violation.check)
-                violation.path?.let { put("path",it) }
-                violation.line?.let { put("line",it) }
-                put("pattern",violation.pattern)
-                put("detail",violation.detail)
-            }
-        }
-        val soft=root.putArray("soft")
-        outcome.soft.sortedBy { it.first }.forEach { (ruleId,note) ->
-            soft.addObject().apply {
-                put("ruleId",ruleId)
-                put("note",note)
-            }
-        }
-        out.println(mapper.writeValueAsString(root))
+        out.println(KernelJson.checkJson(values.getValue("--team"),values.getValue("--season"),profiles,outcome))
         return if (outcome.violations.isEmpty()) 0 else 1
     }
     outcome.violations.sortedWith(compareBy({ it.ruleId },{ it.path.orEmpty() },{ it.line ?: 0 })).forEach { violation ->

@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/lucasnotfound59/FTC-Knowledge-Bank/blob/main/docs/kernel-contract.schema.json",
-  "title": "ftckb kernel JSON contract (schemaVersion 2)",
+  "title": "ftckb kernel JSON contract (schemaVersion 1)",
   "description": "Single-line JSON emitted by `ftckb validate|resolve|check --json`. Success, conflict, and error outputs all validate against this schema. Additive fields are allowed (the contract only adds fields without bumping schemaVersion), so additionalProperties is not restricted.",
   "type": "object",
   "oneOf": [
@@ -9,58 +9,51 @@
       "title": "validate",
       "required": ["schemaVersion", "command", "ok", "ruleCount", "violations"],
       "properties": {
-        "schemaVersion": { "const": 2 },
+        "schemaVersion": { "const": 1 },
         "command": { "const": "validate" },
         "ok": { "type": "boolean" },
         "ruleCount": { "type": "integer", "minimum": 0 },
         "violations": { "type": "array" }
-      },
-      "not": { "required": ["error"] }
+      }
     },
     {
       "title": "resolve",
-      "required": ["schemaVersion", "command", "team", "season", "profiles", "ok", "activeRules", "excludedRules", "overriddenRules", "conflicts"],
+      "required": ["schemaVersion", "command", "team", "season", "ok", "activeRules", "conflicts"],
       "properties": {
-        "schemaVersion": { "const": 2 },
+        "schemaVersion": { "const": 1 },
         "command": { "const": "resolve" },
         "team": { "type": "string", "pattern": "^[0-9]+$" },
         "season": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{4}$" },
-        "profiles": { "$ref": "#/definitions/profiles" },
         "ok": { "type": "boolean" },
         "activeRules": { "type": "array", "items": { "$ref": "#/definitions/rule" } },
-        "excludedRules": { "type": "array", "items": { "$ref": "#/definitions/excludedRule" } },
-        "overriddenRules": { "type": "array", "items": { "$ref": "#/definitions/overriddenRule" } },
         "conflicts": { "type": "array", "items": { "$ref": "#/definitions/conflict" } }
-      },
-      "not": { "required": ["error"] }
+      }
     },
     {
       "title": "check",
-      "required": ["schemaVersion", "command", "team", "season", "profiles", "ok", "violations", "soft"],
+      "required": ["schemaVersion", "command", "team", "season", "ok", "violations", "soft"],
       "properties": {
-        "schemaVersion": { "const": 2 },
+        "schemaVersion": { "const": 1 },
         "command": { "const": "check" },
         "team": { "type": "string", "pattern": "^[0-9]+$" },
         "season": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{4}$" },
-        "profiles": { "$ref": "#/definitions/profiles" },
         "ok": { "type": "boolean" },
         "violations": { "type": "array", "items": { "$ref": "#/definitions/checkViolation" } },
         "soft": { "type": "array", "items": { "$ref": "#/definitions/soft" } }
-      },
-      "not": { "required": ["error"] }
+      }
     },
     {
       "title": "error",
       "required": ["schemaVersion", "ok", "error"],
       "properties": {
-        "schemaVersion": { "const": 2 },
+        "schemaVersion": { "const": 1 },
         "command": { "enum": ["validate", "resolve", "check"] },
         "ok": { "const": false },
         "error": {
           "type": "object",
           "required": ["code", "message"],
           "properties": {
-            "code": { "enum": ["usage", "load-error", "invalid-knowledge", "conflict", "context-required", "invalid-context"] },
+            "code": { "enum": ["usage", "load-error", "invalid-knowledge", "conflict"] },
             "message": { "type": "string" }
           }
         },
@@ -69,14 +62,9 @@
     }
   ],
   "definitions": {
-    "profiles": {
-      "type": "array",
-      "items": { "enum": ["rookiebot", "simple-opmode", "command-based", "ftclib-command"] },
-      "uniqueItems": true
-    },
     "rule": {
       "type": "object",
-      "required": ["id", "topic", "title", "instruction", "rationale", "status", "authority", "policyLevel", "applicability", "evidence", "checks", "reviewTriggers"],
+      "required": ["id", "topic", "title", "instruction", "rationale", "status", "authority", "applicability", "evidence"],
       "properties": {
         "id": { "type": "string" },
         "topic": { "type": "string" },
@@ -85,27 +73,16 @@
         "rationale": { "type": "string" },
         "status": { "enum": ["approved", "candidate", "deprecated", "rejected"] },
         "authority": { "enum": ["official", "shared", "team"] },
-        "policyLevel": { "enum": ["global", "local", "shared"] },
         "applicability": {
           "type": "object",
-          "required": ["teams", "seasons", "profiles"],
+          "required": ["teams", "seasons"],
           "properties": {
             "teams": { "type": "array", "items": { "type": "string" } },
-            "seasons": { "type": "array", "items": { "type": "string" } },
-            "profiles": { "$ref": "#/definitions/profiles" }
+            "seasons": { "type": "array", "items": { "type": "string" } }
           }
         },
         "evidence": { "type": "array", "items": { "$ref": "#/definitions/evidence" } },
-        "checks": { "type": "array", "items": { "$ref": "#/definitions/check" } },
-        "reviewTriggers": { "type": "array", "items": { "$ref": "#/definitions/reviewTrigger" } }
-      }
-    },
-    "reviewTrigger": {
-      "type": "object",
-      "required": ["paths", "addedLinePatterns"],
-      "properties": {
-        "paths": { "type": "array", "minItems": 1, "items": { "type": "string" } },
-        "addedLinePatterns": { "type": "array", "items": { "type": "string" } }
+        "checks": { "type": "array", "items": { "$ref": "#/definitions/check" } }
       }
     },
     "evidence": {
@@ -151,38 +128,11 @@
     },
     "conflict": {
       "type": "object",
-      "required": ["topic", "effectiveLevel", "ruleIds", "authorities"],
+      "required": ["topic", "authority", "ruleIds"],
       "properties": {
         "topic": { "type": "string" },
-        "effectiveLevel": { "enum": ["official", "global", "local", "shared"] },
-        "ruleIds": { "type": "array", "minItems": 2, "uniqueItems": true, "items": { "type": "string" } },
-        "authorities": {
-          "type": "object",
-          "additionalProperties": { "enum": ["official", "shared", "team"] }
-        }
-      }
-    },
-    "excludedRule": {
-      "type": "object",
-      "required": ["ruleId", "reasons"],
-      "properties": {
-        "ruleId": { "type": "string" },
-        "reasons": {
-          "type": "array",
-          "minItems": 1,
-          "uniqueItems": true,
-          "items": { "enum": ["status", "team", "season", "profile"] }
-        }
-      }
-    },
-    "overriddenRule": {
-      "type": "object",
-      "required": ["ruleId", "topic", "winnerIds", "effectiveLevel"],
-      "properties": {
-        "ruleId": { "type": "string" },
-        "topic": { "type": "string" },
-        "winnerIds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string" } },
-        "effectiveLevel": { "enum": ["official", "global", "local", "shared"] }
+        "authority": { "type": "string" },
+        "ruleIds": { "type": "array", "items": { "type": "string" } }
       }
     },
     "checkViolation": {

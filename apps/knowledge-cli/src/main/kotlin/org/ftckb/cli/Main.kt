@@ -5,6 +5,7 @@ import java.io.PrintStream
 import java.nio.file.Path
 import kotlin.system.exitProcess
 import org.ftckb.domain.RuleContext
+import org.ftckb.domain.RuleContextException
 import org.ftckb.domain.RuleIdentity
 import org.ftckb.domain.RuleResolver
 import org.ftckb.knowledge.FileKnowledgeRepository
@@ -35,11 +36,15 @@ fun runCli(
         return runApprovalCommand(args.first(),args.drop(1),out)
     }
     if (args.firstOrNull() in setOf("validate","resolve") && args.contains("--help")) {
-        out.println("usage: knowledge-cli <validate|resolve> <knowledge-root> [--team N --season S] [--json]")
+        if (args.first()=="validate") {
+            out.println("usage: knowledge-cli validate <knowledge-root> [--json]")
+        } else {
+            out.println("usage: knowledge-cli resolve <knowledge-root> --team N --season S [--profile NAME ... | --generic-profile] [--json]")
+        }
         return 0
     }
     // In --json mode every failure path emits the same stable error shape:
-    // {"schemaVersion":1,"command":"<validate|resolve>","ok":false,"error":{"code","message"}}.
+    // {"schemaVersion":2,"command":"<validate|resolve>","ok":false,"error":{"code","message"}}.
     val jsonMode=args.contains("--json")
     fun fail(message:String,code:String,exit:Int):Int {
         if (jsonMode) out.println(KernelJson.errorJson(args.firstOrNull(),code,message))
@@ -47,12 +52,24 @@ fun runCli(
         return exit
     }
     if (args.size<2) {
-        return fail("usage: knowledge-cli <validate|resolve> <knowledge-root> [--team N --season S] [--json]","usage",64)
+        return fail(
+            "usage: knowledge-cli <validate|resolve> <knowledge-root> [--team N --season S] "+
+                "[--profile NAME ... | --generic-profile] [--json]",
+            "usage",64
+        )
     }
     if (args[0] !in setOf("validate","resolve")) {
         return fail("unknown command: ${args[0]}","usage",64)
     }
-    val optionArgs=args.drop(2).filterNot { it=="--json" }
+    val rawOptionArgs=args.drop(2).filterNot { it=="--json" }
+    val profileSelection=if (args[0]=="resolve") {
+        try {
+            ProfileArguments.extract(rawOptionArgs)
+        } catch (exception:IllegalArgumentException) {
+            return fail(exception.message.orEmpty(),"usage",64)
+        }
+    } else null
+    val optionArgs=profileSelection?.remaining ?: rawOptionArgs
     if (args[0]=="validate" && optionArgs.isNotEmpty()) {
         return fail("validate accepts exactly one knowledge root","usage",64)
     }
@@ -83,6 +100,13 @@ fun runCli(
             return fail("invalid value for --season: expected YYYY-YYYY","usage",64)
         }
     }
+    val profiles=if (args[0]=="resolve") {
+        try {
+            profileSelection!!.requiredProfiles()
+        } catch (exception:RuleContextException) {
+            return fail(exception.message.orEmpty(),exception.code,2)
+        }
+    } else emptySet()
     val loaded=try {
         FileKnowledgeRepository.load(Path.of(args[1]))
     } catch (exception:Exception) {
@@ -109,9 +133,9 @@ fun runCli(
             val options=optionArgs.chunked(2).associate { pair -> pair[0] to pair.getOrElse(1) { "" } }
             val team=options["--team"] ?: return 64.also { out.println("missing --team") }
             val season=options["--season"] ?: return 64.also { out.println("missing --season") }
-            val result=RuleResolver.resolve(loaded.rules,RuleContext(team,season))
+            val result=RuleResolver.resolve(loaded.rules,RuleContext(team,season,profiles))
             if (jsonMode) {
-                out.println(KernelJson.resolveJson(team,season,result.activeRules,result.conflicts))
+                out.println(KernelJson.resolveJson(team,season,result))
                 if (result.conflicts.isNotEmpty()) 2 else 0
             } else if (result.conflicts.isNotEmpty()) {
                 result.conflicts.forEach { out.println("conflict topic=${it.topic} rules=${it.ruleIds.sorted().joinToString(",")}") }
@@ -133,7 +157,7 @@ private fun printTopLevelHelp(out:PrintStream) {
     out.println("commands:")
     out.println("  validate <knowledge-root> [--json]")
     out.println("      load and validate knowledge rules")
-    out.println("  resolve <knowledge-root> --team N --season YYYY-YYYY [--json]")
+    out.println("  resolve <knowledge-root> --team N --season YYYY-YYYY [--profile NAME ... | --generic-profile] [--json]")
     out.println("      resolve active rules deterministically (OFFICIAL > TEAM > SHARED)")
     out.println("  candidates <knowledge-root> [--json]")
     out.println("      list candidate rules awaiting approval")
