@@ -12,7 +12,10 @@ import org.ftckb.domain.RuleAuthority
 import org.ftckb.domain.RuleCheck
 import org.ftckb.domain.RuleCheckKind
 import org.ftckb.domain.RuleEvidence
+import org.ftckb.domain.RulePolicy
+import org.ftckb.domain.RuleReviewTrigger
 import org.ftckb.domain.RuleStatus
+import org.ftckb.domain.PolicyLevel
 import org.ftckb.domain.WebRuleEvidence
 import org.snakeyaml.engine.v2.api.Load
 import org.snakeyaml.engine.v2.api.LoadSettings
@@ -22,14 +25,15 @@ object RuleYamlCodec {
     private val load=Load(LoadSettings.builder().setAllowDuplicateKeys(false).build())
     private val ruleKeys=setOf(
         "id","topic","title","instruction","rationale","status","authority","applicability",
-        "evidence","approval","supersedes","positiveExample","negativeExample","checks"
+        "evidence","approval","supersedes","positiveExample","negativeExample","checks","policyLevel",
+        "reviewTriggers"
     )
 
     fun decode(text:String):List<KnowledgeRule> {
         val root=load.loadFromString(text).asMap("root")
         root.rejectUnknownFields(setOf("schemaVersion","rules"),"root")
         val schemaVersion=root.int("schemaVersion")
-        require(schemaVersion in 1..3) { "unsupported schemaVersion" }
+        require(schemaVersion in 1..4) { "unsupported schemaVersion" }
         return root.requiredList("rules").mapIndexed { index,value ->
             val name="rules[$index]"
             decodeRule(value.asMap(name),name,schemaVersion)
@@ -38,8 +42,16 @@ object RuleYamlCodec {
 
     private fun decodeRule(map:Map<String,Any?>,name:String,schemaVersion:Int):KnowledgeRule {
         map.rejectUnknownFields(ruleKeys,name)
-        val applicability=map.optionalMap("applicability") ?: emptyMap()
-        applicability.rejectUnknownFields(setOf("teams","seasons"),"$name.applicability")
+        if (schemaVersion<4 && "policyLevel" in map) error("$name.policyLevel requires schemaVersion 4")
+        val applicability=if (schemaVersion==4) {
+            map.requiredMap("applicability")
+        } else {
+            map.optionalMap("applicability") ?: emptyMap()
+        }
+        applicability.rejectUnknownFields(setOf("teams","seasons","profiles"),"$name.applicability")
+        if (schemaVersion<4 && "profiles" in applicability) {
+            error("$name.applicability.profiles requires schemaVersion 4")
+        }
         val approval=map.optionalMap("approval")?.let {
             it.rejectUnknownFields(setOf("approver","role","team","approvedAt"),"$name.approval")
             Approval(
@@ -49,13 +61,39 @@ object RuleYamlCodec {
                 approvedAt=Instant.parse(it.string("approvedAt"))
             )
         }
+        val authority=RuleAuthority.valueOf(map.string("authority").uppercase())
+        val policyLevel=if (schemaVersion==4) {
+            PolicyLevel.valueOf(map.string("policyLevel").uppercase())
+        } else {
+            RulePolicy.legacy(authority)
+        }
+        val profiles=if (schemaVersion==4) applicability.requiredStringSet("profiles") else emptySet()
+        val reviewTriggers=if ("reviewTriggers" !in map) emptyList() else {
+            require(schemaVersion==4) { "$name.reviewTriggers requires schemaVersion 4" }
+            map.requiredList("reviewTriggers").also {
+                require(it.isNotEmpty()) { "$name.reviewTriggers must not be empty when present" }
+            }.mapIndexed { index,value ->
+                val triggerName="$name.reviewTriggers[$index]"
+                val trigger=value.asMap(triggerName)
+                trigger.rejectUnknownFields(setOf("paths","addedLinePatterns"),triggerName)
+                RuleReviewTrigger(
+                    trigger.requiredList("paths").map { it as? String ?: error("paths values must be strings") },
+                    trigger.requiredList("addedLinePatterns").map {
+                        it as? String ?: error("addedLinePatterns values must be strings")
+                    }
+                )
+            }
+        }
         return KnowledgeRule(
             id=map.string("id"),topic=map.string("topic"),title=map.string("title"),
             instruction=map.string("instruction"),rationale=map.string("rationale"),
             status=RuleStatus.valueOf(map.string("status").uppercase()),
-            authority=RuleAuthority.valueOf(map.string("authority").uppercase()),
+            authority=authority,
+            policyLevel=policyLevel,
             applicability=RuleApplicability(
-                teams=applicability.stringSet("teams"),seasons=applicability.stringSet("seasons")
+                teams=if (schemaVersion==4) applicability.requiredStringSet("teams") else applicability.stringSet("teams"),
+                seasons=if (schemaVersion==4) applicability.requiredStringSet("seasons") else applicability.stringSet("seasons"),
+                profiles=profiles
             ),
             evidence=map.requiredList("evidence").mapIndexed { index,value ->
                 val evidenceName="$name.evidence[$index]"
@@ -64,7 +102,7 @@ object RuleYamlCodec {
             },
             approval=approval,supersedes=map.optionalString("supersedes"),
             positiveExample=map.optionalString("positiveExample"),negativeExample=map.optionalString("negativeExample"),
-            checks=decodeChecks(map,name,schemaVersion)
+            checks=decodeChecks(map,name,schemaVersion),reviewTriggers=reviewTriggers
         )
     }
 
@@ -145,7 +183,12 @@ object RuleYamlCodec {
         if (key !in this) return null
         return this[key].asMap(key)
     }
+    private fun Map<String,Any?>.requiredMap(key:String):Map<String,Any?> =
+        optionalMap(key) ?: error("$key must be a map")
     private fun Map<String,Any?>.stringSet(key:String)=optionalList(key).map {
+        it as? String ?: error("$key values must be strings")
+    }.toSet()
+    private fun Map<String,Any?>.requiredStringSet(key:String)=requiredList(key).map {
         it as? String ?: error("$key values must be strings")
     }.toSet()
     private fun Any?.strictInt(key:String):Int {

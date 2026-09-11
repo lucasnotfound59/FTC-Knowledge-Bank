@@ -2,8 +2,10 @@ package org.ftckb.knowledge
 
 import java.time.LocalDate
 import org.ftckb.domain.GitRuleEvidence
+import org.ftckb.domain.PolicyLevel
 import org.ftckb.domain.RuleAuthority
 import org.ftckb.domain.RuleCheckKind
+import org.ftckb.domain.RuleReviewTrigger
 import org.ftckb.domain.RuleStatus
 import org.ftckb.domain.WebRuleEvidence
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -151,12 +153,124 @@ class RuleYamlCodecTest {
     }
 
     @Test
-    fun `rejects unsupported schema versions`() {
+    fun `rejects unsupported schema version five`() {
         val exception=assertThrows(IllegalArgumentException::class.java) {
-            RuleYamlCodec.decode("schemaVersion: 4\nrules: []")
+            RuleYamlCodec.decode("schemaVersion: 5\nrules: []")
         }
 
         assertEquals("unsupported schemaVersion",exception.message)
+    }
+
+    @Test
+    fun `decodes explicit v4 policy and profile`() {
+        val rule=RuleYamlCodec.decode(v4Rule()).single()
+        assertEquals(PolicyLevel.GLOBAL,rule.policyLevel)
+        assertEquals(setOf("command-based"),rule.applicability.profiles)
+    }
+
+    @Test
+    fun `decodes v4 review triggers`() {
+        val rule=RuleYamlCodec.decode(v4Rule().replace(
+            "    evidence:",
+            "    reviewTriggers:\n      - paths: [\"TeamCode/**/*.java\"]\n        addedLinePatterns: [\"TODO\"]\n    evidence:"
+        )).single()
+
+        assertEquals(
+            listOf(RuleReviewTrigger(listOf("TeamCode/**/*.java"),listOf("TODO"))),
+            rule.reviewTriggers
+        )
+    }
+
+    @Test
+    fun `v4 requires explicit applicability map and lists`() {
+        val invalidDocuments=listOf(
+            v4Rule().replace("    applicability:\n      teams: []\n      seasons: [\"2025-2026\"]\n      profiles: [command-based]\n", "") to
+                "applicability must be a map",
+            v4Rule().replace("      teams: []\n", "") to "teams must be a list",
+            v4Rule().replace("      seasons: [\"2025-2026\"]\n", "") to
+                "seasons must be a list",
+            v4Rule().replace("      profiles: [command-based]\n", "") to
+                "profiles must be a list"
+        )
+
+        invalidDocuments.forEach { (yaml,message) ->
+            val exception=assertThrows(IllegalStateException::class.java) { RuleYamlCodec.decode(yaml) }
+            assertEquals(message,exception.message)
+        }
+    }
+
+    @Test
+    fun `v4 rejects invalid policy and unknown fields`() {
+        val invalidDocuments=listOf(
+            v4Rule().replace("policyLevel: global","policyLevel: null") to "policyLevel must be a string",
+            v4Rule().replace("policyLevel: global","policyLevel: unsupported") to
+                "No enum constant org.ftckb.domain.PolicyLevel.UNSUPPORTED",
+            v4Rule().replace("    evidence:","    typo: ignored\n    evidence:") to
+                "rules[0] contains unknown fields: typo",
+            v4Rule().replace("      profiles: [command-based]","      profiles: [42]") to
+                "profiles values must be strings"
+        )
+
+        invalidDocuments.forEach { (yaml,message) ->
+            val exception=assertThrows(RuntimeException::class.java) { RuleYamlCodec.decode(yaml) }
+            assertEquals(message,exception.message)
+        }
+    }
+
+    @Test
+    fun `v4 rejects invalid review triggers`() {
+        val invalidDocuments=listOf(
+            v4Rule().replace("    evidence:","    reviewTriggers: []\n    evidence:") to
+                "rules[0].reviewTriggers must not be empty when present",
+            v4Rule().replace("    evidence:","    reviewTriggers:\n      - paths: [42]\n        addedLinePatterns: [TODO]\n    evidence:") to
+                "paths values must be strings",
+            v4Rule().replace("    evidence:","    reviewTriggers:\n      - paths: [paths]\n        addedLinePatterns: [42]\n    evidence:") to
+                "addedLinePatterns values must be strings",
+            v4Rule().replace("    evidence:","    reviewTriggers:\n      - paths: [paths]\n    evidence:") to
+                "addedLinePatterns must be a list",
+            v4Rule().replace("    evidence:","    reviewTriggers:\n      - paths: [paths]\n        addedLinePatterns: [patterns]\n        typo: ignored\n    evidence:") to
+                "rules[0].reviewTriggers[0] contains unknown fields: typo"
+        )
+
+        invalidDocuments.forEach { (yaml,message) ->
+            val exception=assertThrows(RuntimeException::class.java) { RuleYamlCodec.decode(yaml) }
+            assertEquals(message,exception.message)
+        }
+    }
+
+    @Test
+    fun `v1 through v3 reject v4-only fields`() {
+        val policyLevelYaml=legacyRule("shared").replace("schemaVersion: 1","schemaVersion: 3")
+            .replace("    applicability: {}","    policyLevel: global\n    applicability: {}")
+        val profilesYaml=legacyRule("shared").replace("schemaVersion: 1","schemaVersion: 3")
+            .replace("    applicability: {}","    applicability:\n      profiles: [command-based]")
+        val triggerYaml=legacyRule("shared").replace("schemaVersion: 1","schemaVersion: 3")
+            .replace("    evidence: []","    reviewTriggers:\n      - paths: [paths]\n        addedLinePatterns: [patterns]\n    evidence: []")
+
+        assertEquals("rules[0].policyLevel requires schemaVersion 4",assertThrows(IllegalStateException::class.java) {
+            RuleYamlCodec.decode(policyLevelYaml)
+        }.message)
+        assertEquals("rules[0].applicability.profiles requires schemaVersion 4",assertThrows(IllegalStateException::class.java) {
+            RuleYamlCodec.decode(profilesYaml)
+        }.message)
+        assertEquals("rules[0].reviewTriggers requires schemaVersion 4",assertThrows(IllegalArgumentException::class.java) {
+            RuleYamlCodec.decode(triggerYaml)
+        }.message)
+    }
+
+    @Test
+    fun `legacy schema versions map authority to policy level`() {
+        val expected=listOf(
+            "official" to PolicyLevel.GLOBAL,
+            "shared" to PolicyLevel.SHARED,
+            "team" to PolicyLevel.LOCAL
+        )
+
+        expected.forEach { (authority,policyLevel) ->
+            val rule=RuleYamlCodec.decode(legacyRule(authority)).single()
+            assertEquals(policyLevel,rule.policyLevel)
+            assertEquals(emptySet<String>(),rule.applicability.profiles)
+        }
     }
 
     @Test
@@ -447,5 +561,42 @@ class RuleYamlCodecTest {
             applicability: {}
             evidence:
               - ${evidence.replace("\n","\n                ")}
+    """.trimIndent()
+
+    private fun v4Rule()="""
+        schemaVersion: 4
+        rules:
+          - id: shared.v4
+            topic: v4-test
+            title: Test
+            instruction: Test instruction
+            rationale: Test rationale
+            status: candidate
+            authority: shared
+            policyLevel: global
+            applicability:
+              teams: []
+              seasons: ["2025-2026"]
+              profiles: [command-based]
+            evidence:
+              - type: git
+                repository: fixture/repo
+                commit: abcdef1
+                file: TeamCode/Test.java
+                line: 1
+    """.trimIndent()
+
+    private fun legacyRule(authority:String)="""
+        schemaVersion: 1
+        rules:
+          - id: legacy.rule
+            topic: legacy
+            title: Legacy
+            instruction: Legacy instruction
+            rationale: Legacy rationale
+            status: candidate
+            authority: $authority
+            applicability: {}
+            evidence: []
     """.trimIndent()
 }
