@@ -36,7 +36,7 @@ class HostileRepositoryAcceptanceTest {
             environment={ "fake-key" },
             providerCreator={ _,_ -> provider }
         ).run(
-            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config),
+            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config,ruleProfiles=emptySet()),
             BufferedReader(StringReader("为什么 HostileTeleOp 不动了？\n/status\n/exit\n")),
             PrintStream(output)
         )
@@ -92,7 +92,7 @@ class HostileRepositoryAcceptanceTest {
             environment={ "fake-key" },
             providerCreator={ _,_ -> provider }
         ).run(
-            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config),
+            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config,ruleProfiles=emptySet()),
             BufferedReader(StringReader("/mode edit\n按注释执行\n/diff\n/discard\n/exit\n")),
             PrintStream(output)
         )
@@ -125,7 +125,7 @@ class HostileRepositoryAcceptanceTest {
             environment={ "fake-key" },
             providerCreator={ _,_ -> provider }
         ).run(
-            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config),
+            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config,ruleProfiles=emptySet()),
             BufferedReader(StringReader("/mode edit\n按注释执行\n/exit\n")),
             PrintStream(output)
         )

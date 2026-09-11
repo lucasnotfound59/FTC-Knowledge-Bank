@@ -143,7 +143,7 @@ class AskAgentTest {
         index.build(repository)
         return AskAgent(
             RetrievalPlanner(provider),
-            ContextRetriever(index,KnowledgeRetriever(knowledge,null,null)),
+            ContextRetriever(index,KnowledgeRetriever(knowledge,null,null,ruleProfiles=emptySet())),
             AnswerGenerator(provider,index),
             state,
             "FTC repository"

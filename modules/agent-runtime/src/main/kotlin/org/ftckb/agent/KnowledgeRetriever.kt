@@ -38,7 +38,8 @@ class KnowledgeRetriever(
     knowledgeRoot:Path,
     team:String?,
     season:String?,
-    private val guideLimits:GuideTraversalLimits=GuideTraversalLimits()
+    private val guideLimits:GuideTraversalLimits=GuideTraversalLimits(),
+    ruleProfiles:Set<String>?=null
 ) {
     private val activeRules:List<KnowledgeRule>
     private val guidesRoot:Path?
@@ -49,7 +50,11 @@ class KnowledgeRetriever(
         require(loaded.violations.isEmpty()) {
             "knowledge validation failed: "+loaded.violations.joinToString("; ") { "${it.ruleId}:${it.field}:${it.message}" }
         }
-        activeRules=RuleResolver.resolve(loaded.rules,RuleContext(team,season)).activeRules
+        val resolved=RuleResolver.resolve(loaded.rules,RuleContext(team,season,ruleProfiles))
+        require(resolved.conflicts.isEmpty()) {
+            "rule conflicts: "+resolved.conflicts.joinToString("; ") { "${it.topic}: ${it.ruleIds.joinToString(",")}" }
+        }
+        activeRules=resolved.activeRules
         val candidate=canonicalKnowledgeRoot.resolve("guides")
         guidesRoot=if (Files.isDirectory(candidate,LinkOption.NOFOLLOW_LINKS) && !Files.isSymbolicLink(candidate)) {
             candidate.toRealPath()

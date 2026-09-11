@@ -48,7 +48,8 @@ data class EvalCase(
     val repository:String,
     val team:String,
     val season:String,
-    val turns:List<EvalTurnExpectation>
+    val turns:List<EvalTurnExpectation>,
+    val ruleProfiles:Set<String>
 )
 
 data class EvalExpectationDetail(val label:String,val passed:Boolean,val detail:String)
@@ -64,7 +65,7 @@ data class EvalCaseResult(
 object EvalCasesCodec {
     private val load=Load(LoadSettings.builder().setAllowDuplicateKeys(false).build())
     private val rootKeys=setOf("schemaVersion","cases")
-    private val caseKeys=setOf("id","repository","team","season","turns")
+    private val caseKeys=setOf("id","repository","team","season","turns","profiles")
     private val turnKeys=setOf(
         "mode","prompt","requiredClaimKinds","requiredPaths","requiredRuleIds",
         "requiredChangedPaths","forbiddenPaths"
@@ -76,7 +77,7 @@ object EvalCasesCodec {
         val root=load.loadFromString(text).asMap("root")
         root.rejectUnknownFields(rootKeys,"root")
         val schemaVersion=root.int("schemaVersion")
-        check(schemaVersion==1) { "unsupported schemaVersion" }
+        check(schemaVersion==2) { "unsupported schemaVersion" }
         val cases=root.requiredList("cases").mapIndexed { index,value ->
             decodeCase(value.asMap("cases[${index}]"),"cases[${index}]")
         }
@@ -101,7 +102,10 @@ object EvalCasesCodec {
             decodeTurn(value.asMap("${name}.turns[${index}]"),"${name}.turns[${index}]")
         }
         check(turns.isNotEmpty()) { "${name} requires at least one turn" }
-        return EvalCase(id,repository,team,season,turns)
+        val profiles=map.requiredList("profiles").map {
+            it as? String ?: error("${name}.profiles values must be strings")
+        }.toSet()
+        return EvalCase(id,repository,team,season,turns,org.ftckb.domain.RuleProfiles.normalize(profiles))
     }
 
     private fun decodeTurn(map:Map<String,Any?>,name:String):EvalTurnExpectation {
@@ -423,7 +427,7 @@ class EvalCommand(
         val repositoryIndex=RepositoryIndex()
         val snapshot=repositoryIndex.build(repositoryRoot)
         check(snapshot.profile.supported) { "unsupported FTC repository" }
-        val knowledgeRetriever=KnowledgeRetriever(values.knowledge,case.team,case.season)
+        val knowledgeRetriever=KnowledgeRetriever(values.knowledge,case.team,case.season,ruleProfiles=case.ruleProfiles)
         val outboundProvider=RedactingModelProvider(provider,setOf(secret))
         val conversation=ConversationState(outboundProvider,setOf(secret))
         val retrievalPlanner=RetrievalPlanner(outboundProvider)

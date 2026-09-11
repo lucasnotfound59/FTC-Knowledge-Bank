@@ -145,7 +145,7 @@ class AnswerGeneratorTest {
         val index=RepositoryIndex()
         index.build(repositoryRoot)
         val cap=256
-        val context=ContextRetriever(index,KnowledgeRetriever(knowledgeRoot,null,null),cap)
+        val context=ContextRetriever(index,KnowledgeRetriever(knowledgeRoot,null,null,ruleProfiles=emptySet()),cap)
             .retrieve(RetrievalIntent(setOf("drive"),emptySet(),emptySet(),emptySet(),emptySet()))
         val provider=ScriptedProvider(
             """{"claims":[{"kind":"model_inference","text":"Inspect the drive class.","citations":[]}]}"""
@@ -168,7 +168,7 @@ class AnswerGeneratorTest {
         outside.writeText("# Leaked\n\noutside-secret")
         Files.createSymbolicLink(guidesRoot.resolve("outside.md"),outside)
 
-        val guides=KnowledgeRetriever(knowledgeRoot,null,null)
+        val guides=KnowledgeRetriever(knowledgeRoot,null,null,ruleProfiles=emptySet())
             .retrieveGuides(RetrievalIntent(setOf("secret"),emptySet(),emptySet(),emptySet(),emptySet()))
 
         assertEquals(listOf("guides/inside.md"),guides.map { it.path })
@@ -188,7 +188,7 @@ class AnswerGeneratorTest {
         }
         assumeTrue(fifoProcess.waitFor(5,TimeUnit.SECONDS) && fifoProcess.exitValue()==0,"mkfifo is unavailable")
 
-        val guides=KnowledgeRetriever(knowledgeRoot,null,null)
+        val guides=KnowledgeRetriever(knowledgeRoot,null,null,ruleProfiles=emptySet())
             .retrieveGuides(RetrievalIntent(setOf("secret"),emptySet(),emptySet(),emptySet(),emptySet()))
 
         assertEquals(listOf("guides/inside.md"),guides.map { it.path })
@@ -201,7 +201,7 @@ class AnswerGeneratorTest {
         guidesRoot.resolve("one.md").writeText("# Drive one\nfirst")
         guidesRoot.resolve("two.md").writeText("# Drive two\nsecond")
         val retriever=KnowledgeRetriever(
-            knowledgeRoot,null,null,GuideTraversalLimits(maxFiles=1)
+            knowledgeRoot,null,null,GuideTraversalLimits(maxFiles=1),ruleProfiles=emptySet()
         )
 
         assertThrows(GuideTraversalException::class.java) {
@@ -223,7 +223,7 @@ class AnswerGeneratorTest {
             "filesystem still permits reading mode 000 files"
         )
         try {
-            val guides=KnowledgeRetriever(knowledgeRoot,null,null)
+            val guides=KnowledgeRetriever(knowledgeRoot,null,null,ruleProfiles=emptySet())
                 .retrieveGuides(RetrievalIntent(setOf("drive"),emptySet(),emptySet(),emptySet(),emptySet()))
 
             assertEquals(listOf("guides/safe.md"),guides.map { it.path })

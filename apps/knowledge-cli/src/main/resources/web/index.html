@@ -80,6 +80,7 @@
       <h2>会话设置（修改后对话历史保留）</h2>
       <div class="field"><label>队伍编号</label><input id="cfg-team"></div>
       <div class="field"><label>赛季（YYYY-YYYY）</label><input id="cfg-season"></div>
+      <div class="field"><label>规则 Profile</label><select id="cfg-profiles"><option value="generic">generic</option><option value="rookiebot">rookiebot</option><option value="simple-opmode">simple-opmode</option><option value="command-based">command-based</option><option value="ftclib-command">ftclib-command</option></select></div>
       <div class="field"><label>Provider 名称</label><input id="cfg-provider"></div>
       <div class="field"><label>仓库路径（有编辑改动时不可改）</label><input id="cfg-repo"></div>
       <div class="field"><label>知识库路径</label><input id="cfg-knowledge"></div>
@@ -228,6 +229,7 @@ async function refreshStatus(){
       ["模式: "+(data.mode==="edit"?"编辑":"询问"),data.mode==="edit"?"warn":""],
       ["队伍 "+data.team,""],
       [data.season,""],
+      ["规则 "+(data.profiles.length?data.profiles.join(", "):"generic"),""],
       ["模型 "+data.provider+"/"+data.model,""],
       data.hasChanges?["有未提交的 Agent 改动","warn"]:null
     ].filter(Boolean);
@@ -242,6 +244,7 @@ async function refreshStatus(){
     $("cfg-team").value=$("cfg-team").value||data.team;
     $("cfg-season").value=$("cfg-season").value||data.season;
     $("cfg-provider").value=$("cfg-provider").value||data.provider;
+    $("cfg-profiles").value=data.profiles.includes("rookiebot")?"rookiebot":data.profiles.includes("ftclib-command")?"ftclib-command":data.profiles[0]||"generic";
     $("cfg-repo").placeholder="当前: "+data.repository;
     $("info").textContent="仓库: "+data.repository;
   }catch(e){}
@@ -250,6 +253,7 @@ async function refreshStatus(){
 async function applyConfig(){
   const body={};
   const team=$("cfg-team").value.trim();if(team)body.team=team;
+  const selected=$("cfg-profiles").value;body.profiles=selected==="generic"?[]:[selected];
   const season=$("cfg-season").value.trim();if(season)body.season=season;
   const provider=$("cfg-provider").value.trim();if(provider)body.provider=provider;
   const repo=$("cfg-repo").value.trim();if(repo)body.repo=repo;

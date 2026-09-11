@@ -15,5 +15,6 @@ sealed class AskChatSessionException(message:String):RuntimeException(message) {
 }
 
 data class ChatStatus(
-    val repository:Path,val team:String,val season:String,val provider:String,val model:String
+    val repository:Path,val team:String,val season:String,val provider:String,val model:String,
+    val ruleProfiles:Set<String>
 )

@@ -42,7 +42,7 @@ class ServeCommand(
                 },
                 providerCreator,sessionsDirectory,
                 { index -> { paths -> index.refresh(paths) } },
-                options.repository,options.knowledge,options.team,options.season,options.provider
+                options.repository,options.knowledge,options.team,options.season,options.provider,options.ruleProfiles
             )
         } catch (failure:SessionAssemblyException) {
             out.println("error starting serve: ${failure.message}")

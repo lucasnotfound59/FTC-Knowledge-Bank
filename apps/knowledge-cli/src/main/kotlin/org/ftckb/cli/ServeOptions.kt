@@ -11,7 +11,8 @@ data class ServeOptions(
     val provider:String,
     val config:Path,
     val port:Int,
-    val noBrowser:Boolean
+    val noBrowser:Boolean,
+    val ruleProfiles:Set<String>
 )
 
 fun interface ServeRunner {
@@ -29,7 +30,11 @@ internal fun runServeCommand(
         out.println("duplicate serve option: --no-browser")
         return 64
     }
-    val valueArgs=args.filterNot { it=="--no-browser" }
+    val selection=try { ProfileArguments.extract(args) } catch (error:IllegalArgumentException) {
+        out.println(error.message)
+        return 64
+    }
+    val valueArgs=selection.remaining.filterNot { it=="--no-browser" }
     if (valueArgs.size%2!=0) {
         out.println("serve options must be flag-value pairs")
         return 64
@@ -85,6 +90,10 @@ internal fun runServeCommand(
         out.println("invalid value for --port: expected 0-65535")
         return 64
     }
+    val profiles=try { selection.requiredProfiles() } catch (error:IllegalArgumentException) {
+        out.println(error.message)
+        return 64
+    }
     val options=ServeOptions(
         repository=values["--repo"]?.let(Path::of) ?: Path.of(System.getProperty("user.dir")),
         knowledge=Path.of(values.getValue("--knowledge")),
@@ -94,7 +103,8 @@ internal fun runServeCommand(
         config=values["--config"]?.let(Path::of)
             ?:Path.of(System.getProperty("user.home"),".ftckb","config.yaml"),
         port=port,
-        noBrowser=args.any { it=="--no-browser" }
+        noBrowser=args.any { it=="--no-browser" },
+        ruleProfiles=profiles
     )
     return runner.run(options,out)
 }
@@ -102,6 +112,6 @@ internal fun runServeCommand(
 internal fun printServeUsage(out:PrintStream) {
     out.println(
         "usage: knowledge-cli serve --knowledge PATH --team N --season YYYY-YYYY --provider NAME "+
-            "[--repo PATH] [--config PATH] [--port 0-65535] [--no-browser]"
+            "(--generic-profile | --profile NAME...) [--repo PATH] [--config PATH] [--port 0-65535] [--no-browser]"
     )
 }

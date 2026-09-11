@@ -365,7 +365,7 @@ class SessionControllerTest {
         val knowledge=Files.createDirectories(root.resolve("knowledge"))
         val index=RepositoryIndex().also { it.build(repository) }
         val conversation=ConversationState(provider)
-        val contextRetriever=ContextRetriever(index,KnowledgeRetriever(knowledge,null,null))
+        val contextRetriever=ContextRetriever(index,KnowledgeRetriever(knowledge,null,null,ruleProfiles=emptySet()))
         val ask=AskAgent(
             RetrievalPlanner(provider),contextRetriever,AnswerGenerator(provider,index),conversation,"supported FTC repository"
         )

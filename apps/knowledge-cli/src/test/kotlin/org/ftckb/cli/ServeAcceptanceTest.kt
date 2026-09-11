@@ -29,6 +29,23 @@ class ServeAcceptanceTest {
     private val client=HttpClient.newHttpClient()
 
     @Test
+    fun `serve requires explicit profiles and normalizes named selection`() {
+        val base=listOf("serve","--knowledge","k","--team","20827","--season","2025-2026","--provider","fake")
+        for (selection in listOf(emptyList(),listOf("--profile","unknown"),
+            listOf("--profile","simple-opmode","--profile","command-based"),
+            listOf("--generic-profile","--profile","rookiebot"))) {
+            val code=runCli(base+selection,PrintStream(ByteArrayOutputStream()),StringReader("").buffered(),
+                serveCommand=ServeRunner { _,_ -> error("invalid profiles must not launch") })
+            assertEquals(64,code)
+        }
+        var actual:Set<String>?=null
+        val code=runCli(base+listOf("--profile","ftclib-command"),PrintStream(ByteArrayOutputStream()),
+            StringReader("").buffered(),serveCommand=ServeRunner { options,_ -> actual=options.ruleProfiles; 0 })
+        assertEquals(0,code)
+        assertEquals(setOf("command-based","ftclib-command"),actual)
+    }
+
+    @Test
     fun `serve help prints usage without launching`() {
         val output=ByteArrayOutputStream()
         val code=runCli(listOf("serve","--help"),PrintStream(output),StringReader("").buffered())
@@ -39,19 +56,19 @@ class ServeAcceptanceTest {
     @Test
     fun `serve parse failures exit sixty four`() {
         val cases=mapOf(
-            listOf("serve","--knowledge","k","--team","20827","--season","2025-2026","--provider","fake","--extra","x") to
+            listOf("serve","--generic-profile","--knowledge","k","--team","20827","--season","2025-2026","--provider","fake","--extra","x") to
                 "unknown serve option: --extra\n",
-            listOf("serve","--knowledge","k","--team","20827","--season","2025-2026") to
+            listOf("serve","--generic-profile","--knowledge","k","--team","20827","--season","2025-2026") to
                 "missing --provider\n",
-            listOf("serve","--knowledge","k","--team","20827","--season","2025-2026","--provider","fake","--provider","other") to
+            listOf("serve","--generic-profile","--knowledge","k","--team","20827","--season","2025-2026","--provider","fake","--provider","other") to
                 "duplicate serve option: --provider\n",
-            listOf("serve","--knowledge","k","--team","20827","--season","2025-2026","--provider","fake","--port","99999") to
+            listOf("serve","--generic-profile","--knowledge","k","--team","20827","--season","2025-2026","--provider","fake","--port","99999") to
                 "invalid value for --port: expected 0-65535\n",
-            listOf("serve","--knowledge","k","--team","20827","--season","2025-2026","--provider","fake","--port","abc") to
+            listOf("serve","--generic-profile","--knowledge","k","--team","20827","--season","2025-2026","--provider","fake","--port","abc") to
                 "invalid value for --port: expected 0-65535\n",
-            listOf("serve","--knowledge","k","--team","team-x","--season","2025-2026","--provider","fake") to
+            listOf("serve","--generic-profile","--knowledge","k","--team","team-x","--season","2025-2026","--provider","fake") to
                 "invalid value for --team: expected digits only\n",
-            listOf("serve","--knowledge","k","--team","20827","--season","2025-26","--provider","fake") to
+            listOf("serve","--generic-profile","--knowledge","k","--team","20827","--season","2025-26","--provider","fake") to
                 "invalid value for --season: expected YYYY-YYYY\n"
         )
         cases.forEach { (args,expected) ->
@@ -66,7 +83,7 @@ class ServeAcceptanceTest {
     fun `serve rejects startup failures before binding`(@TempDir root:Path) {
         val output=ByteArrayOutputStream()
         val code=runCli(
-            listOf("serve","--knowledge",root.resolve("missing").toString(),"--team","20827",
+            listOf("serve","--generic-profile","--knowledge",root.resolve("missing").toString(),"--team","20827",
                 "--season","2025-2026","--provider","fake","--config",root.resolve("missing.yaml").toString(),
                 "--no-browser"),
             PrintStream(output),StringReader("").buffered(),
@@ -91,7 +108,7 @@ class ServeAcceptanceTest {
             browserOpener={ opened=it }
         )
         val options=ServeOptions(
-            repository,knowledgeRoot(),"20827","2025-2026","fake",config,0,false
+            repository,knowledgeRoot(),"20827","2025-2026","fake",config,0,false,ruleProfiles=emptySet()
         )
         val codeHolder=IntArray(1) { -1 }
         val thread=Thread { codeHolder[0]=serve.run(options,PrintStream(output)) }
@@ -114,6 +131,7 @@ class ServeAcceptanceTest {
         assertEquals("2025-2026",status["season"].asText())
         assertEquals("fake",status["provider"].asText())
         assertTrue(status["apiKeySet"].booleanValue())
+        assertEquals(0,status["profiles"].size())
 
         val ask=json(post("$origin/api/ask?token=$token","""{"question":"为什么 SampleTeleOp 可能空指针？"}"""))
         assertTrue(ask["ok"].booleanValue(),ask.toString())
@@ -129,7 +147,21 @@ class ServeAcceptanceTest {
         assertTrue(save["ok"].booleanValue())
         assertTrue(Files.exists(Path.of(save["savedPath"].asText())))
 
-        val configured=json(post("$origin/api/configure?token=$token","""{"team":"16093"}"""))
+        for (profiles in listOf("null","\"rookiebot\"","[1]","[\"unknown\"]","[\"simple-opmode\",\"command-based\"]")) {
+            val invalid=json(post("$origin/api/configure?token=$token","""{"team":"16093","provider":"missing","profiles":$profiles}"""))
+            assertFalse(invalid["ok"].booleanValue(),invalid.toString())
+        }
+        val missing=json(post("$origin/api/configure?token=$token","""{"team":"16093"}"""))
+        assertFalse(missing["ok"].booleanValue())
+        val named=json(post("$origin/api/configure?token=$token","""{"profiles":["rookiebot"]}"""))
+        assertEquals(listOf("rookiebot","simple-opmode"),named["profiles"].map { it.asText() })
+        val failed=json(post("$origin/api/configure?token=$token","""{"team":"16093","profiles":[],"knowledge":"missing-knowledge","provider":"missing"}"""))
+        assertFalse(failed["ok"].booleanValue())
+        val unchanged=json(client.send(HttpRequest.newBuilder(URI.create("$origin/api/status?token=$token")).GET().build(),HttpResponse.BodyHandlers.ofString()))
+        assertEquals("20827",unchanged["team"].asText())
+        assertEquals("fake",unchanged["provider"].asText())
+        assertEquals(listOf("rookiebot","simple-opmode"),unchanged["profiles"].map { it.asText() })
+        val configured=json(post("$origin/api/configure?token=$token","""{"team":"16093","profiles":[]}"""))
         assertTrue(configured["ok"].booleanValue(),configured.toString())
         assertEquals("16093",configured["team"].asText())
 
@@ -164,7 +196,7 @@ class ServeAcceptanceTest {
             browserOpener={ }
         )
         val options=ServeOptions(
-            repository,knowledgeRoot(),"20827","2025-2026","fake",config,0,true
+            repository,knowledgeRoot(),"20827","2025-2026","fake",config,0,true,ruleProfiles=emptySet()
         )
         val codeHolder=IntArray(1) { -1 }
         val thread=Thread { codeHolder[0]=serve.run(options,PrintStream(output)) }
@@ -177,6 +209,10 @@ class ServeAcceptanceTest {
         assertTrue(mode["ok"].booleanValue(),mode.toString())
         assertEquals("edit",mode["mode"].asText())
 
+        val providerChanged=json(post("$origin/api/configure?token=$token","""{"profiles":[],"provider":"fake"}"""))
+        assertTrue(providerChanged["ok"].booleanValue(),providerChanged.toString())
+        assertEquals("edit",providerChanged["mode"].asText())
+
         val before=Files.readString(source)
         val submit=json(post("$origin/api/submit?token=$token","""{"message":"给 Vision.java 加结果有效性检查"}"""))
         assertTrue(submit["ok"].booleanValue(),submit.toString())
@@ -187,6 +223,13 @@ class ServeAcceptanceTest {
 
         val statusAfter=json(client.send(HttpRequest.newBuilder(URI.create("$origin/api/status?token=$token")).GET().build(),HttpResponse.BodyHandlers.ofString()))
         assertTrue(statusAfter["hasChanges"].booleanValue())
+
+        val noOp=json(post("$origin/api/configure?token=$token","""{"profiles":[]}"""))
+        assertTrue(noOp["ok"].booleanValue(),noOp.toString())
+        assertEquals("edit",noOp["mode"].asText())
+        val blocked=json(post("$origin/api/configure?token=$token","""{"profiles":["rookiebot"]}"""))
+        assertFalse(blocked["ok"].booleanValue())
+        assertEquals("refused",blocked["error"]["code"].asText())
 
         val undo=json(post("$origin/api/undo?token=$token","{}"))
         assertTrue(undo["ok"].booleanValue(),undo.toString())

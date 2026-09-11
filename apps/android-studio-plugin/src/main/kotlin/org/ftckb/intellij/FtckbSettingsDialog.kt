@@ -15,6 +15,9 @@ class FtckbSettingsDialog(
     initial:FtckbSettingsState,
     private val onApply:(FtckbSettingsState)->Unit
 ):DialogWrapper(project) {
+    private val ruleProfile=javax.swing.JComboBox(arrayOf("","generic","rookiebot","simple-opmode","command-based","ftclib-command")).apply {
+        selectedItem=initial.ruleProfile
+    }
     private val team=JTextField(initial.team)
     private val season=JTextField(initial.season)
     private val provider=JTextField(initial.provider)
@@ -33,7 +36,7 @@ class FtckbSettingsDialog(
             fill=GridBagConstraints.HORIZONTAL
             anchor=GridBagConstraints.WEST
         }
-        fun row(index:Int,label:String,field:JTextField) {
+        fun row(index:Int,label:String,field:JComponent) {
             constraints.gridx=0; constraints.gridy=index; constraints.weightx=0.0
             panel.add(JBLabel(label),constraints)
             constraints.gridx=1; constraints.weightx=1.0
@@ -44,12 +47,14 @@ class FtckbSettingsDialog(
         row(2,"Provider 名称",provider)
         row(3,"配置文件路径（留空用 ~/.ftckb/config.yaml）",configPath)
         row(4,"知识库路径（留空用插件内置知识库）",knowledgePath)
+        row(5,"规则 Profile（必须明确选择）",ruleProfile)
         return panel
     }
 
     override fun doOKAction() {
         val dialog=this@FtckbSettingsDialog
         val value=FtckbSettingsState().apply {
+            this.ruleProfile=dialog.ruleProfile.selectedItem as? String ?: ""
             this.team=dialog.team.text.trim()
             this.season=dialog.season.text.trim()
             this.provider=dialog.provider.text.trim()
@@ -62,6 +67,10 @@ class FtckbSettingsDialog(
         }
         if (!org.ftckb.domain.RuleIdentity.isCanonicalSeason(value.season)) {
             com.intellij.openapi.ui.Messages.showErrorDialog("赛季必须是 YYYY-YYYY","FTC 知识库设置")
+            return
+        }
+        try { selectedRuleProfiles(value.ruleProfile) } catch (error:IllegalArgumentException) {
+            com.intellij.openapi.ui.Messages.showErrorDialog(error.message ?: "请选择规则 Profile","FTC 知识库设置")
             return
         }
         onApply(value)

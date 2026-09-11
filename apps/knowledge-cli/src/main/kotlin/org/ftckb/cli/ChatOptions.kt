@@ -10,7 +10,8 @@ data class ChatOptions(
     val team:String,
     val season:String,
     val provider:String,
-    val config:Path
+    val config:Path,
+    val ruleProfiles:Set<String>
 )
 
 fun interface ChatLauncher {
@@ -24,11 +25,16 @@ internal fun runChatCommand(
         printChatUsage(out)
         return 0
     }
-    if (args.size%2!=0) {
+    val selection=try { ProfileArguments.extract(args) } catch (error:IllegalArgumentException) {
+        out.println(error.message)
+        return 64
+    }
+    val valueArgs=selection.remaining
+    if (valueArgs.size%2!=0) {
         out.println("chat options must be flag-value pairs")
         return 64
     }
-    val pairs=args.chunked(2)
+    val pairs=valueArgs.chunked(2)
     val allowed=setOf("--repo","--knowledge","--team","--season","--provider","--config")
     val unknown=pairs.firstOrNull { it[0] !in allowed }
     if (unknown!=null) {
@@ -65,6 +71,10 @@ internal fun runChatCommand(
         out.println("invalid value for --season: expected YYYY-YYYY")
         return 64
     }
+    val profiles=try { selection.requiredProfiles() } catch (error:IllegalArgumentException) {
+        out.println(error.message)
+        return 64
+    }
     val options=ChatOptions(
         repository=values["--repo"]?.let(Path::of) ?: Path.of(System.getProperty("user.dir")),
         knowledge=Path.of(values.getValue("--knowledge")),
@@ -72,7 +82,8 @@ internal fun runChatCommand(
         season=values.getValue("--season"),
         provider=values.getValue("--provider"),
         config=values["--config"]?.let(Path::of)
-            ?:Path.of(System.getProperty("user.home"),".ftckb","config.yaml")
+            ?:Path.of(System.getProperty("user.home"),".ftckb","config.yaml"),
+        ruleProfiles=profiles
     )
     return launcher.run(options,input,out)
 }
@@ -80,6 +91,6 @@ internal fun runChatCommand(
 internal fun printChatUsage(out:PrintStream) {
     out.println(
         "usage: knowledge-cli chat --knowledge PATH --team N --season YYYY-YYYY --provider NAME "+
-            "[--repo PATH] [--config PATH]"
+            "(--generic-profile | --profile NAME...) [--repo PATH] [--config PATH]"
     )
 }

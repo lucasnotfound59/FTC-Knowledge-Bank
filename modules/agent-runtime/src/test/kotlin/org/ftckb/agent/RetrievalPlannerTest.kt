@@ -90,7 +90,7 @@ class RetrievalPlannerTest {
         write("repo/TeamCode/Drive.java","class Drive { void drive() {} }")
         val index=RepositoryIndex()
         index.build(tempDir.resolve("repo"))
-        val retriever=ContextRetriever(index,KnowledgeRetriever(tempDir.resolve("knowledge"),"20827","2025-2026"))
+        val retriever=ContextRetriever(index,KnowledgeRetriever(tempDir.resolve("knowledge"),"20827","2025-2026",ruleProfiles=emptySet()))
 
         val context=retriever.retrieve(RetrievalIntent(setOf("drive"),emptySet(),emptySet(),setOf("drive-safety"),setOf("pedro")))
 
@@ -129,7 +129,7 @@ class RetrievalPlannerTest {
         val index=RepositoryIndex()
         index.build(tempDir.resolve("saturated-repo"))
         val context=ContextRetriever(
-            index,KnowledgeRetriever(tempDir.resolve("saturated-knowledge"),"20827","2025-2026")
+            index,KnowledgeRetriever(tempDir.resolve("saturated-knowledge"),"20827","2025-2026",ruleProfiles=emptySet())
         ).retrieve(
             RetrievalIntent(setOf("saturation"),emptySet(),emptySet(),setOf("saturation-safety"),emptySet())
         )

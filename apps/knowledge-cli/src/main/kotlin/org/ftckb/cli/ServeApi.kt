@@ -94,6 +94,7 @@ class ServeApi(
         root.put("model",chatStatus.model)
         root.put("hasChanges",runtime.hasEditChanges())
         root.put("apiKeySet",true)
+        putArray(root,"profiles",chatStatus.ruleProfiles.sorted())
         return root.toString()
     }
 
@@ -203,12 +204,19 @@ class ServeApi(
 
     private fun configure(body:String):String {
         val node=parseBody(body) ?: return jsonError("usage","invalid JSON body")
+        val profileNode=node["profiles"]
+        if (profileNode==null || !profileNode.isArray || profileNode.any { !it.isTextual }) {
+            return jsonError("usage","profiles must be an explicit string array; [] selects generic")
+        }
+        val profiles=try { org.ftckb.domain.RuleProfiles.normalize(profileNode.map { it.asText() }.toSet()) }
+        catch (error:IllegalArgumentException) { return jsonError("usage",error.message ?: "invalid profiles") }
         val team=node["team"]?.asText()?.takeIf(String::isNotBlank)
         val season=node["season"]?.asText()?.takeIf(String::isNotBlank)
         val repo=node["repo"]?.asText()?.takeIf(String::isNotBlank)
         val knowledge=node["knowledge"]?.asText()?.takeIf(String::isNotBlank)
         val provider=node["provider"]?.asText()?.takeIf(String::isNotBlank)
-        if ((repo!=null || knowledge!=null) &&
+        if ((repo!=null || knowledge!=null || profiles!=runtime.ruleProfiles ||
+                (team!=null && team!=runtime.team) || (season!=null && season!=runtime.season)) &&
             (runtime.currentMode()==AgentMode.EDIT || runtime.hasEditChanges())
         ) {
             return jsonError("refused","configure refused: Edit mode with outstanding Agent changes")
@@ -220,15 +228,14 @@ class ServeApi(
             return jsonError("usage","invalid value for season: expected YYYY-YYYY")
         }
         return try {
-            if (provider!=null) runtime.reconfigureProvider(provider)
-            if (team!=null || season!=null || knowledge!=null) {
-                runtime.reconfigureKnowledge(
-                    knowledge?.let(java.nio.file.Path::of) ?: runtime.currentKnowledgeRoot(),
-                    team ?: runtime.team,
-                    season ?: runtime.season
-                )
-            }
-            if (repo!=null) runtime.reconfigureRepository(java.nio.file.Path.of(repo))
+            runtime.reconfigure(
+                profiles,
+                knowledge?.let(java.nio.file.Path::of),
+                team ?: runtime.team,
+                season ?: runtime.season,
+                repo?.let(java.nio.file.Path::of),
+                provider
+            )
             status()
         } catch (failure:SessionAssemblyException) {
             jsonError("configure",failure.message ?: "configure failed")

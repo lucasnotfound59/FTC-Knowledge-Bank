@@ -42,7 +42,7 @@ class EditReplAcceptanceTest {
             environment={ secret },
             providerCreator={ _,_ -> provider }
         ).run(
-            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config),
+            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config,ruleProfiles=emptySet()),
             BufferedReader(StringReader("""
                 /mode edit
                 给 Vision.java 加结果有效性检查
@@ -96,7 +96,7 @@ class EditReplAcceptanceTest {
             environment={ "fixture-secret" },
             providerCreator={ _,_ -> provider }
         ).run(
-            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config),
+            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config,ruleProfiles=emptySet()),
             BufferedReader(StringReader("""
                 /mode edit
                 guard Vision
@@ -145,7 +145,7 @@ class EditReplAcceptanceTest {
         val code=ProductionChatLauncher(
             environment={ "fixture-secret" },providerCreator={ _,_ -> provider }
         ).run(
-            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config),
+            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config,ruleProfiles=emptySet()),
             BufferedReader(StringReader("/mode edit\nmove Vision\n/commit\nyes\n/exit\n")),
             PrintStream(output)
         )
@@ -212,7 +212,7 @@ class EditReplAcceptanceTest {
         val code=ProductionChatLauncher(
             environment={ "fixture-secret" },providerCreator={ _,_ -> provider }
         ).run(
-            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config),
+            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config,ruleProfiles=emptySet()),
             BufferedReader(StringReader(
                 "/mode edit\nmove Vision\n/undo\nguard Vision\n/commit\nyes\n/exit\n"
             )),
@@ -265,7 +265,7 @@ class EditReplAcceptanceTest {
         val code=ProductionChatLauncher(
             environment={ "fixture-secret" },providerCreator={ _,_ -> provider }
         ).run(
-            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config),
+            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config,ruleProfiles=emptySet()),
             input,PrintStream(output)
         )
 
@@ -310,7 +310,7 @@ class EditReplAcceptanceTest {
         val code=ProductionChatLauncher(
             environment={ "fixture-secret" },providerCreator={ _,_ -> provider }
         ).run(
-            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config),
+            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config,ruleProfiles=emptySet()),
             input,PrintStream(output)
         )
 
@@ -359,7 +359,7 @@ class EditReplAcceptanceTest {
         val code=ProductionChatLauncher(
             environment={ "fixture-secret" },providerCreator={ _,_ -> provider }
         ).run(
-            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config),
+            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config,ruleProfiles=emptySet()),
             input,PrintStream(output)
         )
 
@@ -386,7 +386,7 @@ class EditReplAcceptanceTest {
         val code=ProductionChatLauncher(
             environment={ "fixture-secret" },providerCreator={ _,_ -> provider }
         ).run(
-            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config),
+            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config,ruleProfiles=emptySet()),
             BufferedReader(StringReader("/mode edit\nguard Vision\n/commit\n")),
             PrintStream(output)
         )
@@ -411,7 +411,7 @@ class EditReplAcceptanceTest {
         val code=ProductionChatLauncher(
             environment={ "fixture-secret" },providerCreator={ _,_ -> provider }
         ).run(
-            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config),
+            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config,ruleProfiles=emptySet()),
             BufferedReader(StringReader("""
                 /mode edit
                 guard Vision
@@ -470,7 +470,7 @@ class EditReplAcceptanceTest {
         val code=ProductionChatLauncher(
             environment={ "fixture-secret" },providerCreator={ _,_ -> provider }
         ).run(
-            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config),
+            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config,ruleProfiles=emptySet()),
             input,PrintStream(output)
         )
 
@@ -495,7 +495,7 @@ class EditReplAcceptanceTest {
         )
 
         assertEquals(0,launcher.run(
-            ChatOptions(nonGit,knowledgeRoot(),"20827","2025-2026","fake",config),
+            ChatOptions(nonGit,knowledgeRoot(),"20827","2025-2026","fake",config,ruleProfiles=emptySet()),
             BufferedReader(StringReader("/mode edit\n/exit\n")),PrintStream(nonGitOutput)
         ))
         assertTrue(nonGitOutput.toString().contains("mode refused:"))
@@ -508,7 +508,7 @@ class EditReplAcceptanceTest {
         val detachedOutput=ByteArrayOutputStream()
 
         assertEquals(0,launcher.run(
-            ChatOptions(detached,knowledgeRoot(),"20827","2025-2026","fake",config),
+            ChatOptions(detached,knowledgeRoot(),"20827","2025-2026","fake",config,ruleProfiles=emptySet()),
             BufferedReader(StringReader("/mode edit\n/exit\n")),PrintStream(detachedOutput)
         ))
         assertTrue(detachedOutput.toString().contains("mode refused:"))
@@ -557,7 +557,7 @@ class EditReplAcceptanceTest {
         val code=ProductionChatLauncher(
             environment={ "fixture-secret" },providerCreator={ _,_ -> provider }
         ).run(
-            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config),
+            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config,ruleProfiles=emptySet()),
             input,PrintStream(output)
         )
 
@@ -616,7 +616,7 @@ class EditReplAcceptanceTest {
         val code=ProductionChatLauncher(
             environment={ "fixture-secret" },providerCreator={ _,_ -> provider }
         ).run(
-            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config),
+            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config,ruleProfiles=emptySet()),
             input,PrintStream(output)
         )
 
@@ -653,7 +653,7 @@ class EditReplAcceptanceTest {
             providerCreator={ _,_ -> provider },
             historyIndexRefresher={ { throw IOException("sensitive refresh detail") } }
         ).run(
-            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config),
+            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config,ruleProfiles=emptySet()),
             BufferedReader(StringReader("/mode edit\nguard Vision\n/undo\nguard Vision again\n/discard\n/exit\n")),
             PrintStream(output)
         )
@@ -689,7 +689,7 @@ class EditReplAcceptanceTest {
         val code=ProductionChatLauncher(
             environment={ "fixture-secret" },providerCreator={ _,_ -> provider }
         ).run(
-            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config),
+            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config,ruleProfiles=emptySet()),
             BufferedReader(StringReader("/mode edit\nupdate project settings\n/diff\n/discard\n/exit\n")),
             PrintStream(output)
         )
@@ -720,7 +720,7 @@ class EditReplAcceptanceTest {
         val code=ProductionChatLauncher(
             environment={ "fixture-secret" },providerCreator={ _,_ -> provider }
         ).run(
-            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config),
+            ChatOptions(repository,knowledgeRoot(),"20827","2025-2026","fake",config,ruleProfiles=emptySet()),
             BufferedReader(StringReader("/mode edit\nadd diagnostic\n/discard\n/exit\n")),
             PrintStream(output)
         )

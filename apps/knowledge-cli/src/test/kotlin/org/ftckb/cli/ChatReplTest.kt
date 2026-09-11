@@ -19,6 +19,8 @@ import org.ftckb.model.ModelResponse
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.ftckb.session.AskChatSession
@@ -27,6 +29,106 @@ import org.ftckb.session.ChatStatus
 
 class ChatReplTest {
     @Test
+    fun `named profile reaches model evidence and same-path reconfigure reloads rules`(@TempDir root:Path) {
+        val repository=root.resolve("repository")
+        writeFtcRepository(repository)
+        val knowledge=Files.createDirectories(root.resolve("knowledge"))
+        val rules=knowledge.resolve("rules.yaml")
+        val yaml="""
+            schemaVersion: 4
+            rules:
+              - id: official.profile-only
+                topic: profile-rule
+                title: Profile rule
+                instruction: PROFILE_ONLY_ALPHA
+                rationale: Profile evidence test.
+                status: approved
+                authority: official
+                policyLevel: global
+                applicability: {teams: [], seasons: [], profiles: [simple-opmode]}
+                evidence:
+                  - {type: git, repository: example/repo, commit: abcdef1, file: Source.java, symbol: Source}
+                approval: {approver: lead, role: overall_software_lead, approvedAt: 2026-08-15T00:00:00Z}
+        """.trimIndent()
+        Files.writeString(rules,yaml)
+        val config=root.resolve("config.yaml")
+        writeFakeConfig(config,"FTC_KB_FAKE_KEY")
+        val evidence=mutableListOf<String>()
+        val provider=ModelProvider { request ->
+            if (request.messages.first().content.startsWith("Return exactly one JSON object")) {
+                ModelResponse("""{"concepts":[],"symbols":[],"pathGlobs":[],"ruleTopics":["profile-rule"],"guideTopics":[]}""")
+            } else {
+                evidence+=request.messages.last().content
+                ModelResponse("""{"claims":[{"kind":"model_inference","text":"checked","citations":[]}]}""")
+            }
+        }
+        val runtime=org.ftckb.session.SessionRuntime(
+            config,{ "fixture-secret" },{ _,_ -> provider },{ root.resolve("sessions") },
+            { index -> { paths -> index.refresh(paths) } },
+            repository,knowledge,"20827","2025-2026","fake",emptySet()
+        )
+        runtime.session().ask("inspect profile-rule")
+        assertFalse(evidence.last().contains("PROFILE_ONLY_ALPHA"))
+        runtime.reconfigure(setOf("rookiebot"))
+        runtime.session().ask("inspect profile-rule")
+        assertTrue(evidence.last().contains("PROFILE_ONLY_ALPHA"))
+        Files.writeString(rules,yaml.replace("PROFILE_ONLY_ALPHA","PROFILE_ONLY_BETA"))
+        runtime.reconfigure(setOf("rookiebot"),knowledge=knowledge,provider="fake")
+        runtime.session().ask("inspect profile-rule")
+        assertTrue(evidence.last().contains("PROFILE_ONLY_BETA"))
+        assertFalse(evidence.last().contains("PROFILE_ONLY_ALPHA"))
+    }
+
+    @Test
+    fun `runtime preserves normalized profiles and session on failed reconfiguration`(@TempDir root:Path) {
+        val repository=root.resolve("repository")
+        writeFtcRepository(repository)
+        val knowledge=Files.createDirectories(root.resolve("knowledge"))
+        Files.writeString(knowledge.resolve("rules.yaml"),"schemaVersion: 1\nrules: []\n")
+        val config=root.resolve("config.yaml")
+        writeFakeConfig(config,"FTC_KB_FAKE_KEY")
+        var created=0
+        val profiles=mutableSetOf("rookiebot")
+        val runtime=org.ftckb.session.SessionRuntime(
+            config,{ "fixture-secret" },{ _,_ -> created++; ModelProvider { error("no model calls expected") } },
+            { root.resolve("sessions") },{ index -> { paths -> index.refresh(paths) } },
+            repository,knowledge,"20827","2025-2026","fake",profiles
+        )
+        profiles.clear()
+        assertEquals(setOf("rookiebot","simple-opmode"),runtime.ruleProfiles)
+        assertThrows(UnsupportedOperationException::class.java) {
+            (runtime.ruleProfiles as MutableSet<String>).clear()
+        }
+        runtime.reconfigureProvider("fake")
+        assertEquals(setOf("rookiebot","simple-opmode"),runtime.session().status().ruleProfiles)
+        assertEquals(2,created)
+        val previous=runtime.session()
+        val previousController=runtime.controller()
+        for (invalid in listOf(setOf("unknown"),setOf("simple-opmode","command-based"))) {
+            assertThrows(org.ftckb.session.SessionAssemblyException::class.java) {
+                runtime.reconfigure(invalid,nextTeam="16093",provider="fake")
+            }
+        }
+        assertThrows(org.ftckb.session.SessionAssemblyException::class.java) {
+            runtime.reconfigure(emptySet(),root.resolve("missing"),"16093","2026-2027",provider="fake")
+        }
+        assertThrows(org.ftckb.session.SessionAssemblyException::class.java) {
+            runtime.reconfigure(emptySet(),repository=root.resolve("missing"),provider="fake")
+        }
+        assertSame(previous,runtime.session())
+        assertSame(previousController,runtime.controller())
+        assertEquals(2,created)
+        assertEquals("20827",runtime.team)
+        assertEquals(knowledge,runtime.currentKnowledgeRoot())
+        val replacement=Files.createDirectories(root.resolve("replacement-knowledge"))
+        Files.writeString(replacement.resolve("rules.yaml"),"schemaVersion: 1\nrules: []\n")
+        runtime.reconfigureKnowledge(replacement,"16093","2026-2027",emptySet())
+        runtime.reconfigureRepository(repository,emptySet())
+        assertEquals(replacement,runtime.currentKnowledgeRoot())
+        assertEquals(emptySet<String>(),runtime.ruleProfiles)
+    }
+
+    @Test
     fun `continuous Ask chat answers reports status and saves only explicitly`(@TempDir root:Path) {
         val savePath=root.resolve("session.md")
         val session=FakeAskChatSession(
@@ -34,7 +136,7 @@ class ChatReplTest {
                 listOf(AnswerClaim(ClaimKind.CODE_OBSERVATION,"motor may be null",listOf("CODE:C1"))),
                 null
             ),
-            ChatStatus(Path.of("fixture-repo"),"20827","2025-2026","fake","offline-model"),
+            ChatStatus(Path.of("fixture-repo"),"20827","2025-2026","fake","offline-model",ruleProfiles=emptySet()),
             savePath
         )
         val input=BufferedReader(StringReader("""
@@ -71,7 +173,7 @@ class ChatReplTest {
                 "answer $exact $common $controls",
                 listOf("CODE:C1$exact$common$controls")
             )),null),
-            ChatStatus(Path.of("fixture-repo"),"20827","2025-2026","fake","offline-model"),
+            ChatStatus(Path.of("fixture-repo"),"20827","2025-2026","fake","offline-model",ruleProfiles=emptySet()),
             root.resolve("unused.md")
         )
         val output=ByteArrayOutputStream()
@@ -125,7 +227,7 @@ class ChatReplTest {
         val output=ByteArrayOutputStream()
 
         val code=launcher.run(
-            ChatOptions(repository,knowledge,"20827","2025-2026","fake",config),
+            ChatOptions(repository,knowledge,"20827","2025-2026","fake",config,ruleProfiles=emptySet()),
             input,
             PrintStream(output)
         )
@@ -191,7 +293,7 @@ class ChatReplTest {
 
         val code=launcher.run(
             ChatOptions(
-                repository,knowledge,"20827","2025-2026","fake",config
+                repository,knowledge,"20827","2025-2026","fake",config,ruleProfiles=emptySet()
             ),
             BufferedReader(StringReader((1..9).joinToString("\n") { "inspect the selected TeleOp $secret $it" }+"\n/exit\n")),
             PrintStream(ByteArrayOutputStream())
@@ -249,7 +351,7 @@ class ChatReplTest {
 
         val code=launcher.run(
             ChatOptions(
-                repository,Path.of("..","..","knowledge").normalize(),"20827","2025-2026","fake",config
+                repository,Path.of("..","..","knowledge").normalize(),"20827","2025-2026","fake",config,ruleProfiles=emptySet()
             ),
             input,
             PrintStream(ByteArrayOutputStream())
@@ -281,7 +383,7 @@ class ChatReplTest {
                 }
             }
 
-            override fun status()=ChatStatus(Path.of("repo"),"20827","2025-2026","fake","offline")
+            override fun status()=ChatStatus(Path.of("repo"),"20827","2025-2026","fake","offline",ruleProfiles=emptySet())
 
             override fun save(path:Path?):Path=error("save must not be called")
         }
@@ -342,7 +444,7 @@ class ChatReplTest {
         )
 
         val code=launcher.run(
-            ChatOptions(Path.of("missing-repository"),Path.of("missing-knowledge"),"20827","2025-2026","fake",config),
+            ChatOptions(Path.of("missing-repository"),Path.of("missing-knowledge"),"20827","2025-2026","fake",config,ruleProfiles=emptySet()),
             BufferedReader(StringReader("")),
             PrintStream(output)
         )
@@ -368,7 +470,7 @@ class ChatReplTest {
 
         val code=launcher.run(
             ChatOptions(
-                Path.of("missing-repository"),Path.of("missing-knowledge"),"20827","2025-2026",selector,config
+                Path.of("missing-repository"),Path.of("missing-knowledge"),"20827","2025-2026",selector,config,ruleProfiles=emptySet()
             ),
             BufferedReader(StringReader("")),
             PrintStream(output)
@@ -412,7 +514,7 @@ class ChatReplTest {
 
         val code=launcher.run(
             ChatOptions(
-                repository,Path.of("..","..","knowledge").normalize(),"20827","2025-2026","fake",config
+                repository,Path.of("..","..","knowledge").normalize(),"20827","2025-2026","fake",config,ruleProfiles=emptySet()
             ),
             input,PrintStream(output)
         )
@@ -457,7 +559,7 @@ class ChatReplTest {
         val output=ByteArrayOutputStream()
 
         val code=launcher.run(
-            ChatOptions(repository,knowledge,"20827","2025-2026","fake",config),input,PrintStream(output)
+            ChatOptions(repository,knowledge,"20827","2025-2026","fake",config,ruleProfiles=emptySet()),input,PrintStream(output)
         )
 
         assertEquals(0,code)
@@ -480,7 +582,7 @@ class ChatReplTest {
 
         val code=launcher.run(
             ChatOptions(
-                repository,Path.of("..","..","knowledge").normalize(),"20827","2025-2026","fake",config
+                repository,Path.of("..","..","knowledge").normalize(),"20827","2025-2026","fake",config,ruleProfiles=emptySet()
             ),
             BufferedReader(StringReader("/save ${destination.toAbsolutePath()}\n/exit\n")),
             PrintStream(output)
@@ -507,7 +609,7 @@ class ChatReplTest {
 
         val code=launcher.run(
             ChatOptions(
-                repository,Path.of("..","..","knowledge").normalize(),"20827","2025-2026","fake",config
+                repository,Path.of("..","..","knowledge").normalize(),"20827","2025-2026","fake",config,ruleProfiles=emptySet()
             ),
             BufferedReader(StringReader("/save relative.md\n/exit\n")),
             PrintStream(output)
@@ -533,7 +635,7 @@ class ChatReplTest {
 
         val code=launcher.run(
             ChatOptions(
-                repository,Path.of("..","..","knowledge").normalize(),"20827","2025-2026","fake",config
+                repository,Path.of("..","..","knowledge").normalize(),"20827","2025-2026","fake",config,ruleProfiles=emptySet()
             ),
             BufferedReader(StringReader("/save\n/exit\n")),
             PrintStream(ByteArrayOutputStream())

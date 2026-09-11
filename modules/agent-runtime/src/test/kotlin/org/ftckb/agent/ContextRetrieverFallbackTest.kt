@@ -19,7 +19,7 @@ class ContextRetrieverFallbackTest {
         val index=RepositoryIndex()
         index.build(repositoryRoot)
 
-        val context=ContextRetriever(index,KnowledgeRetriever(knowledgeRoot,null,null))
+        val context=ContextRetriever(index,KnowledgeRetriever(knowledgeRoot,null,null,ruleProfiles=emptySet()))
             .retrieve(RetrievalIntent(setOf("pedro","localization"),emptySet(),emptySet(),emptySet(),emptySet()))
 
         val code=context.evidence.filterIsInstance<CodeEvidence>()
@@ -37,7 +37,7 @@ class ContextRetrieverFallbackTest {
         val index=RepositoryIndex()
         index.build(repositoryRoot)
 
-        val context=ContextRetriever(index,KnowledgeRetriever(knowledgeRoot,null,null))
+        val context=ContextRetriever(index,KnowledgeRetriever(knowledgeRoot,null,null,ruleProfiles=emptySet()))
             .retrieve(RetrievalIntent(setOf("drive"),emptySet(),emptySet(),emptySet(),emptySet()))
 
         val code=context.evidence.filterIsInstance<CodeEvidence>()

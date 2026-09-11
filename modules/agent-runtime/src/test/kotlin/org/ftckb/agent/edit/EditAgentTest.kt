@@ -35,7 +35,7 @@ class EditAgentTest {
         val conversation=ConversationState(provider)
         val agent=EditAgent(
             RetrievalPlanner(provider),
-            ContextRetriever(index,KnowledgeRetriever(knowledge(root),null,null)),
+            ContextRetriever(index,KnowledgeRetriever(knowledge(root),null,null,ruleProfiles=emptySet())),
             provider,index,engine,history,conversation,"supported FTC repository"
         )
 
@@ -111,7 +111,7 @@ class EditAgentTest {
         val history=EditHistory(repository,engine)
         val agent=EditAgent(
             RetrievalPlanner(provider),
-            ContextRetriever(index,KnowledgeRetriever(knowledge(root),null,null)),
+            ContextRetriever(index,KnowledgeRetriever(knowledge(root),null,null,ruleProfiles=emptySet())),
             provider,index,engine,history,ConversationState(provider),"supported FTC repository"
         )
 
@@ -135,7 +135,7 @@ class EditAgentTest {
         val history=EditHistory(repository,engine)
         val agent=EditAgent(
             RetrievalPlanner(provider),
-            ContextRetriever(index,KnowledgeRetriever(knowledge(root),null,null)),
+            ContextRetriever(index,KnowledgeRetriever(knowledge(root),null,null,ruleProfiles=emptySet())),
             provider,index,engine,history,ConversationState(provider),"supported FTC repository"
         )
 
@@ -158,16 +158,17 @@ class EditAgentTest {
         )
         val index=RepositoryIndex().also { it.build(repository) }
         val engine=FileEditEngine(repository)
-        val agent=EditAgent(
-            RetrievalPlanner(provider),
-            ContextRetriever(index,KnowledgeRetriever(knowledge.parent,null,null)),
-            provider,index,engine,EditHistory(repository,engine),ConversationState(provider),"supported FTC repository"
-        )
-
-        assertThrows(EditValidationException::class.java) { agent.edit("Apply conflicting rule") }
+        val failure=assertThrows(IllegalArgumentException::class.java) {
+            EditAgent(
+                RetrievalPlanner(provider),
+                ContextRetriever(index,KnowledgeRetriever(knowledge.parent,null,null,ruleProfiles=emptySet())),
+                provider,index,engine,EditHistory(repository,engine),ConversationState(provider),"supported FTC repository"
+            )
+        }
+        assertTrue(failure.message!!.contains("conflict-topic"))
 
         assertTrue(Files.notExists(repository.resolve("TeamCode/Conflict.java")))
-        assertEquals(3,provider.requests.size)
+        assertEquals(0,provider.requests.size)
     }
 
     @Test
@@ -191,7 +192,7 @@ class EditAgentTest {
         )
         val agent=EditAgent(
             RetrievalPlanner(provider),
-            ContextRetriever(index,KnowledgeRetriever(knowledge(root),null,null)),
+            ContextRetriever(index,KnowledgeRetriever(knowledge(root),null,null,ruleProfiles=emptySet())),
             provider,index,engine,history,ConversationState(provider),"supported FTC repository"
         )
 
@@ -214,7 +215,7 @@ class EditAgentTest {
         val engine=FileEditEngine(repository)
         return EditAgent(
             RetrievalPlanner(provider),
-            ContextRetriever(index,KnowledgeRetriever(knowledge(root),null,null)),
+            ContextRetriever(index,KnowledgeRetriever(knowledge(root),null,null,ruleProfiles=emptySet())),
             provider,index,engine,EditHistory(repository,engine),ConversationState(provider),"supported FTC repository"
         )
     }

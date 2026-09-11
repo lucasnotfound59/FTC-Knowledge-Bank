@@ -19,10 +19,37 @@ import org.junit.jupiter.api.io.TempDir
 
 class AgentQualityEvaluationTest {
     @Test
+    fun `eval schema requires explicit valid profiles`() {
+        val valid="""
+            schemaVersion: 2
+            cases:
+              - id: explicit-context
+                repository: fixtures/agent/ask-repo
+                team: "20827"
+                season: 2025-2026
+                profiles: []
+                turns:
+                  - prompt: inspect
+        """.trimIndent()
+        assertEquals(emptySet<String>(),EvalCasesCodec.decode(valid).single().ruleProfiles)
+        assertEquals(setOf("rookiebot","simple-opmode"),
+            EvalCasesCodec.decode(valid.replace("profiles: []","profiles: [rookiebot]")).single().ruleProfiles)
+        for (invalid in listOf(
+            valid.replace("schemaVersion: 2","schemaVersion: 1"),
+            valid.replace("    profiles: []\n",""),
+            valid.replace("profiles: []","profiles: null"),
+            valid.replace("profiles: []","profiles: generic"),
+            valid.replace("profiles: []","profiles: [1]"),
+            valid.replace("profiles: []","profiles: [unknown]"),
+            valid.replace("profiles: []","profiles: [simple-opmode, command-based]")
+        )) assertThrows(RuntimeException::class.java) { EvalCasesCodec.decode(invalid) }
+    }
+
+    @Test
     fun `rejects unknown eval fields`() {
         val exception=assertThrows(IllegalStateException::class.java) {
             EvalCasesCodec.decode("""
-                schemaVersion: 1
+                schemaVersion: 2
                 cases: []
                 typo: ignored
             """.trimIndent())
@@ -31,12 +58,13 @@ class AgentQualityEvaluationTest {
 
         val turnException=assertThrows(IllegalStateException::class.java) {
             EvalCasesCodec.decode("""
-                schemaVersion: 1
+                schemaVersion: 2
                 cases:
                   - id: first
                     repository: fixtures/agent/ask-repo
                     team: "20827"
                     season: 2025-2026
+                    profiles: []
                     turns:
                       - mode: ask
                         prompt: anything
@@ -50,12 +78,13 @@ class AgentQualityEvaluationTest {
     fun `rejects duplicate eval case ids`() {
         val exception=assertThrows(IllegalStateException::class.java) {
             EvalCasesCodec.decode("""
-                schemaVersion: 1
+                schemaVersion: 2
                 cases:
                   - id: first
                     repository: fixtures/agent/ask-repo
                     team: "20827"
                     season: 2025-2026
+                    profiles: []
                     turns:
                       - mode: ask
                         prompt: one
@@ -63,6 +92,7 @@ class AgentQualityEvaluationTest {
                     repository: fixtures/agent/ask-repo
                     team: "20827"
                     season: 2025-2026
+                    profiles: []
                     turns:
                       - mode: ask
                         prompt: two
@@ -75,12 +105,13 @@ class AgentQualityEvaluationTest {
     fun `rejects edit criteria without explicit edit mode`() {
         val exception=assertThrows(IllegalStateException::class.java) {
             EvalCasesCodec.decode("""
-                schemaVersion: 1
+                schemaVersion: 2
                 cases:
                   - id: first
                     repository: fixtures/agent/edit-repo
                     team: "20827"
                     season: 2025-2026
+                    profiles: []
                     turns:
                       - prompt: add a helper
                         requiredChangedPaths: [TeamCode/src/main/java/example/Helper.java]
@@ -95,12 +126,13 @@ class AgentQualityEvaluationTest {
             "cases[0].team must contain digits only",
             assertThrows(IllegalStateException::class.java) {
                 EvalCasesCodec.decode("""
-                    schemaVersion: 1
+                    schemaVersion: 2
                     cases:
                       - id: first
                         repository: fixtures/agent/ask-repo
                         team: "20A"
                         season: 2025-2026
+                        profiles: []
                         turns:
                           - mode: ask
                             prompt: anything
@@ -111,12 +143,13 @@ class AgentQualityEvaluationTest {
             "cases[0].season must use YYYY-YYYY",
             assertThrows(IllegalStateException::class.java) {
                 EvalCasesCodec.decode("""
-                    schemaVersion: 1
+                    schemaVersion: 2
                     cases:
                       - id: first
                         repository: fixtures/agent/ask-repo
                         team: "20827"
                         season: "2025"
+                        profiles: []
                         turns:
                           - mode: ask
                             prompt: anything
@@ -127,12 +160,13 @@ class AgentQualityEvaluationTest {
             "cases[0].turns[0].requiredClaimKinds contains an unknown claim kind",
             assertThrows(IllegalStateException::class.java) {
                 EvalCasesCodec.decode("""
-                    schemaVersion: 1
+                    schemaVersion: 2
                     cases:
                       - id: first
                         repository: fixtures/agent/ask-repo
                         team: "20827"
                         season: 2025-2026
+                        profiles: []
                         turns:
                           - mode: ask
                             prompt: anything
@@ -217,12 +251,13 @@ class AgentQualityEvaluationTest {
         val output=root.resolve("report.md")
         val cases=root.resolve("cases.yaml")
         Files.writeString(cases,"""
-            schemaVersion: 1
+            schemaVersion: 2
             cases:
               - id: missing-fixture
                 repository: fixtures/agent/does-not-exist
                 team: "20827"
                 season: 2025-2026
+                profiles: []
                 turns:
                   - mode: ask
                     prompt: anything

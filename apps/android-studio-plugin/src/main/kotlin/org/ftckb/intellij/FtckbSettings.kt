@@ -7,11 +7,18 @@ import com.intellij.openapi.components.Storage
 import com.intellij.openapi.project.Project
 
 class FtckbSettingsState {
+    var ruleProfile=""
     var team="20827"
     var season="2025-2026"
     var provider="deepseek"
     var configPath=""
     var knowledgePath=""
+}
+
+fun selectedRuleProfiles(value:String):Set<String> =when (val text=value.trim()) {
+    "generic" -> emptySet()
+    "" -> org.ftckb.domain.RuleProfiles.normalize(null)
+    else -> org.ftckb.domain.RuleProfiles.normalize(setOf(text))
 }
 
 @State(name="FtckbSettings",storages=[Storage("ftckb-as.xml")])
@@ -23,6 +30,7 @@ class FtckbSettings(private val project:Project):PersistentStateComponent<FtckbS
     override fun loadState(value:FtckbSettingsState) { state=value }
 
     fun snapshot():FtckbSettingsState=FtckbSettingsState().also { copy ->
+        copy.ruleProfile=state.ruleProfile
         copy.team=state.team
         copy.season=state.season
         copy.provider=state.provider
@@ -31,6 +39,8 @@ class FtckbSettings(private val project:Project):PersistentStateComponent<FtckbS
     }
 
     fun apply(value:FtckbSettingsState) {
+        selectedRuleProfiles(value.ruleProfile)
+        state.ruleProfile=value.ruleProfile.trim()
         state.team=value.team.trim()
         state.season=value.season.trim()
         state.provider=value.provider.trim()

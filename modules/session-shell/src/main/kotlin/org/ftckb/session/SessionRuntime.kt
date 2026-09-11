@@ -41,7 +41,8 @@ class SessionRuntime(
     initialKnowledge:Path,
     initialTeam:String,
     initialSeason:String,
-    initialProvider:String
+    initialProvider:String,
+    initialRuleProfiles:Set<String>
 ) {
     private val swapProvider=SwapModelProvider(ModelProvider {
         throw IllegalStateException("session is not configured")
@@ -62,6 +63,7 @@ class SessionRuntime(
     private lateinit var controller:SessionController
     private lateinit var askSession:AskChatSession
 
+    var ruleProfiles:Set<String> =normalizeProfiles(initialRuleProfiles); private set
     lateinit var providerName:String; private set
     lateinit var team:String; private set
     lateinit var season:String; private set
@@ -69,18 +71,7 @@ class SessionRuntime(
     var baselineDirtyPaths:Set<String>?=null; private set
 
     init {
-        providerName=initialProvider
-        profile=try { config.profile(initialProvider) } catch (_:Exception) {
-            throw SessionAssemblyException.UnknownProvider()
-        }
-        secret=secretResolver(profile.apiKeyEnv)?.takeIf(String::isNotBlank)
-            ?:throw SessionAssemblyException.MissingSecret(profile.apiKeyEnv)
-        team=initialTeam
-        season=initialSeason
-        bootstrap(initialRepository,initialKnowledge,initialTeam,initialSeason)
-        swapProvider.replace(createProvider(), setOf(secret))
-        conversation.replaceSecrets(swapProvider.currentSecrets())
-        rebuildAgents()
+        reconfigure(ruleProfiles,initialKnowledge,initialTeam,initialSeason,initialRepository,initialProvider)
     }
 
     fun controller():SessionController=controller
@@ -88,72 +79,103 @@ class SessionRuntime(
     fun redact(text:String):String=
         org.ftckb.agent.CredentialRedactor.redact(text,swapProvider.currentSecrets())
 
-    /** Changes the model provider profile; conversation history is retained. */
-    fun reconfigureProvider(name:String) {
-        config=decodeConfig()
-        val nextProfile=try { config.profile(name) } catch (_:Exception) {
+    /** Preflights the whole configuration before publishing any new session state. */
+    fun reconfigure(
+        nextRuleProfiles:Set<String>,
+        knowledge:Path?=null,
+        nextTeam:String=team,
+        nextSeason:String=season,
+        repository:Path?=null,
+        provider:String?=null
+    ) {
+        val profiles=normalizeProfiles(nextRuleProfiles)
+        val nextConfig=if (provider!=null) decodeConfig() else config
+        val nextProfile=if (provider!=null) try { nextConfig.profile(provider) } catch (_:Exception) {
             throw SessionAssemblyException.UnknownProvider()
-        }
-        val nextSecret=secretResolver(nextProfile.apiKeyEnv)?.takeIf(String::isNotBlank)
-            ?:throw SessionAssemblyException.MissingSecret(nextProfile.apiKeyEnv)
+        } else profile
+        val nextSecret=if (provider!=null) secretResolver(nextProfile.apiKeyEnv)?.takeIf(String::isNotBlank)
+            ?:throw SessionAssemblyException.MissingSecret(nextProfile.apiKeyEnv) else secret
+        val nextKnowledgeRoot=knowledge ?: knowledgeRoot
+        val nextKnowledge=loadKnowledge(nextKnowledgeRoot,nextTeam,nextSeason,profiles)
+        val nextIndex=if (repository!=null) RepositoryIndex() else repositoryIndex
+        val snapshot=if (repository!=null) try {
+            nextIndex.build(repository).also {
+                if (!it.profile.supported) throw SessionAssemblyException.UnsupportedRepository()
+            }
+        } catch (error:SessionAssemblyException) {
+            throw error
+        } catch (_:Exception) {
+            throw SessionAssemblyException.RepositoryUnreadable()
+        } else null
+        val nextHistory=snapshot?.let { EditHistory(it.root,FileEditEngine(it.root),it.root) }
+        val nextBaseline=snapshot?.let { runCatching { GitWorkspace.inspect(it.root).dirtyPaths }.getOrNull() }
+        val contextChanged=knowledge!=null || repository!=null || !this::knowledgeRoot.isInitialized ||
+            nextTeam!=team || nextSeason!=season || profiles!=ruleProfiles
+        if (contextChanged && this::askSession.isInitialized &&
+            (currentMode()==org.ftckb.agent.AgentMode.EDIT || hasEditChanges())
+        ) throw SessionAssemblyException.ReconfigurationBlocked()
+        val nextProvider=if (provider!=null) createProvider(nextProfile,nextSecret) else null
+        config=nextConfig
         profile=nextProfile
         secret=nextSecret
-        providerName=name
-        swapProvider.replace(createProvider(), setOf(secret))
-        conversation.replaceSecrets(swapProvider.currentSecrets())
-        refreshSession()
-    }
-
-    /** Changes team/season (and optionally the knowledge root); history is retained. */
-    fun reconfigureKnowledge(knowledge:Path,nextTeam:String,nextSeason:String) {
-        knowledgeRetriever=try {
-            KnowledgeRetriever(knowledge,nextTeam,nextSeason)
-        } catch (_:Exception) {
-            throw SessionAssemblyException.KnowledgeInvalid()
+        if (provider!=null) providerName=provider
+        if (nextProvider!=null) {
+            swapProvider.replace(nextProvider,setOf(nextSecret))
+            conversation.replaceSecrets(swapProvider.currentSecrets())
         }
+        knowledgeRoot=nextKnowledgeRoot
         team=nextTeam
         season=nextSeason
-        contextRetriever=ContextRetriever(repositoryIndex,knowledgeRetriever)
-        rebuildAgents()
+        ruleProfiles=profiles
+        if (snapshot!=null) {
+            repositoryIndex=nextIndex
+            repositoryRoot=snapshot.root
+            baselineDirtyPaths=nextBaseline
+            history=nextHistory!!
+            repositorySummary=buildString {
+                append("supported=true")
+                append("; sourceModules=").append(snapshot.profile.sourceModules.sorted().joinToString(","))
+                append("; markerCount=").append(snapshot.profile.markers.size)
+                append("; documentCount=").append(snapshot.documents.size)
+            }
+        }
+        if (contextChanged) {
+            knowledgeRetriever=nextKnowledge
+            retrievalPlanner=RetrievalPlanner(swapProvider)
+            contextRetriever=ContextRetriever(repositoryIndex,knowledgeRetriever)
+            rebuildAgents()
+        } else {
+            refreshSession()
+        }
     }
 
-    /** Changes the repository; requires a clean Edit state (caller checks). */
-    fun reconfigureRepository(repository:Path) {
-        bootstrap(repository,knowledgeRoot,team,season)
-        rebuildAgents()
-    }
+    /** Changes provider while preserving explicit rule context and conversation. */
+    fun reconfigureProvider(name:String)=reconfigure(ruleProfiles,provider=name)
 
-    /** Resets the conversation transcript; Edit history is kept. */
+    fun reconfigureKnowledge(knowledge:Path,nextTeam:String,nextSeason:String,nextRuleProfiles:Set<String>)=
+        reconfigure(nextRuleProfiles,knowledge,nextTeam,nextSeason)
+
+    /** Repository changes always require an explicit profile selection. */
+    fun reconfigureRepository(repository:Path,nextRuleProfiles:Set<String>)=
+        reconfigure(nextRuleProfiles,repository=repository)
+
     fun clearConversation() {
         conversation=ConversationState(swapProvider,swapProvider.currentSecrets())
         rebuildAgents()
     }
 
-    private fun bootstrap(repository:Path,knowledge:Path,nextTeam:String,nextSeason:String) {
-        repositoryIndex=RepositoryIndex()
-        val snapshot=try {
-            repositoryIndex.build(repository)
-        } catch (_:Exception) {
-            throw SessionAssemblyException.RepositoryUnreadable()
-        }
-        if (!snapshot.profile.supported) throw SessionAssemblyException.UnsupportedRepository()
-        repositoryRoot=snapshot.root
-        baselineDirtyPaths=runCatching { GitWorkspace.inspect(snapshot.root).dirtyPaths }.getOrNull()
-        knowledgeRoot=knowledge
-        repositorySummary=buildString {
-            append("supported=true")
-            append("; sourceModules=").append(snapshot.profile.sourceModules.sorted().joinToString(","))
-            append("; markerCount=").append(snapshot.profile.markers.size)
-            append("; documentCount=").append(snapshot.documents.size)
-        }
-        knowledgeRetriever=try {
-            KnowledgeRetriever(knowledge,nextTeam,nextSeason)
-        } catch (_:Exception) {
-            throw SessionAssemblyException.KnowledgeInvalid()
-        }
-        history=EditHistory(snapshot.root,FileEditEngine(snapshot.root),snapshot.root)
-        retrievalPlanner=RetrievalPlanner(swapProvider)
-        contextRetriever=ContextRetriever(repositoryIndex,knowledgeRetriever)
+    private fun normalizeProfiles(profiles:Set<String>):Set<String> =try {
+        org.ftckb.domain.RuleProfiles.normalize(profiles)
+    } catch (error:IllegalArgumentException) {
+        throw SessionAssemblyException.KnowledgeInvalid(error.message ?: "invalid rule profiles")
+    }
+
+    private fun loadKnowledge(knowledge:Path,nextTeam:String,nextSeason:String,profiles:Set<String>):KnowledgeRetriever=try {
+        KnowledgeRetriever(knowledge,nextTeam,nextSeason,ruleProfiles=profiles)
+    } catch (error:IllegalArgumentException) {
+        throw SessionAssemblyException.KnowledgeInvalid(error.message ?: "invalid knowledge root")
+    } catch (_:Exception) {
+        throw SessionAssemblyException.KnowledgeInvalid()
     }
 
     private fun rebuildAgents() {
@@ -177,12 +199,12 @@ class SessionRuntime(
         askSession=RuntimeAskChatSession(
             askAgent,
             ConversationSaver(profile.name,profile.model),
-            ChatStatus(repositoryRoot,team,season,providerName,profile.model),
+            ChatStatus(repositoryRoot,team,season,providerName,profile.model,ruleProfiles),
             sessionsDirectory,repositoryIndex
         )
     }
 
-    private fun createProvider():ModelProvider=try {
+    private fun createProvider(profile:ProviderProfile,secret:String):ModelProvider=try {
         providerCreator(profile,SecretResolver { name-> if (name==profile.apiKeyEnv) secret else null })
     } catch (_:Exception) {
         throw SessionAssemblyException.ProviderInit()
@@ -208,7 +230,8 @@ sealed class SessionAssemblyException(detail:String):RuntimeException(detail) {
         "missing API key environment variable: $envName")
     class RepositoryUnreadable:SessionAssemblyException("repository is not readable")
     class UnsupportedRepository:SessionAssemblyException("unsupported FTC repository")
-    class KnowledgeInvalid:SessionAssemblyException("invalid knowledge root")
+    class KnowledgeInvalid(detail:String="invalid knowledge root"):SessionAssemblyException(detail)
+    class ReconfigurationBlocked:SessionAssemblyException("rule context changes require Ask mode without outstanding Agent changes")
     class ProviderInit:SessionAssemblyException("model provider initialization failed")
 }
 

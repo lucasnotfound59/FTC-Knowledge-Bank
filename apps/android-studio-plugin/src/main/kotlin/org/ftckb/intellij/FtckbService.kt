@@ -46,10 +46,9 @@ class FtckbService(private val project:Project):Disposable {
     private val settings get() = FtckbSettings.of(project)
     @Volatile private var runtime:SessionRuntime?=null
 
-    fun initialize():String? {
+    fun initialize(state:FtckbSettingsState=settings.snapshot()):String? {
         val root=project.basePath?.let(Path::of)
         if (root==null) return "无法读取当前项目路径"
-        val state=settings.snapshot()
         val configPath=state.configPath.ifBlank { defaultConfigPath() }
         val knowledgePath=state.knowledgePath.ifBlank { KnowledgeResources.extractOrDefault().toString() }
         val secretName=providerSecretEnv(configPath,state.provider)
@@ -60,7 +59,7 @@ class FtckbService(private val project:Project):Disposable {
                 { profile,resolver -> ProviderFactory.create(profile,resolver) },
                 { Path.of(System.getProperty("user.home"),".ftckb","sessions") },
                 { index -> { paths -> index.refresh(paths) } },
-                root,Path.of(knowledgePath),state.team,state.season,state.provider
+                root,Path.of(knowledgePath),state.team,state.season,state.provider,selectedRuleProfiles(state.ruleProfile)
             )
             null
         } catch (failure:SessionAssemblyException) {
@@ -69,29 +68,33 @@ class FtckbService(private val project:Project):Disposable {
                 if (secret!=null) return retryWithSecret(secret,state,root,configPath,knowledgePath)
             }
             failure.message
+        } catch (failure:IllegalArgumentException) {
+            failure.message
         }
     }
 
     fun reconfigure(state:FtckbSettingsState):String? {
-        settings.apply(state)
-        runtime?.let { current ->
-            try {
-                current.reconfigureProvider(state.provider)
-            } catch (_:Exception) {
-                // fall through to full rebuild
-                runtime=null
-            }
-            try {
-                current.reconfigureKnowledge(
+        return try {
+            val profiles=selectedRuleProfiles(state.ruleProfile)
+            val current=runtime
+            if (current==null || state.configPath.trim()!=settings.snapshot().configPath) {
+                if (current!=null &&
+                    (current.currentMode()==org.ftckb.agent.AgentMode.EDIT || current.hasEditChanges())
+                ) return "配置切换需要 Ask 模式且没有未处理的 Agent 改动"
+                val error=initialize(state)
+                if (error!=null) return error
+            } else {
+                current.reconfigure(
+                    profiles,
                     Path.of(state.knowledgePath.ifBlank { KnowledgeResources.extractOrDefault().toString() }),
-                    state.team,state.season
+                    state.team,state.season,provider=state.provider
                 )
-            } catch (_:Exception) {
-                runtime=null
             }
+            settings.apply(state)
+            null
+        } catch (failure:Exception) {
+            failure.message ?: "configure failed"
         }
-        if (runtime==null) return initialize()
-        return null
     }
 
     fun initializeAsync(onDone:(String?)->Unit) {
@@ -156,7 +159,7 @@ class FtckbService(private val project:Project):Disposable {
         return try {
             val loaded=FileKnowledgeRepository.load(Path.of(knowledgePath))
             if (loaded.violations.isNotEmpty()) return listOf("知识库校验失败，无法执行标准检查")
-            val resolved=RuleResolver.resolve(loaded.rules,RuleContext(state.team,state.season))
+            val resolved=RuleResolver.resolve(loaded.rules,RuleContext(state.team,state.season,selectedRuleProfiles(state.ruleProfile)))
             if (resolved.conflicts.isNotEmpty()) return listOf("规则存在冲突，无法执行标准检查")
             val changes=Standardizer.worktreeChanges(root)
             Standardizer.evaluate(resolved.activeRules,changes).violations
@@ -193,7 +196,7 @@ class FtckbService(private val project:Project):Disposable {
         val state=settings.snapshot()
         val active=runtime
         return if (active==null) "未初始化"
-        else "队伍${state.team} · ${state.season} · ${state.provider} · 模式=${active.currentMode().name.lowercase()}"
+        else "队伍${state.team} · ${state.season} · ${state.provider} · 规则=${active.ruleProfiles.sorted().joinToString().ifEmpty { "generic" }} · 模式=${active.currentMode().name.lowercase()}"
     }
 
     fun setModeAsk() { executor.submit { runtime?.let { it.controller().setMode(org.ftckb.agent.AgentMode.ASK) } } }
@@ -250,10 +253,12 @@ class FtckbService(private val project:Project):Disposable {
                 { profile,resolver -> ProviderFactory.create(profile,resolver) },
                 { Path.of(System.getProperty("user.home"),".ftckb","sessions") },
                 { index -> { paths -> index.refresh(paths) } },
-                root,Path.of(knowledgePath),state.team,state.season,state.provider
+                root,Path.of(knowledgePath),state.team,state.season,state.provider,selectedRuleProfiles(state.ruleProfile)
             )
             null
         } catch (failure:SessionAssemblyException) {
+            failure.message
+        } catch (failure:IllegalArgumentException) {
             failure.message
         }
     }

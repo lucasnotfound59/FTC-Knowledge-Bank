@@ -16,6 +16,23 @@ class MainTest {
     private val knowledgeRoot=Path.of("..","..","knowledge").normalize()
 
     @Test
+    fun `chat requires explicit profiles and normalizes named selection`() {
+        val base=listOf("chat","--knowledge","k","--team","20827","--season","2025-2026","--provider","fake")
+        for (selection in listOf(emptyList(),listOf("--profile","unknown"),
+            listOf("--profile","simple-opmode","--profile","command-based"),
+            listOf("--generic-profile","--profile","rookiebot"))) {
+            val code=runCli(base+selection,PrintStream(ByteArrayOutputStream()),StringReader("").buffered(),
+                ChatLauncher { _,_,_ -> error("invalid profiles must not launch") })
+            assertEquals(64,code)
+        }
+        var actual:Set<String>?=null
+        val code=runCli(base+listOf("--profile","rookiebot"),PrintStream(ByteArrayOutputStream()),
+            StringReader("").buffered(),ChatLauncher { options,_,_ -> actual=options.ruleProfiles; 0 })
+        assertEquals(0,code)
+        assertEquals(setOf("rookiebot","simple-opmode"),actual)
+    }
+
+    @Test
     fun `chat routes parsed options without loading files`() {
         val output=ByteArrayOutputStream()
         var received:ChatOptions?=null
@@ -26,7 +43,7 @@ class MainTest {
 
         val code=runCli(
             listOf(
-                "chat","--knowledge","missing-knowledge","--team","20827","--season","2025-2026",
+                "chat","--generic-profile","--knowledge","missing-knowledge","--team","20827","--season","2025-2026",
                 "--provider","fake","--repo","missing-repository","--config","missing-config.yaml"
             ),
             PrintStream(output),
@@ -38,7 +55,7 @@ class MainTest {
         assertEquals(
             ChatOptions(
                 Path.of("missing-repository"),Path.of("missing-knowledge"),"20827","2025-2026","fake",
-                Path.of("missing-config.yaml")
+                Path.of("missing-config.yaml"),ruleProfiles=emptySet()
             ),
             received
         )
@@ -50,7 +67,7 @@ class MainTest {
         var received:ChatOptions?=null
         val code=runCli(
             listOf(
-                "chat","--knowledge","missing-knowledge","--team","20827","--season","2025-2026",
+                "chat","--generic-profile","--knowledge","missing-knowledge","--team","20827","--season","2025-2026",
                 "--provider","fake"
             ),
             PrintStream(ByteArrayOutputStream()),
@@ -72,7 +89,7 @@ class MainTest {
     @Test
     fun `chat missing team is rejected before loading files`() {
         assertChatParseFailure(
-            listOf("chat","--knowledge","missing","--season","2025-2026","--provider","fake"),
+            listOf("chat","--generic-profile","--knowledge","missing","--season","2025-2026","--provider","fake"),
             "missing --team\n"
         )
     }
@@ -81,7 +98,7 @@ class MainTest {
     fun `chat invalid season is rejected before loading files`() {
         assertChatParseFailure(
             listOf(
-                "chat","--knowledge","missing","--team","20827","--season","2025-26","--provider","fake"
+                "chat","--generic-profile","--knowledge","missing","--team","20827","--season","2025-26","--provider","fake"
             ),
             "invalid value for --season: expected YYYY-YYYY\n"
         )
@@ -91,7 +108,7 @@ class MainTest {
     fun `chat duplicate provider is rejected before loading files`() {
         assertChatParseFailure(
             listOf(
-                "chat","--knowledge","missing","--team","20827","--season","2025-2026",
+                "chat","--generic-profile","--knowledge","missing","--team","20827","--season","2025-2026",
                 "--provider","fake","--provider","other"
             ),
             "duplicate chat option: --provider\n"
@@ -102,7 +119,7 @@ class MainTest {
     fun `chat unknown option is rejected before loading files`() {
         assertChatParseFailure(
             listOf(
-                "chat","--knowledge","missing","--team","20827","--season","2025-2026",
+                "chat","--generic-profile","--knowledge","missing","--team","20827","--season","2025-2026",
                 "--provider","fake","--network","disabled"
             ),
             "unknown chat option: --network\n"
