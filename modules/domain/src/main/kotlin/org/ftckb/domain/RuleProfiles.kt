@@ -5,7 +5,7 @@ import java.util.Collections
 class RuleContextException(val code:String,message:String):IllegalArgumentException(message)
 
 object RuleProfiles {
-    val supported:Set<String> =setOf("rookiebot","simple-opmode","ftclib-command")
+    val supported:Set<String> =setOf("rookiebot","simple-opmode","command-based","ftclib-command")
 
     fun normalize(profiles:Set<String>?):Set<String> {
         if (profiles==null) throw RuleContextException("context-required","Select a project profile or explicitly select generic")
@@ -13,8 +13,9 @@ object RuleProfiles {
         if (unknown.isNotEmpty()) throw RuleContextException("invalid-context","Unknown profiles: ${unknown.sorted().joinToString()}")
         val normalized=profiles.toSortedSet()
         if ("rookiebot" in normalized) normalized+="simple-opmode"
-        if (setOf("simple-opmode","ftclib-command").all { it in normalized }) {
-            throw RuleContextException("invalid-context","simple-opmode and ftclib-command are mutually exclusive")
+        if ("ftclib-command" in normalized) normalized+="command-based"
+        if ("simple-opmode" in normalized && "command-based" in normalized) {
+            throw RuleContextException("invalid-context","simple-opmode and command-based profiles are mutually exclusive")
         }
         return Collections.unmodifiableSet(normalized)
     }
