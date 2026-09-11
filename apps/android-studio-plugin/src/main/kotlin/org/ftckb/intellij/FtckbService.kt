@@ -84,7 +84,7 @@ class FtckbService(private val project:Project):Disposable {
                 val error=initialize(state)
                 if (error!=null) return error
             } else {
-                current.reconfigure(
+                current.reconfigureSettings(
                     profiles,
                     Path.of(state.knowledgePath.ifBlank { KnowledgeResources.extractOrDefault().toString() }),
                     state.team,state.season,provider=state.provider

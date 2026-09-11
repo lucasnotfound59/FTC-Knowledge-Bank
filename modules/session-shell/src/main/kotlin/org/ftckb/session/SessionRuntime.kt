@@ -114,6 +114,18 @@ class SessionRuntime(
         if (contextChanged && this::askSession.isInitialized &&
             (currentMode()==org.ftckb.agent.AgentMode.EDIT || hasEditChanges())
         ) throw SessionAssemblyException.ReconfigurationBlocked()
+        val nextRoot=snapshot?.root ?: repositoryRoot
+        val nextSummary=if (snapshot!=null) buildString {
+            append("supported=true")
+            append("; sourceModules=").append(snapshot.profile.sourceModules.sorted().joinToString(","))
+            append("; markerCount=").append(snapshot.profile.markers.size)
+            append("; documentCount=").append(snapshot.documents.size)
+        } else repositorySummary
+        val nextStatus=ChatStatus(nextRoot,nextTeam,nextSeason,provider ?: providerName,nextProfile.model,profiles)
+        val nextGraph=if (contextChanged) assembleAgents(
+            nextIndex,nextKnowledge,nextRoot,nextHistory ?: history,nextSummary,nextProfile,nextStatus,conversation
+        ) else null
+        val nextSession=nextGraph?.session ?: makeSession(askAgent,nextProfile,nextStatus,nextIndex)
         val nextProvider=if (provider!=null) createProvider(nextProfile,nextSecret) else null
         config=nextConfig
         profile=nextProfile
@@ -132,25 +144,26 @@ class SessionRuntime(
             repositoryRoot=snapshot.root
             baselineDirtyPaths=nextBaseline
             history=nextHistory!!
-            repositorySummary=buildString {
-                append("supported=true")
-                append("; sourceModules=").append(snapshot.profile.sourceModules.sorted().joinToString(","))
-                append("; markerCount=").append(snapshot.profile.markers.size)
-                append("; documentCount=").append(snapshot.documents.size)
-            }
+            repositorySummary=nextSummary
         }
-        if (contextChanged) {
+        if (nextGraph!=null) {
             knowledgeRetriever=nextKnowledge
-            retrievalPlanner=RetrievalPlanner(swapProvider)
-            contextRetriever=ContextRetriever(repositoryIndex,knowledgeRetriever)
-            rebuildAgents()
-        } else {
-            refreshSession()
+            installAgents(nextGraph)
         }
+        askSession=nextSession
     }
 
     /** Changes provider while preserving explicit rule context and conversation. */
     fun reconfigureProvider(name:String)=reconfigure(ruleProfiles,provider=name)
+
+    /** Applies persisted UI settings; an unchanged knowledge path is not an explicit reload. */
+    fun reconfigureSettings(
+        nextRuleProfiles:Set<String>,knowledge:Path,nextTeam:String,nextSeason:String,provider:String
+    )=reconfigure(
+        nextRuleProfiles,
+        knowledge.takeUnless { it.toAbsolutePath().normalize()==knowledgeRoot.toAbsolutePath().normalize() },
+        nextTeam,nextSeason,provider=provider
+    )
 
     fun reconfigureKnowledge(knowledge:Path,nextTeam:String,nextSeason:String,nextRuleProfiles:Set<String>)=
         reconfigure(nextRuleProfiles,knowledge,nextTeam,nextSeason)
@@ -160,8 +173,13 @@ class SessionRuntime(
         reconfigure(nextRuleProfiles,repository=repository)
 
     fun clearConversation() {
-        conversation=ConversationState(swapProvider,swapProvider.currentSecrets())
-        rebuildAgents()
+        val nextConversation=ConversationState(swapProvider,swapProvider.currentSecrets())
+        val nextGraph=assembleAgents(
+            repositoryIndex,knowledgeRetriever,repositoryRoot,history,repositorySummary,
+            profile,askSession.status(),nextConversation
+        )
+        conversation=nextConversation
+        installAgents(nextGraph)
     }
 
     private fun normalizeProfiles(profiles:Set<String>):Set<String> =try {
@@ -178,31 +196,44 @@ class SessionRuntime(
         throw SessionAssemblyException.KnowledgeInvalid()
     }
 
-    private fun rebuildAgents() {
-        askAgent=AskAgent(
-            retrievalPlanner,contextRetriever,
-            AnswerGenerator(swapProvider,repositoryIndex),
-            conversation,repositorySummary
+    private data class AgentGraph(
+        val planner:RetrievalPlanner,val context:ContextRetriever,val ask:AskAgent,val edit:EditAgent,
+        val controller:SessionController,val session:AskChatSession
+    )
+
+    private fun assembleAgents(
+        index:RepositoryIndex,knowledge:KnowledgeRetriever,root:Path,editHistory:EditHistory,
+        summary:String,providerProfile:ProviderProfile,status:ChatStatus,transcript:ConversationState
+    ):AgentGraph=try {
+        val planner=RetrievalPlanner(swapProvider)
+        val context=ContextRetriever(index,knowledge)
+        val ask=AskAgent(
+            planner,context,AnswerGenerator(swapProvider,index),transcript,summary
         )
-        editAgent=EditAgent(
-            retrievalPlanner,contextRetriever,swapProvider,repositoryIndex,
-            FileEditEngine(repositoryRoot),history,conversation,repositorySummary
+        val edit=EditAgent(
+            planner,context,swapProvider,index,FileEditEngine(root),editHistory,transcript,summary
         )
-        controller=SessionController(
-            askAgent,editAgent,history,repositoryRoot,repositoryIndex,
-            indexRefresher=historyIndexRefresher(repositoryIndex)
+        val nextController=SessionController(
+            ask,edit,editHistory,root,index,indexRefresher=historyIndexRefresher(index)
         )
-        refreshSession()
+        AgentGraph(planner,context,ask,edit,nextController,makeSession(ask,providerProfile,status,index))
+    } catch (_:java.io.IOException) {
+        throw SessionAssemblyException.RepositoryUnreadable()
+    } catch (_:Exception) {
+        throw SessionAssemblyException.AgentAssembly()
     }
 
-    private fun refreshSession() {
-        askSession=RuntimeAskChatSession(
-            askAgent,
-            ConversationSaver(profile.name,profile.model),
-            ChatStatus(repositoryRoot,team,season,providerName,profile.model,ruleProfiles),
-            sessionsDirectory,repositoryIndex
-        )
+    private fun installAgents(graph:AgentGraph) {
+        retrievalPlanner=graph.planner
+        contextRetriever=graph.context
+        askAgent=graph.ask
+        editAgent=graph.edit
+        controller=graph.controller
+        askSession=graph.session
     }
+
+    private fun makeSession(agent:AskAgent,providerProfile:ProviderProfile,status:ChatStatus,index:RepositoryIndex):AskChatSession=
+        RuntimeAskChatSession(agent,ConversationSaver(providerProfile.name,providerProfile.model),status,sessionsDirectory,index)
 
     private fun createProvider(profile:ProviderProfile,secret:String):ModelProvider=try {
         providerCreator(profile,SecretResolver { name-> if (name==profile.apiKeyEnv) secret else null })
@@ -233,6 +264,7 @@ sealed class SessionAssemblyException(detail:String):RuntimeException(detail) {
     class KnowledgeInvalid(detail:String="invalid knowledge root"):SessionAssemblyException(detail)
     class ReconfigurationBlocked:SessionAssemblyException("rule context changes require Ask mode without outstanding Agent changes")
     class ProviderInit:SessionAssemblyException("model provider initialization failed")
+    class AgentAssembly:SessionAssemblyException("session agent initialization failed")
 }
 
 internal class RuntimeAskChatSession(

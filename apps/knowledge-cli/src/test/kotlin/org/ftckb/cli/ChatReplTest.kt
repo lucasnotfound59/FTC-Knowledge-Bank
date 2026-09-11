@@ -29,6 +29,99 @@ import org.ftckb.session.ChatStatus
 
 class ChatReplTest {
     @Test
+    fun `settings provider-only selection preserves Edit controller and outstanding history`(@TempDir root:Path) {
+        val repository=root.resolve("repository")
+        writeFtcRepository(repository)
+        org.eclipse.jgit.api.Git.init().setDirectory(repository.toFile()).setInitialBranch("team-work").call().use { git ->
+            git.add().addFilepattern(".").call()
+            git.commit().setAuthor("Fixture","fixture@example.invalid").setCommitter("Fixture","fixture@example.invalid")
+                .setMessage("baseline").call()
+        }
+        val knowledge=Files.createDirectories(root.resolve("knowledge"))
+        Files.writeString(knowledge.resolve("rules.yaml"),"schemaVersion: 1\nrules: []\n")
+        val config=root.resolve("config.yaml")
+        writeFakeConfig(config,"FTC_KB_FAKE_KEY")
+        Files.writeString(config,Files.readString(config)+"\n  other:\n    baseUrl: https://example.invalid/v1\n    model: other-model\n    apiKeyEnv: FTC_KB_FAKE_KEY\n")
+        val provider=ModelProvider { request ->
+            if (request.messages.first().content.startsWith("Return exactly one JSON object")) {
+                ModelResponse("""{"concepts":[],"symbols":["SampleTeleOp"],"pathGlobs":[],"ruleTopics":[],"guideTopics":[]}""")
+            } else ModelResponse("""{"summary":"Add marker","operations":[{"kind":"create","path":"TeamCode/Marker.java","expectedAbsent":true,"content":"class Marker {}\n","reason":"Requested marker","citations":["CODE:C1"]}]}""")
+        }
+        val runtime=org.ftckb.session.SessionRuntime(
+            config,{ "fixture-secret" },{ _,_ -> provider },{ root.resolve("sessions") },
+            { index -> { paths -> index.refresh(paths) } },
+            repository,knowledge,"20827","2025-2026","fake",emptySet()
+        )
+        val controller=runtime.controller()
+        assertEquals(null,controller.setMode(org.ftckb.agent.AgentMode.EDIT))
+        runtime.reconfigureSettings(emptySet(),knowledge.resolve("."),"20827","2025-2026","other")
+        assertSame(controller,runtime.controller())
+        assertEquals("other",runtime.providerName)
+        assertEquals(org.ftckb.agent.AgentMode.EDIT,runtime.currentMode())
+        val result=controller.submit("add marker")
+        assertTrue(result is org.ftckb.agent.EditResult,result.toString())
+        val changes=controller.changes()
+        assertTrue(changes.isNotEmpty())
+        val authorizedBranch=controller.authorizedEditBranch
+        runtime.reconfigureSettings(emptySet(),knowledge,"20827","2025-2026","fake")
+        assertSame(controller,runtime.controller())
+        assertEquals(changes,controller.changes())
+        assertEquals(authorizedBranch,controller.authorizedEditBranch)
+        assertEquals(org.ftckb.agent.AgentMode.EDIT,runtime.currentMode())
+        assertThrows(org.ftckb.session.SessionAssemblyException.ReconfigurationBlocked::class.java) {
+            runtime.reconfigureSettings(setOf("rookiebot"),knowledge,"20827","2025-2026","other")
+        }
+        assertEquals("fake",runtime.providerName)
+    }
+
+    @Test
+    fun `missing current repository cannot partially publish configuration`(@TempDir root:Path) {
+        val repository=root.resolve("repository")
+        writeFtcRepository(repository)
+        val knowledge=Files.createDirectories(root.resolve("knowledge"))
+        Files.writeString(knowledge.resolve("rules.yaml"),"schemaVersion: 1\nrules: []\n")
+        val config=root.resolve("config.yaml")
+        writeFakeConfig(config,"OLD_KEY")
+        Files.writeString(config,Files.readString(config)+"\n  other:\n    baseUrl: https://example.invalid/v1\n    model: other-model\n    apiKeyEnv: NEW_KEY\n")
+        var created=0
+        val runtime=org.ftckb.session.SessionRuntime(
+            config,{ if (it=="OLD_KEY") "old-secret" else "new-secret" },
+            { _,_ -> created++; ModelProvider { request ->
+                if (request.messages.first().content.startsWith("Return exactly one JSON object")) {
+                    ModelResponse("""{"concepts":[],"symbols":[],"pathGlobs":[],"ruleTopics":[],"guideTopics":[]}""")
+                } else ModelResponse("""{"claims":[{"kind":"model_inference","text":"original answer","citations":[]}]}""")
+            } },{ root.resolve("sessions") },{ index -> { paths -> index.refresh(paths) } },
+            repository,knowledge,"20827","2025-2026","fake",emptySet()
+        )
+        runtime.session().ask("keep this conversation")
+        val beforeSession=runtime.session()
+        val beforeController=runtime.controller()
+        val transcript=root.resolve("before.md")
+        beforeSession.save(transcript)
+        val beforeText=Files.readString(transcript)
+        val unavailable=root.resolve("unavailable")
+        Files.move(repository,unavailable)
+        assertThrows(Exception::class.java) {
+            runtime.reconfigure(setOf("rookiebot"),nextTeam="16093",nextSeason="2026-2027",provider="other")
+        }
+        assertEquals("fake",runtime.providerName)
+        assertEquals("20827",runtime.team)
+        assertEquals("2025-2026",runtime.season)
+        assertEquals(emptySet<String>(),runtime.ruleProfiles)
+        assertEquals(knowledge,runtime.currentKnowledgeRoot())
+        assertSame(beforeSession,runtime.session())
+        assertSame(beforeController,runtime.controller())
+        assertEquals(1,created)
+        assertFalse(runtime.redact("old-secret new-secret").contains("old-secret"))
+        assertTrue(runtime.redact("old-secret new-secret").contains("new-secret"))
+        Files.move(unavailable,repository)
+        val afterTranscript=root.resolve("after.md")
+        runtime.session().save(afterTranscript)
+        assertEquals(beforeText.lines().filterNot { it.startsWith("Saved:") },
+            Files.readString(afterTranscript).lines().filterNot { it.startsWith("Saved:") })
+    }
+
+    @Test
     fun `named profile reaches model evidence and same-path reconfigure reloads rules`(@TempDir root:Path) {
         val repository=root.resolve("repository")
         writeFtcRepository(repository)
