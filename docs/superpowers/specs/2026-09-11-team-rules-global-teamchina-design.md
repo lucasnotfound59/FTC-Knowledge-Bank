@@ -1,6 +1,6 @@
 # 两队规则全局化与 TeamChina 写作标准设计
 
-日期：2026-09-11。状态：已由用户确认方向，书面设计已完成并自检，待用户复核后实施。
+日期：2026-09-11。状态：用户已复核通过；实施计划见 `docs/superpowers/plans/2026-09-11-global-teamchina-rules.md`。
 
 ## 1. 目标与边界
 
@@ -8,7 +8,7 @@
 
 TeamChina 证据固定到提交 `9be3eb7776f35d71e60cec4cb47be6bd7892acee`，不跟踪滚动的 `master`。只提炼代码组织与安全表达方式，不复制设备名称、方向、功率、舵机位置或比赛策略。SDK 自带 README、示例和仓库中偶然出现的不一致格式不作为团队标准。
 
-本次只实现 global 规则必需的 v4 格式和 profile 匹配，不迁移旧计划中的 RookieBot／FTCLib 规则，不改 Limelight reviewTriggers、安装进度或网络超时，也不升级 Pedro Pathing。官方和安全规则不因 TeamChina 写法而降级。
+本次实现 global 规则必需的 v4 格式和 profile 匹配，并只迁移与架构隔离直接相关的 12 条 RookieBot 规则及 1 条 FTCLib 规则，使它们不再对所有项目生效；不改这些规则的内容或状态，不改 Limelight reviewTriggers、安装进度或网络超时，也不升级 Pedro Pathing。官方和安全规则不因 TeamChina 写法而降级。
 
 ## 2. 已确认的冲突决定
 
@@ -42,7 +42,7 @@ TeamChina 证据固定到提交 `9be3eb7776f35d71e60cec4cb47be6bd7892acee`，不
 - 保留每条规则的来源 URL、固定 commit、文件和 symbol；迁移后可以追溯来自哪个队伍。
 - 6 条 approved 的旧 team-lead 审批完整写入迁移说明；YAML 中改为本次 global 范围的新审批记录。仓库已将同一维护者 `lucasnotfound59` 记录为 overall software lead，因此本次用户明确授权可作为新的 global 审批决定；不得复用 2026-08-27 的时间冒充当时已经批准了全局范围。
 - 2 条 candidate 继续为 candidate，不因移动目录或提高 policyLevel 自动转正。
-- 重复的 20827 `hardware-layer-candidate` 与 approved `hardware-container` 不制造两个同 topic 的 global 冲突：candidate 保留为历史候选，approved 规则承载实际标准。
+- 语义重叠的 20827 `hardware-layer-candidate`（topic=`hardware-access`）与 approved `hardware-container`（topic=`hardware-container`）仍保留原 topic 和状态：candidate 作为历史候选，approved 规则承载实际标准；不为了去重而伪造 topic 或审批历史。
 - 原复合命名规则拆分为通用 Java 命名与赛季自动类命名时，必须保留原证据和状态；不借拆分扩大适用范围。
 
 迁移后 team 目录不保留第二份可加载规则，避免重复 ID。若需要说明历史位置，使用 Markdown 迁移说明而不是重复 YAML。
