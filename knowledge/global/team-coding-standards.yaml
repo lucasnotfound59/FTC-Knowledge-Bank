@@ -1,0 +1,298 @@
+# 2026-09-11 全局范围决定；审批记录为本次实施时的新 UTC 记录。
+# 来源与旧审批见 docs/rule-migrations/2026-09-11-team-rules-global-teamchina.md。
+schemaVersion: 4
+rules:
+  - id: global.hardware-access-candidate
+    supersedes: team-20827.hardware-layer-candidate
+    topic: hardware-access
+    title: Access hardware through Hardwares
+    instruction: Access configured robot devices through the Hardwares class.
+    rationale: The 20827 repository centralizes configured devices in this class.
+    status: candidate
+    authority: shared
+    policyLevel: global
+    applicability:
+      teams: []
+      seasons: ["2025-2026"]
+      profiles: []
+    evidence:
+      - type: git
+        repository: xiaokai-lyk/FTC20827-2026Decode
+        commit: 118c28e137334bbbea510d77f1fa384e8b1b5779
+        file: TeamCode/src/main/java/org/firstinspires/ftc/teamcode/Hardwares.java
+        symbol: Hardwares
+  - id: global.hardware-container
+    supersedes: team-20827.hardware-container
+    topic: hardware-container
+    title: Centralize hardware in one Hardwares container
+    instruction: 所有硬件引用集中在一个 Hardwares 容器类中，并按 Sensors、Motors、Servos 等职责分组；子系统接收该容器，不直接从 HardwareMap 获取设备。
+    rationale: 统一初始化与命名，避免各子系统重复取硬件导致配置漂移。
+    status: approved
+    approval:
+      approver: "lucasnotfound59"
+      role: overall_software_lead
+      approvedAt: 2026-09-12T05:43:33Z
+    authority: shared
+    policyLevel: global
+    applicability:
+      teams: []
+      seasons: ["2025-2026"]
+      profiles: []
+    evidence:
+      - type: git
+        repository: xiaokai-lyk/FTC20827-2026Decode
+        commit: 118c28e137334bbbea510d77f1fa384e8b1b5779
+        file: TeamCode/src/main/java/org/firstinspires/ftc/teamcode/Hardwares.java
+        symbol: Hardwares
+        line: 17
+      - type: git
+        repository: OLeslieO/FGC2026-TeamChina
+        commit: 9be3eb7776f35d71e60cec4cb47be6bd7892acee
+        file: TeamCode/src/main/java/org/firstinspires/ftc/teamcode/Hardwares.java
+        symbol: Hardwares
+  - id: global.motor-configuration
+    supersedes: team-20827.motor-init-safety
+    topic: motor-init-safety
+    title: Configure motors for each mechanism
+    instruction: 每个电机必须在机构初始化阶段明确配置方向、运行模式和 ZeroPowerBehavior；BRAKE 或 FLOAT 应按机构需要选择，不得无依据统一套用。
+    rationale: 初始化需要明确方向、模式和零功率行为；TeamChina 的不同机构采用不同零功率行为，不能把统一 BRAKE 当作通用安全结论。
+    status: approved
+    approval:
+      approver: "lucasnotfound59"
+      role: overall_software_lead
+      approvedAt: 2026-09-12T05:43:33Z
+    authority: shared
+    policyLevel: global
+    applicability:
+      teams: []
+      seasons: ["2025-2026"]
+      profiles: []
+    evidence:
+      - type: git
+        repository: xiaokai-lyk/FTC20827-2026Decode
+        commit: 118c28e137334bbbea510d77f1fa384e8b1b5779
+        file: TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/Intake.java
+        symbol: setZeroPowerBehavior
+        line: 40
+      - type: git
+        repository: OLeslieO/FGC2026-TeamChina
+        commit: 9be3eb7776f35d71e60cec4cb47be6bd7892acee
+        file: TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/Shooter.java
+        symbol: init
+  - id: global.constants-centralized
+    supersedes: team-20827.constants-centralized
+    topic: constants-centralized
+    title: Centralize tuning constants
+    instruction: 调参与机构参数集中存放并使用能表达用途或单位的名称；可以使用 enum、static final 或配置对象，不在逻辑代码中散落魔数。
+    rationale: 20827 与 TeamChina 都集中表达参数；可复用的是语义、单位和集中维护，不是某个固定容器形式或机器人参数值。
+    status: approved
+    approval:
+      approver: "lucasnotfound59"
+      role: overall_software_lead
+      approvedAt: 2026-09-12T05:43:33Z
+    authority: shared
+    policyLevel: global
+    applicability:
+      teams: []
+      seasons: ["2025-2026"]
+      profiles: []
+    evidence:
+      - type: git
+        repository: xiaokai-lyk/FTC20827-2026Decode
+        commit: 118c28e137334bbbea510d77f1fa384e8b1b5779
+        file: TeamCode/src/main/java/org/firstinspires/ftc/teamcode/pedroPathing/Constants.java
+        symbol: Constants
+        line: 17
+      - type: git
+        repository: OLeslieO/FGC2026-TeamChina
+        commit: 9be3eb7776f35d71e60cec4cb47be6bd7892acee
+        file: TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/Constants.java
+        symbol: Constants
+  - id: global.documentation-intent
+    supersedes: team-20827.chinese-javadoc
+    topic: chinese-javadoc
+    title: Explain mechanism intent in Chinese
+    instruction: 为子系统、工具类和不明显的机构逻辑编写中文说明，重点解释用途、单位、有效范围和安全理由；不强制固定 Javadoc 或分节模板。
+    rationale: 中文说明降低队内阅读成本；来源的注释格式并不统一，保留语义说明而不把分节格式当成安全要求。
+    status: approved
+    approval:
+      approver: "lucasnotfound59"
+      role: overall_software_lead
+      approvedAt: 2026-09-12T05:43:33Z
+    authority: shared
+    policyLevel: global
+    applicability:
+      teams: []
+      seasons: ["2025-2026"]
+      profiles: []
+    evidence:
+      - type: git
+        repository: xiaokai-lyk/FTC20827-2026Decode
+        commit: 118c28e137334bbbea510d77f1fa384e8b1b5779
+        file: TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/Intake.java
+        symbol: Intake
+        line: 18
+      - type: git
+        repository: OLeslieO/FGC2026-TeamChina
+        commit: 9be3eb7776f35d71e60cec4cb47be6bd7892acee
+        file: TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/Intake.java
+        symbol: Intake
+  - id: global.telemetry-organization
+    supersedes: team-20827.telemetry-multiple
+    topic: telemetry-multiple
+    title: Organize Driver Station and Dashboard telemetry
+    instruction: 项目使用 FtcDashboard 时，通过 MultipleTelemetry 同时提供 Driver Station 与 Dashboard 遥测，并按机构或用途组织关键数据；不强制固定分隔符。
+    rationale: 组合遥测同时服务驾驶员与调参者；仅在项目使用 Dashboard 时适用，数据组织比固定分隔符更重要。
+    status: approved
+    approval:
+      approver: "lucasnotfound59"
+      role: overall_software_lead
+      approvedAt: 2026-09-12T05:43:33Z
+    authority: shared
+    policyLevel: global
+    applicability:
+      teams: []
+      seasons: ["2025-2026"]
+      profiles: []
+    evidence:
+      - type: git
+        repository: xiaokai-lyk/FTC20827-2026Decode
+        commit: 118c28e137334bbbea510d77f1fa384e8b1b5779
+        file: TeamCode/src/main/java/org/firstinspires/ftc/teamcode/teleops/TeleOpBase.java
+        symbol: MultipleTelemetry
+        line: 55
+      - type: git
+        repository: OLeslieO/FGC2026-TeamChina
+        commit: 9be3eb7776f35d71e60cec4cb47be6bd7892acee
+        file: TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmodes/TeleOpSolo.java
+        symbol: TeleOpSolo
+  - id: global.naming-conventions
+    supersedes: team-20827.naming-conventions
+    topic: naming-conventions
+    title: Use semantic Java and season-scoped autonomous names
+    instruction: 类使用 PascalCase，字段、方法和硬件配置名使用表达机构语义的 lowerCamelCase；不强制电机字段使用 m 前缀。本赛季自动类继续使用 <Side><Color>[Mini] 与 Base 抽象类的组合命名，不据此推断未来赛季路线。
+    rationale: 语义化名称便于对应机构职责；取消强制 m 前缀，但保留经本赛季审批的自动类命名范围。
+    status: approved
+    approval:
+      approver: "lucasnotfound59"
+      role: overall_software_lead
+      approvedAt: 2026-09-12T05:43:33Z
+    authority: shared
+    policyLevel: global
+    applicability:
+      teams: []
+      seasons: ["2025-2026"]
+      profiles: []
+    evidence:
+      - type: git
+        repository: xiaokai-lyk/FTC20827-2026Decode
+        commit: 118c28e137334bbbea510d77f1fa384e8b1b5779
+        file: TeamCode/src/main/java/org/firstinspires/ftc/teamcode/Hardwares.java
+        symbol: mLeftFront
+        line: 48
+      - type: git
+        repository: xiaokai-lyk/FTC20827-2026Decode
+        commit: 118c28e137334bbbea510d77f1fa384e8b1b5779
+        file: TeamCode/src/main/java/org/firstinspires/ftc/teamcode/autos/TopAutoBase.java
+        symbol: TopAutoBase
+        line: 25
+      - type: git
+        repository: OLeslieO/FGC2026-TeamChina
+        commit: 9be3eb7776f35d71e60cec4cb47be6bd7892acee
+        file: TeamCode/src/main/java/org/firstinspires/ftc/teamcode/Hardwares.java
+        symbol: Hardwares
+  - id: global.mechanism-state-machine-candidate
+    supersedes: team-16093.fsm-candidate
+    topic: mechanism-state-management
+    title: Use explicit mechanism state machines
+    instruction: Model multi-step mechanism behavior with explicit state machines.
+    rationale: The 16093 repository contains shooter and intake state-machine implementations.
+    status: candidate
+    authority: shared
+    policyLevel: global
+    applicability:
+      teams: []
+      seasons: ["2025-2026"]
+      profiles: []
+    evidence:
+      - type: git
+        repository: tqdmye/FTC2026-16093National
+        commit: 3e6de8944081ef347fbb76b2f97c89b89b10b669
+        file: TeamCode/src/main/java/org/firstinspires/ftc/teamcode/Subsystems/shooter/ShooterFSM.java
+        symbol: ShooterFSM
+  - id: global.command-responsibilities
+    topic: command-responsibilities
+    title: Separate OpMode subsystem and command responsibilities
+    instruction: 命令式项目中，OpMode 负责生命周期与输入绑定，Subsystem 封装机构能力，Command 协调动作与调度。
+    rationale: 固定提交的 TeleOpSolo 与机构类展示了入口编排、机构能力和命令协调的职责划分；不据此要求所有项目选择命令框架。
+    status: approved
+    approval:
+      approver: "lucasnotfound59"
+      role: overall_software_lead
+      approvedAt: 2026-09-12T05:43:33Z
+    authority: shared
+    policyLevel: global
+    applicability:
+      teams: []
+      seasons: ["2025-2026"]
+      profiles: [command-based]
+    evidence:
+      - type: git
+        repository: OLeslieO/FGC2026-TeamChina
+        commit: 9be3eb7776f35d71e60cec4cb47be6bd7892acee
+        file: TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmodes/TeleOpSolo.java
+        symbol: TeleOpSolo
+      - type: git
+        repository: OLeslieO/FGC2026-TeamChina
+        commit: 9be3eb7776f35d71e60cec4cb47be6bd7892acee
+        file: TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/Intake.java
+        symbol: Intake
+  - id: global.command-live-input
+    topic: command-live-input
+    title: Read live command inputs through suppliers
+    instruction: 需要连续响应手柄的 Command 通过 Supplier 在执行时读取输入，不在创建 Command 时固定一次性快照。
+    rationale: DriveCommand 保存 Supplier 并在执行期间取值，使连续手柄输入在命令存活期间保持更新。
+    status: approved
+    approval:
+      approver: "lucasnotfound59"
+      role: overall_software_lead
+      approvedAt: 2026-09-12T05:43:33Z
+    authority: shared
+    policyLevel: global
+    applicability:
+      teams: []
+      seasons: ["2025-2026"]
+      profiles: [command-based]
+    evidence:
+      - type: git
+        repository: OLeslieO/FGC2026-TeamChina
+        commit: 9be3eb7776f35d71e60cec4cb47be6bd7892acee
+        file: TeamCode/src/main/java/org/firstinspires/ftc/teamcode/commands/DriveCommand.java
+        symbol: DriveCommand
+  - id: global.command-requirements-cleanup
+    topic: command-requirements-cleanup
+    title: Declare requirements and restore safe command output
+    instruction: 控制 SubsystemBase 的 CommandBase 显式声明 requirements；产生持续机构输出的命令在结束或中断时恢复安全输出。
+    rationale: DriveCommand 声明所控制子系统的 requirements，并在 end 中清理持续输出；这是项目写作约定，不冒充框架官方要求。
+    status: approved
+    approval:
+      approver: "lucasnotfound59"
+      role: overall_software_lead
+      approvedAt: 2026-09-12T05:43:33Z
+    authority: shared
+    policyLevel: global
+    applicability:
+      teams: []
+      seasons: ["2025-2026"]
+      profiles: [command-based]
+    evidence:
+      - type: git
+        repository: OLeslieO/FGC2026-TeamChina
+        commit: 9be3eb7776f35d71e60cec4cb47be6bd7892acee
+        file: TeamCode/src/main/java/org/firstinspires/ftc/teamcode/commands/DriveCommand.java
+        symbol: DriveCommand
+      - type: git
+        repository: OLeslieO/FGC2026-TeamChina
+        commit: 9be3eb7776f35d71e60cec4cb47be6bd7892acee
+        file: TeamCode/src/main/java/org/firstinspires/ftc/teamcode/commands/DriveCommand.java
+        symbol: end

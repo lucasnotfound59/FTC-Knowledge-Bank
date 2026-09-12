@@ -1,6 +1,6 @@
 # RookieBot 新手教程约定：2026-09-07 经用户明确确认，记录为 shared approved。
 # 仅适用于采用该教程约定的项目，不代表 FIRST 官方要求或其他项目的架构变更。
-schemaVersion: 2
+schemaVersion: 4
 rules:
   - id: shared.rookiebot-hardware-init
     topic: rookiebot-hardware-init
@@ -13,9 +13,11 @@ rules:
       role: overall_software_lead
       approvedAt: 2026-09-06T16:03:37Z
     authority: shared
+    policyLevel: local
     applicability:
       teams: []
       seasons: []
+      profiles: [rookiebot]
     evidence:
       - type: git
         repository: "OLeslieO/FTC2026-RookieBot"
@@ -42,9 +44,11 @@ rules:
       role: overall_software_lead
       approvedAt: 2026-09-06T16:03:37Z
     authority: shared
+    policyLevel: local
     applicability:
       teams: []
       seasons: []
+      profiles: [rookiebot]
     evidence:
       - type: git
         repository: "OLeslieO/FTC2026-RookieBot"
@@ -72,9 +76,11 @@ rules:
       role: overall_software_lead
       approvedAt: 2026-09-06T16:03:37Z
     authority: shared
+    policyLevel: local
     applicability:
       teams: []
       seasons: []
+      profiles: [rookiebot]
     evidence:
       - type: git
         repository: "OLeslieO/FTC2026-RookieBot"
@@ -100,9 +106,11 @@ rules:
       role: overall_software_lead
       approvedAt: 2026-09-06T16:03:37Z
     authority: shared
+    policyLevel: local
     applicability:
       teams: []
       seasons: []
+      profiles: [rookiebot]
     evidence:
       - type: git
         repository: "OLeslieO/FTC2026-RookieBot"
@@ -128,9 +136,11 @@ rules:
       role: overall_software_lead
       approvedAt: 2026-09-06T16:03:37Z
     authority: shared
+    policyLevel: local
     applicability:
       teams: []
       seasons: []
+      profiles: [rookiebot]
     evidence:
       - type: git
         repository: "OLeslieO/FTC2026-RookieBot"
@@ -157,9 +167,11 @@ rules:
       role: overall_software_lead
       approvedAt: 2026-09-06T16:03:37Z
     authority: shared
+    policyLevel: local
     applicability:
       teams: []
       seasons: []
+      profiles: [rookiebot]
     evidence:
       - type: git
         repository: "OLeslieO/FTC2026-RookieBot"
@@ -180,9 +192,11 @@ rules:
       role: overall_software_lead
       approvedAt: 2026-09-06T16:03:37Z
     authority: shared
+    policyLevel: local
     applicability:
       teams: []
       seasons: []
+      profiles: [rookiebot]
     evidence:
       - type: git
         repository: "OLeslieO/FTC2026-RookieBot"
@@ -211,9 +225,11 @@ rules:
       role: overall_software_lead
       approvedAt: 2026-09-06T16:03:37Z
     authority: shared
+    policyLevel: local
     applicability:
       teams: []
       seasons: []
+      profiles: [rookiebot]
     evidence:
       - type: git
         repository: "OLeslieO/FTC2026-RookieBot"
@@ -238,9 +254,11 @@ rules:
       role: overall_software_lead
       approvedAt: 2026-09-06T16:03:37Z
     authority: shared
+    policyLevel: local
     applicability:
       teams: []
       seasons: []
+      profiles: [rookiebot]
     evidence:
       - type: git
         repository: "OLeslieO/FTC2026-RookieBot"
@@ -270,9 +288,11 @@ rules:
       role: overall_software_lead
       approvedAt: 2026-09-06T16:03:37Z
     authority: shared
+    policyLevel: local
     applicability:
       teams: []
       seasons: []
+      profiles: [rookiebot]
     evidence:
       - type: git
         repository: "OLeslieO/FTC2026-RookieBot"
@@ -299,9 +319,11 @@ rules:
       role: overall_software_lead
       approvedAt: 2026-09-06T16:03:37Z
     authority: shared
+    policyLevel: local
     applicability:
       teams: []
       seasons: []
+      profiles: [rookiebot]
     evidence:
       - type: git
         repository: "OLeslieO/FTC2026-RookieBot"
@@ -328,9 +350,11 @@ rules:
       role: overall_software_lead
       approvedAt: 2026-09-06T16:03:37Z
     authority: shared
+    policyLevel: local
     applicability:
       teams: []
       seasons: []
+      profiles: [rookiebot]
     evidence:
       - type: git
         repository: "OLeslieO/FTC2026-RookieBot"
