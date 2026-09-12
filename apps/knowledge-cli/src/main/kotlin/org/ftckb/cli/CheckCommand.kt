@@ -18,7 +18,7 @@ internal fun runCheckCommand(args:List<String>,out:PrintStream):Int {
         return exit
     }
     if (args==listOf("--help")) {
-        out.println("usage: knowledge-cli check <repo-root> [--knowledge PATH] --team N --season YYYY-YYYY [--profile NAME ... | --generic-profile] [--diff FILE] [--json]")
+        out.println("usage: knowledge-cli check <repo-root> [--knowledge PATH] --team N --season YYYY-YYYY (--profile NAME [--profile NAME ...] | --generic-profile) [--diff FILE] [--json]")
         return 0
     }
     if (args.isEmpty()) return fail("missing <repo-root>","usage",64)

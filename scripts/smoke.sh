@@ -31,8 +31,8 @@ fi
 if "$FTCKB" --help >/dev/null 2>&1; then pass "--help exits 0"; else fail "--help exits 0"; fi
 if "$FTCKB" --version >/dev/null 2>&1; then pass "--version exits 0"; else fail "--version exits 0"; fi
 if "$FTCKB" validate knowledge --json 2>/dev/null | grep -q '"ok":true'; then pass "validate knowledge --json"; else fail "validate knowledge --json"; fi
-if "$FTCKB" resolve knowledge --team 20827 --season 2025-2026 --json 2>/dev/null | grep -q '"ok":true'; then pass "resolve 20827 --json"; else fail "resolve 20827 --json"; fi
-if "$FTCKB" resolve knowledge --team 16093 --season 2025-2026 --json 2>/dev/null | grep -q '"ok":true'; then pass "resolve 16093 --json"; else fail "resolve 16093 --json"; fi
+if "$FTCKB" resolve knowledge --team 20827 --season 2025-2026 --generic-profile --json 2>/dev/null | grep -q '"ok":true'; then pass "resolve 20827 --json"; else fail "resolve 20827 --json"; fi
+if "$FTCKB" resolve knowledge --team 16093 --season 2025-2026 --generic-profile --json 2>/dev/null | grep -q '"ok":true'; then pass "resolve 16093 --json"; else fail "resolve 16093 --json"; fi
 if "$FTCKB" resolve knowledge --season 2025-2026 --json >/dev/null 2>&1; then fail "resolve missing --team exits 64"; else pass "resolve missing --team exits nonzero"; fi
 if "$FTCKB" validate no-such-knowledge-dir --json >/dev/null 2>&1; then fail "validate missing dir exits 2"; else pass "validate missing dir exits nonzero"; fi
 if "$FTCKB" validate --help >/dev/null 2>&1; then pass "validate --help exits 0"; else fail "validate --help exits 0"; fi

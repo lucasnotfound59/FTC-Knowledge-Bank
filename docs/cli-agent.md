@@ -14,6 +14,8 @@
 
 ## 配置与密钥
 
+`validate`、`resolve`、`check` 不需要 API key，不调用模型；以下供应商配置只用于模型交互功能。
+
 非秘密配置位于 ${user.home}/.ftckb/config.yaml；仓库内的 config/ftckb-config.example.yaml 是可直接复制的示例。每个 provider 只引用 API key 环境变量的名字，密钥本身永远不写入配置文件：
 
 | 字段 | 说明 |
@@ -33,12 +35,13 @@
 ## 启动聊天
 
 ```bash
-ftckb chat --knowledge PATH --team N --season YYYY-YYYY --provider NAME [--repo PATH] [--config PATH]
+ftckb chat --knowledge PATH --team N --season YYYY-YYYY --profile command-based --provider NAME [--repo PATH] [--config PATH]
 ```
 
 - --repo：FTC 仓库路径，默认当前目录；必须是可检测的 FTC 仓库（Gradle 设置、TeamCode、FTC 依赖或 OpMode 注解）。
 - --knowledge：知识库根目录（含官方/共享/队号规则与教程）。
 - --team / --season：规则解析必需的队号与赛季。
+- chat / serve / resolve / check 必须显式选择 `--generic-profile` 或可重复的 `--profile NAME`，不能混用；同一项目使用相同选择，不从依赖猜架构。支持 command-based、ftclib-command、simple-opmode、rookiebot；rookiebot 隐含 simple-opmode，ftclib-command 隐含 command-based，simple-opmode 与 command-based 互斥。generic 表示空 profile 集，只生效无 profile 要求的规则。
 
 ### 斜杠命令
 
@@ -99,7 +102,7 @@ ftckb chat --knowledge PATH --team N --season YYYY-YYYY --provider NAME [--repo 
 `ftckb serve` 在 127.0.0.1 上启动一个**单会话**的本地网页界面（仅本机可访问），适合不想记斜杠命令的队员：
 
 ```bash
-ftckb serve --knowledge PATH --team 20827 --season 2025-2026 --provider deepseek [--repo PATH] [--config PATH] [--port 0-65535] [--no-browser]
+ftckb serve --knowledge PATH --team 20827 --season 2025-2026 --profile command-based --provider deepseek [--repo PATH] [--config PATH] [--port 0-65535] [--no-browser]
 ```
 
 - 端口：默认随机（`--port 0`），启动时终端会打印 `url=` 和 `token=`；`token` 是一次性访问令牌，页面每次请求都要带（查询参数或 `X-FTCKB-Token` 头），泄露只需重启换新。
@@ -137,21 +140,27 @@ ftckb reject knowledge --id team-20827.some-topic --approver NAME \
 - 完整设计见 [docs/candidate-extraction.md](candidate-extraction.md)。
 ## 机器接口（供外部 Agent 使用）
 
-validate 与 resolve 支持 --json 输出稳定、版本化的 JSON 契约，供 Codex / Claude Code / 其他 Agent 把知识库当作确定性"策略裁决器"调用，而不是把规则当普通文本读：
+validate、resolve 与 check 支持 --json 输出稳定、版本化的 JSON 契约，供 Codex / Claude Code / 其他 Agent 把知识库当作确定性"策略裁决器"调用，而不是把规则当普通文本读：
 
 ```bash
 ftckb validate knowledge --json
-ftckb resolve knowledge --team 20827 --season 2025-2026 --json
+ftckb resolve knowledge --team 20827 --season 2025-2026 --generic-profile --json
+ftckb check /path/to/FtcRobotController --knowledge knowledge --team 20827 --season 2025-2026 --generic-profile --json
 ```
 
 契约要点：
 
-- 顶层含 schemaVersion（当前 1）、command、ok；破坏性变更必须提升版本号。
-- 输出确定性：activeRules 按 id 排序、conflicts 按 topic 排序、规则内的 teams/seasons/evidence 顺序固定——同样的输入永远得到同样的输出。
-- resolve 返回每条 active 规则的 id/topic/title/instruction/rationale/status/authority/applicability/evidence（git 与 web 两种证据形态），以及 conflicts（topic + authority + ruleIds）。
-- 退出码：成功 0；知识加载/校验失败或存在冲突 2；参数错误 64。带 `--json` 时失败路径同样是 JSON（统一 error 形状：usage / load-error / invalid-knowledge），不带时是文本行。完整契约见 [docs/kernel-contract.md](kernel-contract.md)，契约的可执行定义在 `KernelJsonAcceptanceTest`。
+- 顶层含 `schemaVersion=2`、ok；已识别命令含 command，未知命令的 usage 可无 command。消费方遇到非 JSON、schemaVersion!=2 或上下文不符必须停止；破坏性变更提升版本号。
+- resolve 返回 team、season、规范化后的 `profiles`、activeRules、excludedRules、overriddenRules、conflicts。active 规则含 id/topic/title/instruction/rationale/status/authority/policyLevel/applicability/evidence/checks/reviewTriggers；applicability 含 teams/seasons/profiles。
+- `excludedRules` 元素为 ruleId/reasons，完整记录 profile/season/status/team 不匹配；`overriddenRules` 元素为 ruleId/topic/winnerIds/effectiveLevel，解释适用但被更高层级覆盖的规则。
+- v2 冲突元素为 topic/effectiveLevel/ruleIds/authorities，authorities 是规则 ID 到来源的映射。同主题最高有效层级并列即冲突，该主题没有 active 胜者；resolve 此时 ok=false、退出 2，仍返回其他主题的 activeRules 和排除/覆盖解释，不使用 error 字段。
+- check 完成时返回 team/season/profiles/ok/violations/soft；硬违规退出 1，soft 不导致失败。不要把 resolve 的排除/覆盖字段误认为 check 输出字段。
+- 输出确定性：activeRules 按 id，excludedRules/overriddenRules 按 ruleId，conflicts 按 topic 排序，profiles 等集合规范化并排序，evidence/checks 保留声明顺序；同知识、上下文及 diff 得到相同输出。
+- 退出码：成功 0；check 硬违规 1；知识加载/校验、上下文或冲突失败 2；参数错误 64。JSON 错误的 error.code 为 usage / load-error / invalid-knowledge / context-required（缺 profile 选择）/ invalid-context（未知或互斥 profile）/ conflict（check 前置裁决冲突）。完整契约见 [docs/kernel-contract.md](kernel-contract.md)，契约的可执行定义在 `KernelJsonAcceptanceTest`。
 
-`ftckb check` 规范器已落地：对 diff 新增行做确定性执法（7 条规则带硬检查、其余为 soft 提示），详见 [docs/standardizer-check.md](standardizer-check.md)。未来继续增加：native 单文件可执行、MCP 薄适配层、全库历史扫描（`check --full`）。
+`ftckb check` 默认合并 HEAD→index 与 HEAD→工作区（含非忽略 untracked）：路径检查覆盖所有触及路径（含删除和重命名），regex 只检查新增行；可用 `--diff FILE` 替代。无 checks 的 active 规则为 soft 提示。两条 Limelight regex-required 有适用范围过宽的已知误报限制，不得插入无意义代码绕过。详见 [docs/standardizer-check.md](standardizer-check.md)。
+
+编译、静态检查与 JSON Schema 验证不等于 Robot Controller、Driver Station、部署或真机验证。
 
 ## 当前明确不包含的能力
 

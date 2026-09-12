@@ -6,6 +6,7 @@ plugins {
 kotlin { jvmToolchain(21) }
 application { mainClass.set("org.ftckb.cli.MainKt"); applicationName="ftckb" }
 tasks.named<JavaExec>("run") { workingDir(rootProject.projectDir) }
+tasks.named<Test>("test") { dependsOn(tasks.named("installDist")) }
 
 dependencies {
     implementation(project(":modules:agent-runtime"))

@@ -140,6 +140,71 @@ launcher.write_text('#!/bin/sh\\nexec "'+sys.executable+'" "'+str(root/"tools/fa
 '''
 
 
+class ShellEntryTest(unittest.TestCase):
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory(prefix="ftckb-shell-")
+        self.addCleanup(self.temp.cleanup)
+        self.root=Path(self.temp.name)/"repo with spaces"
+        self.root.mkdir()
+        self.launcher=self.root/"apps/knowledge-cli/build/install/ftckb/bin/ftckb"
+        write(self.root,str(self.launcher.relative_to(self.root)),
+              '#!/bin/sh\nprintf "%s\\n" "$@"\nexit "${FTCKB_GATE_EXIT:-0}"\n')
+        self.launcher.chmod(0o755)
+        self.base=[str(self.root),str(self.root/"knowledge with spaces"),"20827","2025-2026"]
+
+    def gate(self,args,code=0):
+        return subprocess.run(["sh",str(ROOT/"scripts/check-gate.sh"),*args],
+                              env=os.environ|{"FTCKB_GATE_EXIT":str(code)},
+                              capture_output=True,text=True,timeout=10)
+
+    def test_gate_requires_exactly_five_or_six_arguments_before_using_them(self):
+        for count in (0,1,2,3,4,7,8):
+            with self.subTest(count=count):
+                result=self.gate((self.base+["generic","patch file","extra","extra"])[:count])
+                self.assertEqual(64,result.returncode)
+                self.assertEqual("",result.stdout)
+                self.assertIn("PROFILE_OR_GENERIC [DIFF]",result.stderr)
+
+    def test_gate_forwards_profiles_diff_and_kernel_exit_codes_exactly(self):
+        for profile,flags in (("generic",["--generic-profile"]),
+                              ("command-based",["--profile","command-based"]),
+                              ("name with spaces;*",["--profile","name with spaces;*"])):
+            for diff in ([],[str(self.root/"patch with spaces;*.diff")],[""]):
+                for code in (0,1,2,64):
+                    with self.subTest(profile=profile,diff=diff,code=code):
+                        result=self.gate(self.base+[profile]+diff,code)
+                        expected=["check",self.base[0],"--knowledge",self.base[1],
+                                  "--team","20827","--season","2025-2026"]+flags
+                        if diff:
+                            expected+=["--diff",diff[0]]
+                        self.assertEqual(expected+["--json"],result.stdout.splitlines())
+                        self.assertEqual(code,result.returncode)
+                        self.assertEqual("",result.stderr)
+
+    def test_gate_builds_missing_launcher_and_returns_two_on_build_failure(self):
+        self.launcher.rename(self.root/"launcher-template")
+        write(self.root,"gradlew",'#!/bin/sh\nprintf "%s\\n" "$@" >build-args\n'
+              'test "${FTCKB_GATE_BUILD_FAIL:-0}" = 0 || exit 9\n'
+              'cp launcher-template apps/knowledge-cli/build/install/ftckb/bin/ftckb\n')
+        (self.root/"gradlew").chmod(0o755)
+        with patch.dict(os.environ,{"FTCKB_GATE_BUILD_FAIL":"1"}):
+            self.assertEqual(2,self.gate(self.base+["generic"]).returncode)
+        self.assertFalse(self.launcher.exists())
+        result=self.gate(self.base+["generic"],1)
+        self.assertEqual(1,result.returncode)
+        self.assertTrue(self.launcher.is_file())
+        self.assertEqual([":apps:knowledge-cli:installDist","--no-daemon"],
+                         (self.root/"build-args").read_text().splitlines())
+        self.assertIn("--generic-profile",result.stdout.splitlines())
+
+    def test_smoke_successful_resolves_explicitly_choose_generic(self):
+        lines=[line for line in (ROOT/"scripts/smoke.sh").read_text().splitlines()
+               if '"$FTCKB" resolve knowledge --team' in line]
+        self.assertEqual(2,len(lines))
+        for line in lines:
+            self.assertIn("--generic-profile",line)
+
+
 class IntegrationTest(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory(prefix="ftckb-test-")

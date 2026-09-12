@@ -1,5 +1,6 @@
 package org.ftckb.cli
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
 import java.nio.file.Files
@@ -12,6 +13,54 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class CliDocumentationAcceptanceTest {
+    @Test
+    fun `public entry documentation uses v2 fields and explicit profile commands`() {
+        val root=Path.of("..","..").normalize()
+        for (file in listOf("docs/cli-agent.md","docs/handbook/installation.md")) {
+            val text=Files.readString(root.resolve(file))
+            listOf("--generic-profile","--profile command-based","不需要 API key","Robot Controller","Driver Station")
+                .forEach { assertTrue(text.contains(it),"$file: $it") }
+            val commands=text.lineSequence().filter { line ->
+                line.contains("--team") && Regex("\\b(chat|serve|resolve|check)\\b").containsMatchIn(line)
+            }.toList()
+            assertTrue(commands.isNotEmpty(),file)
+            commands.forEach { line ->
+                assertTrue(line.contains("--profile ") || line.contains("--generic-profile"),"$file: $line")
+            }
+        }
+        val cli=Files.readString(root.resolve("docs/cli-agent.md"))
+        listOf("schemaVersion=2","profiles","excludedRules","overriddenRules","policyLevel",
+            "effectiveLevel","authorities","winnerIds","context-required","invalid-context","ftckb check")
+            .forEach { assertTrue(cli.contains(it),it) }
+        listOf("schemaVersion（当前 1）","topic + authority + ruleIds")
+            .forEach { assertFalse(cli.contains(it),it) }
+    }
+
+    @Test
+    fun `installation profile counts match both teams current resolution`() {
+        val root=Path.of("..","..").normalize()
+        val text=Files.readString(root.resolve("docs/handbook/installation.md"))
+        assertTrue(text.contains("46（40 已批准 + 6 候选）"))
+        assertTrue(text.contains("validation=ok rules=46"))
+        val mapper=ObjectMapper()
+        for ((profile,count) in listOf("generic" to 24,"command-based" to 27,"rookiebot" to 36,"ftclib-command" to 28)) {
+            assertTrue(text.contains("| $profile | $count |"),profile)
+            val selections=if (profile=="generic") listOf("--generic-profile") else listOf("--profile",profile)
+            val activeByTeam=listOf("20827","16093").map { team ->
+                val out=ByteArrayOutputStream()
+                assertEquals(0,runCli(listOf("resolve",root.resolve("knowledge").toString(),
+                    "--team",team,"--season","2025-2026","--json")+selections,PrintStream(out)))
+                val result=mapper.readTree(out.toString())
+                assertEquals(2,result["schemaVersion"].asInt())
+                assertEquals(count,result["activeRules"].size(),"$profile/$team")
+                result["activeRules"].map { it["id"].asText() }
+            }
+            assertEquals(activeByTeam[0],activeByTeam[1],profile)
+        }
+        listOf("rules=43","37 条 active","16093 为 31")
+            .forEach { assertFalse(text.contains(it),it) }
+    }
+
     @Test
     fun `release documents publish all version axes and profile aware governance`() {
         val root=Path.of("..","..").normalize()
@@ -86,7 +135,7 @@ class CliDocumentationAcceptanceTest {
 
     @Test
     fun `kernel help marks explicit profile selection as required`() {
-        for (args in listOf(listOf("--help"),listOf("resolve","--help"))) {
+        for (args in listOf(listOf("--help"),listOf("resolve","--help"),listOf("check","--help"))) {
             val out=ByteArrayOutputStream()
             assertEquals(0,runCli(args,PrintStream(out)))
             assertTrue(out.toString().contains("(--profile NAME [--profile NAME ...] | --generic-profile)"))
@@ -97,7 +146,7 @@ class CliDocumentationAcceptanceTest {
     @Test
     fun `installDist launcher runs help without credentials`() {
         val script=Path.of("build","install","ftckb","bin","ftckb").normalize()
-        assertTrue(Files.isRegularFile(script),"Run :apps:knowledge-cli:installDist before launcher acceptance: $script")
+        assertTrue(Files.isRegularFile(script),"The test task must build its installDist prerequisite: $script")
 
         val process=ProcessBuilder(script.toString(),"chat","--help").start()
         val finished=process.waitFor(60,TimeUnit.SECONDS)
