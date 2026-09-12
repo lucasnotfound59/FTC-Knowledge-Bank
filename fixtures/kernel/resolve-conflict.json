@@ -1,1 +1,1 @@
-{"schemaVersion":1,"command":"resolve","team":"20827","season":"2025-2026","ok":false,"activeRules":[],"conflicts":[{"topic":"same-topic","authority":"official","ruleIds":["official.first","official.second"]}]}
+{"schemaVersion":2,"command":"resolve","team":"20827","season":"2025-2026","profiles":[],"ok":false,"activeRules":[],"excludedRules":[],"overriddenRules":[],"conflicts":[{"topic":"same-topic","effectiveLevel":"official","ruleIds":["official.first","official.second"],"authorities":{"official.first":"official","official.second":"official"}}]}

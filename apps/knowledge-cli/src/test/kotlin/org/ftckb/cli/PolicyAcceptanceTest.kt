@@ -16,7 +16,7 @@ class PolicyAcceptanceTest {
         val loaded=FileKnowledgeRepository.load(root)
         assertTrue(loaded.violations.isEmpty())
 
-        val result=RuleResolver.resolve(loaded.rules,RuleContext("20827","2025-2026"))
+        val result=RuleResolver.resolve(loaded.rules,RuleContext("20827","2025-2026",emptySet()))
 
         assertEquals(setOf("team.pathing","official.deploy"),result.activeRules.map { it.id }.toSet())
         assertFalse(result.activeRules.any { it.id=="shared.pathing" || it.id=="team.deploy" })

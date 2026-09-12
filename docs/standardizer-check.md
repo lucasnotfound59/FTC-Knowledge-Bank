@@ -5,7 +5,7 @@
 本仓库核心目的：**规范和统一代码库，让所有 Agent 写出同一标准的代码**。
 知识库不只是“给 Agent 看规则的资料库”，而是规范器：
 
-- `resolve` = 告知：把生效规则（OFFICIAL > TEAM > SHARED 确定性裁决）交给任何 Agent；
+- `resolve` = 告知：把生效规则（OFFICIAL > GLOBAL > LOCAL > SHARED 确定性裁决）交给任何 Agent；
 - **`check` = 执法（本设计新增）**：对 Agent/队员的代码改动做**确定性机器检查**，违规即报，
   通过才算符合标准。
 
@@ -16,18 +16,18 @@
 
 ```bash
 # 默认合并 HEAD→index 与 HEAD→工作区（含非忽略 untracked）的变化
-ftckb check <repo-root> --team 20827 --season 2025-2026 [--json]
+ftckb check <repo-root> --team 20827 --season 2025-2026 --generic-profile [--json]
 # 或检查一个补丁/任意 diff（外部 Agent 常用：提交前自检）
-ftckb check <repo-root> --team 20827 --season 2025-2026 --diff <file.patch> [--json]
+ftckb check <repo-root> --team 20827 --season 2025-2026 --generic-profile --diff <file.patch> [--json]
 ```
 
 JSON 契约（沿用 kernel 风格，退出码扩展）：
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "command": "check",
-  "team": "20827", "season": "2025-2026",
+  "team": "20827", "season": "2025-2026", "profiles": [],
   "ok": false,
   "violations": [
     {"ruleId": "shared.limelight-check-result-validity", "check": "regex-required",
@@ -41,7 +41,7 @@ JSON 契约（沿用 kernel 风格，退出码扩展）：
 }
 ```
 
-- 退出码：`0` 无硬违规；`1` 存在硬违规（violations 非空）；`2` 知识/仓库加载失败；`64` 参数错误。
+- 退出码：`0` 无硬违规；`1` 存在硬违规（violations 非空）；`2` 知识/仓库加载、校验、上下文或规则冲突失败；`64` 参数错误。
 - 确定性：violations 按 ruleId+path+line 排序；soft 按 ruleId 排序；同输入同输出。
 - 判定范围：路径 checks 检查所有触及路径（含删除、只删行、空文件、重命名前后路径）；regex checks 只检查新增行（不报全库历史债）。`--diff` 使用同样的路径/新增行语义；非空坏补丁报错，不静默通过。
 - 默认同时检查 HEAD→index 和 HEAD→工作区并去重，避免暂存违规仅在工作区撤销后漏检；仅存在于 index 的行号可能与当前文件不同，应结合 staged diff 阅读。
@@ -49,7 +49,7 @@ JSON 契约（沿用 kernel 风格，退出码扩展）：
 
 ## 2. 检查类型库（v1，数据驱动）
 
-规则 YAML 新增可选 `checks:` 数组（schema v3；不写 checks 的规则视为仅告知/软提示）：
+规则 YAML 新增可选 `checks:` 数组（schema v3/v4；不写 checks 的规则视为仅告知/软提示）：
 
 | kind | 语义 | 判定 |
 | --- | --- | --- |
@@ -125,6 +125,10 @@ limelight-synchronize-pipeline-dependent-reads、pedro 三条（坐标转换/定
 - M5 文档合并：`docs/standardizer-check.md`（本文件）+ kernel-contract.md 契约章节 + 推送合并。
 
 ## 5. 边界
+
+- kernel JSON v2 返回 normalized `profiles`；resolve/check 必须选择同一 profile（generic 是显式空集）。两者不需要 API key。
+- YAML v4 的 `reviewTriggers` 是审阅触发元数据，不是新增硬检查类型，也不能替代 checks 或人工审阅。
+- 来源 authority 不等于 policyLevel；official 来源最高，其余按 global/local/shared 裁决。candidate、队号/赛季/profile 不匹配不执法。
 
 - check 不执行任何代码/构建/测试；只做静态文本判定。
 - 只对 diff 判定；全库历史债不在 v1 范围（后续可加 `--full` 扫描）。

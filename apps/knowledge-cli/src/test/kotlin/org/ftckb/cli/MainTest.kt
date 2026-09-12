@@ -156,9 +156,10 @@ class MainTest {
         assertEquals(0,code)
         val text=output.toString()
         assertTrue(text.contains("official.keep-customizations-in-teamcode"))
-        assertTrue(text.contains("shared.ftclib-command-candidate"))
-        assertFalse(text.contains("team-20827.hardware-layer-candidate"))
-        assertFalse(text.contains("team-16093.fsm-candidate"))
+        assertFalse(text.contains("shared.ftclib-command-candidate"))
+        assertTrue(text.contains("global.hardware-container"))
+        assertFalse(text.contains("global.hardware-access-candidate"))
+        assertFalse(text.contains("global.mechanism-state-machine-candidate"))
     }
 
     @Test
@@ -297,10 +298,14 @@ class MainTest {
 
     @Test
     fun `top level help and version are first class commands`() {
+        assertEquals("2.0.0",FTCKB_VERSION)
         val help=ByteArrayOutputStream()
         assertEquals(0,runCli(listOf("--help"),PrintStream(help)))
         assertTrue(help.toString().contains("commands:"))
         assertTrue(help.toString().contains("resolve"))
+        assertTrue(help.toString().contains("OFFICIAL > GLOBAL > LOCAL > SHARED"))
+        assertTrue(help.toString().contains("--generic-profile"))
+        assertTrue(help.toString().contains("--profile command-based"))
         assertTrue(help.toString().contains("docs/kernel-contract.md"))
 
         val version=ByteArrayOutputStream()
@@ -341,13 +346,18 @@ class MainTest {
         assertEquals(0,code)
         assertEquals(
             """
+            active global.constants-centralized
+            active global.documentation-intent
+            active global.hardware-container
+            active global.motor-configuration
+            active global.naming-conventions
+            active global.telemetry-organization
             active official.keep-customizations-in-teamcode
             active shared.dashboard-pin-stable-dependency
             active shared.dependency-verify-sync-build-run
             active shared.ftc-sdk-pin-release
             active shared.ftc-sdk-preserve-build-tooling
             active shared.ftc-sdk-separate-toolchain-versions
-            active shared.ftclib-command-candidate
             active shared.gobilda-identify-exact-sku
             active shared.gobilda-separate-stall-and-operating-values
             active shared.gobilda-servo-mode-and-pwm-range
@@ -360,24 +370,6 @@ class MainTest {
             active shared.pedro-explicit-coordinate-conversion
             active shared.pedro-localization-before-follower
             active shared.pedro-tune-current-robot
-            active shared.rookiebot-hardware-groups
-            active shared.rookiebot-hardware-init
-            active shared.rookiebot-java-imports
-            active shared.rookiebot-nonblocking-auto
-            active shared.rookiebot-pedro-complete-builder
-            active shared.rookiebot-sdk-path-hygiene
-            active shared.rookiebot-servo-degrees
-            active shared.rookiebot-simple-opmode
-            active shared.rookiebot-source-provenance
-            active shared.rookiebot-step-comments
-            active shared.rookiebot-template-activation
-            active shared.rookiebot-verification-evidence
-            active team-20827.chinese-javadoc
-            active team-20827.constants-centralized
-            active team-20827.hardware-container
-            active team-20827.motor-init-safety
-            active team-20827.naming-conventions
-            active team-20827.telemetry-multiple
             """.trimIndent()+"\n",
             output.toString()
         )

@@ -14,6 +14,25 @@ import org.junit.jupiter.api.Test
 
 class CliDocumentationAcceptanceTest {
     @Test
+    fun `release documents publish all version axes and profile aware governance`() {
+        val root=Path.of("..","..").normalize()
+        val readme=Files.readString(root.resolve("README.md"))
+        listOf("**版本：V0.4.0**","46（40 已批准 + 6 候选）","CLI 2.0.0","YAML v4","kernel JSON v2","项目接入协议 v2").forEach {
+            assertTrue(readme.contains(it),it)
+        }
+        listOf("AGENTS.md","docs/kernel-contract.md","docs/handbook/resolution.md").forEach { file ->
+            val text=Files.readString(root.resolve(file))
+            listOf("OFFICIAL > GLOBAL > LOCAL > SHARED","--generic-profile","--profile command-based","excludedRules","overriddenRules").forEach {
+                assertTrue(text.contains(it),"$file: $it")
+            }
+        }
+        val schema=Files.readString(root.resolve("docs/handbook/rule-schema.md"))
+        listOf("YAML v4","policyLevel","profiles","reviewTriggers").forEach { assertTrue(schema.contains(it),it) }
+        val approval=Files.readString(root.resolve("docs/handbook/approval.md"))
+        listOf("team→global","新的总软件负责人审批","旧审批","迁移台账").forEach { assertTrue(approval.contains(it),it) }
+    }
+
+    @Test
     fun `config example parses without secrets and names all three provider kinds`() {
         val path=Path.of("..","..","config","ftckb-config.example.yaml").normalize()
         val text=Files.readString(path)

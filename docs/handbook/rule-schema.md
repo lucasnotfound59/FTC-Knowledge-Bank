@@ -4,6 +4,7 @@ CLI 会递归读取知识根目录中扩展名为小写 `.yaml` 或 `.yml` 的�
 
 | 路径 | 含义 |
 | --- | --- |
+| `knowledge/global/team-coding-standards.yaml` | 经审批的全局工程规范，仍受赛季/profile 限制 |
 | `knowledge/official/rules.yaml` | FIRST 官方约束 |
 | `knowledge/shared/rules.yaml` | 跨队共享规则与候选规则 |
 | `knowledge/shared/setup/` | Android Studio、FTC SDK 与第三方依赖共享规则 |
@@ -14,7 +15,7 @@ CLI 会递归读取知识根目录中扩展名为小写 `.yaml` 或 `.yml` 的�
 | `knowledge/schema/examples/rule-example.yaml.example` | schema v1 Git 证据示例；扩展名不会被递归加载 |
 | `knowledge/schema/examples/web-rule-example.yaml.example` | schema v2 网页证据示例；扩展名不会被递归加载 |
 
-规则文件可以是 schema v1、v2 或 v3 YAML 文档。v1 仅支持旧式 Git 证据；v2 通过必填的 `type` 区分 Git 与网页证据。不要在这些文件中保存密钥、机器人凭据或其他秘密。
+新规则使用 YAML v4；解码器兼容 schema v1、v2、v3。v1 仅支持旧式 Git 证据；v2 通过必填的 `type` 区分 Git 与网页证据。不要在这些文件中保存密钥、机器人凭据或其他秘密。
 
 ## 规则字段
 
@@ -22,7 +23,7 @@ CLI 会递归读取知识根目录中扩展名为小写 `.yaml` 或 `.yml` 的�
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `schemaVersion` | 整数 | `1`、`2` 或 `3`；网页证据使用 v2/v3，带 checks 的规则必须使用 v3 |
+| `schemaVersion` | 整数 | `1`、`2`、`3` 或 `4`；网页证据使用 v2+，checks 使用 v3+，policyLevel/profiles/reviewTriggers 仅 v4 |
 | `rules` | 列表 | 规则列表，可以为空 |
 
 v1 使用旧式 Git 证据；v2 引入带 type 的 Git/网页证据；v3 在 v2 基础上允许 checks。规则字段如下：
@@ -35,21 +36,30 @@ v1 使用旧式 Git 证据；v2 引入带 type 的 Git/网页证据；v3 在 v2 
 | `instruction` | 是 | 非空字符串 | 代码或使用者应执行的明确动作 |
 | `rationale` | 是 | 非空字符串 | 采用这条规则的原因 |
 | `status` | 是 | `candidate` / `approved` / `deprecated` / `rejected` | 规则生命周期状态 |
-| `authority` | 是 | `official` / `team` / `shared` | 权威层级 |
-| `applicability` | 否 | 对象 | 适用队伍和赛季；省略等同于两个列表均为空 |
+| `authority` | 是 | `official` / `team` / `shared` | 来源身份，不等于策略层级 |
+| `policyLevel` | v4 是 | `global` / `local` / `shared` | 策略层级；official 来源有效层级始终最高 |
+| `applicability` | v4 是 | 对象 | v4 必须显式包含 teams/seasons/profiles；v1-v3 省略时无范围限制 |
 | `evidence` | 是 | 非空列表 | 一个或多个可追溯证据对象 |
 | `approval` | 否 | 对象 | 只有 `approved` 规则必须且可以包含 |
 | `supersedes` | 否 | 字符串 | 被替代规则的标识元数据；当前解析器不会仅凭此字段改变优先级 |
 | `positiveExample` | 否 | 字符串 | 正确做法示例 |
 | `negativeExample` | 否 | 字符串 | 错误做法示例 |
-| `checks` | 否 | 列表，仅 schema v3 | 机器检查；类型与语义见[规范器参考](../../docs/standardizer-check.md) |
+| `checks` | 否 | 列表，schema v3/v4 | 机器检查；类型与语义见[规范器参考](../../docs/standardizer-check.md) |
+| `reviewTriggers` | 否 | 非空列表，仅 YAML v4 | 审阅触发元数据；每项含 paths/addedLinePatterns，不改变硬 checks |
 
 `applicability` 字段：
 
 | 字段 | 必填 | 类型 | 说明 |
 | --- | --- | --- | --- |
-| `teams` | 否 | 字符串列表 | 适用队号；空列表表示不限制队号。`team` 权威规则至少要有一个队号 |
-| `seasons` | 否 | 字符串列表 | 适用赛季；空列表表示不限制赛季 |
+| `teams` | v4 是 | 字符串列表 | 适用队号；空列表表示不限制队号。`team` 权威规则至少要有一个队号 |
+| `seasons` | v4 是 | 字符串列表 | 适用赛季；空列表表示不限制赛季 |
+| `profiles` | v4 是 | 字符串列表 | 空集无架构限制；否则 normalized context 必须包含全部 profiles |
+
+v4 可选 `reviewTriggers`：出现时必须是非空列表，每项必含 `paths`（非空 glob 列表）和 `addedLinePatterns`（可为空的 Java 正则列表）。它们仅为审阅触发元数据，不是硬 checks。未知字段/重复键/错误类型/null 均拒绝；v1-v3 不允许声明 v4 字段。
+
+支持 profiles：rookiebot、simple-opmode、command-based、ftclib-command。rookiebot 隐含 simple-opmode，ftclib-command 隐含 command-based；simple-opmode 与 command-based 互斥。规则空 profiles 不是仅限 generic，表示无架构要求。
+
+policyLevel 约束：official 必须 global；team 必须 local 且有队号；shared 可为三者。local 必须有 teams 或 profiles 限制。v1-v3 按 authority 映射 official→global、team→local、shared→shared，profiles 为空。有效优先级 OFFICIAL > GLOBAL > LOCAL > SHARED，不从文件位置推断。
 
 schema v1 的每个 `evidence` 对象都表示 Git 证据：
 
@@ -111,4 +121,4 @@ file: repository-relative, / separators only, no absolute path, backslash, empty
 line: positive integer
 ```
 
-schema v1/v2/v3 都采取严格解码：未知字段、重复 YAML 键、错误的集合或标量类型，以及不安全的 YAML 对象标签都会报错，而不会被静默忽略。schema v2 还会拒绝未知证据类型和 Git/网页字段混用。规则 `id` 在整个知识根目录中也不能重复。
+schema v1/v2/v3/v4 都采取严格解码：未知字段、重复 YAML 键、错误的集合或标量类型，以及不安全的 YAML 对象标签都会报错，而不会被静默忽略。schema v2 还会拒绝未知证据类型和 Git/网页字段混用。规则 `id` 在整个知识根目录中也不能重复。

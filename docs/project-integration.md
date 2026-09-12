@@ -8,7 +8,7 @@
 
 ```text
 把 https://github.com/lucasnotfound59/FTC-Knowledge-Bank
-接入当前 FTC 项目，队号 16093，赛季 2025-2026。
+接入当前 FTC 项目，队号 16093，赛季 2025-2026，显式使用 generic profile。
 请读取上游 .agents/skills/ftckb-integrate/SKILL.md，并锁定已审阅的版本。
 ```
 
@@ -29,7 +29,7 @@ python3 -m venv /path/to/ftckb-venv
 
 下文 `python3` 替换为该虚拟环境 Python。Windows 使用环境内 `python.exe`，或 `py -3`。不要向共享配置提交个人 `JAVA_HOME`、`sdk.dir` 或 SDK 绝对路径。这个独立 CLI 构建不需要 Android SDK；机器人编译仍需要队员自己的 Android SDK。
 
-首次安装须指定包含本功能的 tag 或完整 40 位 commit SHA。README 的 `V0.1.1` 是旧仓库版本文案，不代表已有同名 Git tag；旧版本不包含项目级接入功能。CLI `--version`、kernel `schemaVersion` 与仓库发布版本是三个不同概念。正式 tag 发布前，请使用包含本 Skill 和脚本的已提交版本；审阅所选 checkout 后用 `git rev-parse HEAD` 获取完整 SHA，不要把旧版本 SHA 或 `main` 传给安装器。
+首次安装须指定包含本功能的 tag 或完整 40 位 commit SHA。仓库 V0.4.0、CLI 2.0.0、YAML v4、kernel JSON v2、项目接入协议 v2 是独立版本轴；README 的版本不代表同名 tag 已发布。正式 tag 发布前，请使用包含本 Skill 和脚本的已提交版本；审阅所选 checkout 后用 `git rev-parse HEAD` 获取完整 SHA，不要把旧版本 SHA 或 `main` 传给安装器。
 
 ## 安装与 dry-run
 
@@ -38,7 +38,7 @@ python3 -m venv /path/to/ftckb-venv
 ```bash
 python3 .agents/skills/ftckb-integrate/scripts/integrate.py \
   --project "/path/to/FTC project" --team 16093 --season 2025-2026 \
-  --ref FULL_COMMIT_SHA --dry-run
+  --ref FULL_COMMIT_SHA --generic-profile --dry-run
 ```
 
 `FULL_COMMIT_SHA` 必须替换为实际完整 SHA，也可传实际存在的 tag。默认来源是官方 GitHub 仓库；测试镜像可显式 `--repository URL`。不接受 branch 名，不把 README 示例队号作为默认值；缺少 team/season 时脚本报错，Agent 应询问。
@@ -62,11 +62,12 @@ dry-run 会查询远程或在临时目录获取选定版本，以检查模板与
 
 ```json
 {
-  "schemaVersion": 1,
-  "kernelSchemaVersion": 1,
-  "integrationVersion": 1,
+  "schemaVersion": 2,
+  "kernelSchemaVersion": 2,
+  "integrationVersion": 2,
   "team": "16093",
   "season": "2025-2026",
+  "profiles": [],
   "source": {
     "repository": "https://github.com/lucasnotfound59/FTC-Knowledge-Bank.git",
     "ref": "RELEASE_TAG_OR_FULL_SHA",
@@ -82,6 +83,8 @@ dry-run 会查询远程或在临时目录获取选定版本，以检查模板与
 
 以上仅字段示意，占位字符串不能直接使用。`managedFiles` 摘要用于防止无意覆盖，不是对恶意篡改的签名。不要手改摘要来强行通过预检。
 
+新安装必须选择 `--generic-profile` 或可重复的 `--profile NAME`（例如 `--profile command-based`）。`profiles:[]` 是显式 generic；缺失/null 不合法。rookiebot 隐含 simple-opmode，ftclib-command 隐含 command-based；simple-opmode 与 command-based 不兼容，generic 与命名 profile 互斥。不从代码或依赖猜测 profile。
+
 重跑时可省略 team/season/ref，缺省重用配置中的 SHA，不重新解析 tag。相同输入不会产生新 diff。AGENTS 托管段之外的原文及队伍补充保留；项目补充写在段外，不改生成的 Skill。若生成文件/段落有人工修改、路径冲突、symlink 或 submodule 脏改动，脚本停止而非覆盖。
 
 ## 每次编码与验收
@@ -94,7 +97,7 @@ python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.
 python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py check --project .
 ```
 
-包装器验证固定版本、知识路径、托管内容、schema 和退出码。CLI 尚未构建或版本改变时才重新构建；构建日志走 stderr，kernel JSON 保持 stdout 可解析。
+包装器验证固定版本、知识路径、托管内容、schema 和退出码，并验证返回的 normalized profiles 与配置相符；resolve/check 自动附加配置的显式 profile 参数。CLI 尚未构建或版本改变时才重新构建；构建日志走 stderr，kernel JSON 保持 stdout 可解析。
 
 完整验收：
 
@@ -125,7 +128,7 @@ git submodule update --init -- tools/FTC-Knowledge-Bank
 python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/verify.py --project .
 ```
 
-升级时显式选择新版本，先 dry-run，再运行安装器的 `--ref NEW_TAG_OR_SHA`。它更新 gitlink、配置和未被人工修改的模板，重新构建并验收。没有 `--ref` 不升级；不要 `git pull` submodule 或 `git submodule update --remote`。
+旧 v1 项目保持原固定 SHA，不自动迁移。v1→v2 升级必须显式选择 profile；已有有效 v2 配置升级时可以保留原选择。升级时显式选择新版本，先 dry-run，再运行安装器的 `--ref NEW_TAG_OR_SHA`。它更新 gitlink、配置和未被人工修改的模板，重新构建并验收。没有 `--ref` 不升级；不要 `git pull` submodule 或 `git submodule update --remote`。
 
 构建失败：托管文件和固定 submodule 保留，修正 JDK、缓存权限或网络后重跑安装或 verify。版本/路径冲突：先查看 `git status`、`.gitmodules`、配置与 submodule HEAD，不直接 reset/删除目录。安装中途被强制终止可能留下 Git 注册或部分托管文件；脚本宁可拒绝未知残留，也不猜测并删除。审阅具体残留后人工恢复；不要执行全仓库 `git clean -fdx` 或 `git reset --hard`。
 
@@ -158,4 +161,4 @@ FTCKB_REAL_INTEGRATION=1 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover 
 
 普通 Python 用例使用真实 Git、隔离构建/CLI 夹具检验安装行为。真实 CLI 与发布验证结果单独记录，不把夹具成功或 Windows launcher 参数测试称为 Windows 实机通过。
 
-2026-09-08 验收：Python 常规 22 项通过（含已安装项目 dry-run 不刷新 index 回归）；单独开启的真实源码安装测试 1 项通过（临时 Git 源仓库固定 SHA→真实 Gradle installDist→validate/resolve→故意违规的 check exit 1），在最终 Git dry-run 修复后再次通过。Kotlin 核心与 CLI 422 项，421 通过、1 项原有 installDist 预期路径假设检查跳过；无失败。10 份 kernel JSON fixtures 均通过 jsonschema；两份 Skill 通过结构校验；本知识库 validate/resolve/check 通过。`./gradlew test` 全仓库尝试长时间无输出后中止，因此 Android Studio 插件全量测试未完成；Windows 原生环境、部署和真机运行未验证。
+历史基线（不是 V0.4.0 当前验收），2026-09-08 验收：Python 常规 22 项通过（含已安装项目 dry-run 不刷新 index 回归）；单独开启的真实源码安装测试 1 项通过（临时 Git 源仓库固定 SHA→真实 Gradle installDist→validate/resolve→故意违规的 check exit 1），在最终 Git dry-run 修复后再次通过。Kotlin 核心与 CLI 422 项，421 通过、1 项原有 installDist 预期路径假设检查跳过；无失败。10 份 kernel JSON fixtures 均通过 jsonschema；两份 Skill 通过结构校验；本知识库 validate/resolve/check 通过。`./gradlew test` 全仓库尝试长时间无输出后中止，因此 Android Studio 插件全量测试未完成；Windows 原生环境、部署和真机运行未验证。

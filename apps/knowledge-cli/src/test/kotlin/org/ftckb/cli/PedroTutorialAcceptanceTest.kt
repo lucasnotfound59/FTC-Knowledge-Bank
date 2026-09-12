@@ -614,7 +614,7 @@ class PedroTutorialAcceptanceTest {
         for (team in listOf("20827","16093")) {
             val result=org.ftckb.domain.RuleResolver.resolve(
                 loaded.rules,
-                org.ftckb.domain.RuleContext(team,"2025-2026")
+                org.ftckb.domain.RuleContext(team,"2025-2026",emptySet())
             )
             assertEquals(
                 pedroIds,

@@ -5,6 +5,15 @@
 面向 Codex / Claude Code / Qoder / DSH 等任何能执行 shell、读文件的 Agent。
 本文件是入口；完整契约见 `docs/kernel-contract.md`。
 
+版本轴：仓库 V0.4.0、CLI 2.0.0、YAML v4、kernel JSON v2、项目接入协议 v2。
+`authority` 表示来源，`policyLevel` 表示 global/local/shared 策略；official 来源始终最高。
+resolve/check 不需要 API key。必须显式选择 generic 或命名 profile，不从依赖猜测：
+`--profile command-based`、`--profile ftclib-command`、`--profile rookiebot`、`--profile simple-opmode`。
+rookiebot 隐含 simple-opmode，ftclib-command 隐含 command-based；两种架构不能混用。
+同一项目 resolve/check 使用同一选择。candidate、赛季/team/profile 不匹配进入 excludedRules；
+同主题低层级进入 overriddenRules；最高有效层级并列则 conflict，不交给模型猜胜者。
+编译、静态检查与 JSON Schema 验证不等于 Robot Controller、Driver Station 或真机通过。
+
 ## 一句话
 
 本仓库 = FTC 知识库 + 确定性“策略裁决器 + 规范器”CLI（`ftckb`）+ 本地聊天/网页 Agent。
@@ -30,29 +39,29 @@
 
 ```bash
 ftckb validate knowledge --json
-ftckb resolve knowledge --team 20827 --season 2025-2026 --json
-ftckb check <repo-root> --knowledge knowledge --team 20827 --season 2025-2026 --json
+ftckb resolve knowledge --team 20827 --season 2025-2026 --generic-profile --json
+ftckb check <repo-root> --knowledge knowledge --team 20827 --season 2025-2026 --generic-profile --json
 ```
 
 - `validate`：加载并校验全部规则 → `{schemaVersion,command,ok,ruleCount,violations}`。
 - `resolve`：按队伍+赛季裁决出生效规则 → `{activeRules:[…],conflicts:[…]}`，
-  每条规则含 id/topic/title/instruction/rationale/status/authority/applicability/evidence。
+  每条规则含 id/topic/title/instruction/rationale/status/authority/policyLevel/applicability/evidence/checks/reviewTriggers；顶层还有 profiles、excludedRules、overriddenRules。
 - 退出码：validate/resolve 为 `0` 成功；`2` 加载/校验失败或存在冲突；`64` 参数错误。
   `check` 为 `0` 通过；`1` 存在硬违规；`2` 加载失败/冲突；`64` 参数错误。
-- 带 `--json` 时**所有失败路径也是 JSON**（`error.code`: `usage` | `load-error` | `invalid-knowledge` | `conflict`）。
+- 带 `--json` 时**所有失败路径也是 JSON**（`error.code`: `usage` | `load-error` | `invalid-knowledge` | `conflict` | `context-required` | `invalid-context`）。
 - **规范器**：`check` 合并 HEAD→index 与 HEAD→工作区（含非忽略 untracked）的变化，路径规则检查所有触及路径（含删除/重命名），regex 规则仅检查新增行；无 checks 的规则输出为 `soft` 提示。详见 `docs/standardizer-check.md`。Limelight 两条 Java regex-required 有过宽适用范围的已知限制，不要插入无意义代码绕过，须如实报告。
 - 确定性：activeRules 按 id 排序、conflicts 按 topic 排序——同输入同输出，可以缓存。
 - 完整字段表、示例与变更策略见 `docs/kernel-contract.md`；摘要见 README「用法二」。
 
 ## 关键规则（不要做）
 
-- 不要把 `knowledge/*.yaml` 当普通文本解释裁决：规则优先级 OFFICIAL > TEAM > SHARED 与
+- 不要把 `knowledge/*.yaml` 当普通文本解释裁决：规则优先级 OFFICIAL > GLOBAL > LOCAL > SHARED 与
   冲突检测由 `ftckb resolve` 的确定性代码执行，绕过它会得到错误结论。
 - 修改任何规则/知识文件后，必须 `ftckb validate knowledge --json` 通过（`ok:true`）才算数。
 - `chat` / `eval` / `serve` / `extract` / `candidates` / `approve` 是给人用的交互模式；机器契约只用 validate/resolve/check。
-- 契约破坏性变更必须提升 `schemaVersion`；消费方看到 `schemaVersion!=1` 应停止并报错。
-- 文档中的规则数/测试数快照随改动同步更新：当前 43 条规则（37 已批准 + 6 候选）；核心/CLI Kotlin 422 项（421 通过、1 跳过），Python 接入 22 项加单独真实 CLI 端到端 1 项通过；平台范围见 README。
-- 已知现状：20827 已批准 6 条队伍风格规则（`--team 20827` 比 16093 多 6 条 active 规则）；16093 与其余队伍规则仍是 candidate。不要假设两个队号的 resolve 结果相同。
+- 契约破坏性变更必须提升 `schemaVersion`；消费方看到 `schemaVersion!=2` 应停止并报错。
+- 文档中的规则数/测试数快照随改动同步更新：当前 46 条规则（40 已批准 + 6 候选）；测试数字必须随实际验收更新，历史测试不视为当前通过；平台范围见 README。
+- 当前相同赛季/profile 下 20827 与 16093 active IDs 相同；8 条原队伍规则已移到 global，保留 2025-2026 赛季，2 条 candidate 不转正。仍必须传真实队号。
 - 机器可消费工件：`docs/kernel-contract.schema.json`（JSON Schema）与 `fixtures/kernel/*.json`（真实输出示例：validate-ok / resolve-ok / resolve-conflict / error-usage / error-invalid-knowledge）可直接用来对拍你的解析器。
 
 ## 目录速览

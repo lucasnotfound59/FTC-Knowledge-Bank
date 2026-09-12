@@ -309,12 +309,18 @@ class KernelJsonAcceptanceTest {
     @Test
     fun `kernel contract fixtures parse and carry the expected shapes`() {
         val base=Path.of("..","..","fixtures","kernel")
+        assertEquals(2,mapper.readTree(KernelJson.validateJson(46))["schemaVersion"].asInt())
+        Files.list(base).use { paths ->
+            val fixtures=paths.filter { it.toString().endsWith(".json") }.sorted().toList()
+            assertEquals(10,fixtures.size)
+            fixtures.forEach { fixture -> assertSchemaValid(Files.readString(fixture)) }
+        }
 
         val validate=mapper.readTree(Files.readString(base.resolve("validate-ok.json")))
-        assertEquals(1,validate["schemaVersion"].asInt())
+        assertEquals(2,validate["schemaVersion"].asInt())
         assertEquals("validate",validate["command"].asText())
         assertTrue(validate["ok"].booleanValue())
-        assertTrue(validate["ruleCount"].asInt()>=1)
+        assertEquals(46,validate["ruleCount"].asInt())
 
         val resolve=mapper.readTree(Files.readString(base.resolve("resolve-ok.json")))
         assertEquals("resolve",resolve["command"].asText())

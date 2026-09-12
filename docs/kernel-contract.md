@@ -1,209 +1,121 @@
 # ftckb 知识内核机器契约（Kernel JSON Contract）
 
-> 面向对象：对接本知识库的外部 Agent（Codex / Claude Code / DSH 会话 / 任意脚本）。
-> 本文档描述 `validate`、`resolve` 与 `check` 的**稳定、版本化、确定性**机器接口。
-> `chat` / `eval` 是本地交互模式，不属于本契约。
+面向外部 Agent 与脚本的稳定、版本化、确定性接口只有 `validate`、`resolve`、`check`。这些命令不需要 API key，不调用模型或联网核验证据。chat / serve / eval 不是机器契约。
 
-## 1. 获取与运行
-
-代码位于仓库默认分支 `main`（开发分支 `codex/cli-agent` 会合并回 `main`）。
+## 1. 获取与版本
 
 ```bash
-# 正常环境（JDK 21+ 运行；JDK 21 编译工具链可由 Foojay resolver 下载）：
 git clone https://github.com/lucasnotfound59/FTC-Knowledge-Bank.git
 cd FTC-Knowledge-Bank
-./gradlew :apps:knowledge-cli:installDist   # 产物在 apps/knowledge-cli/build/install/ftckb/bin/ftckb
-
-# 受限环境（沙箱/CI 禁写 ~/.gradle）：
-GRADLE_USER_HOME=/tmp/xxx ./gradlew :apps:knowledge-cli:installDist
+./gradlew :apps:knowledge-cli:installDist
+# JDK 21+；产物 apps/knowledge-cli/build/install/ftckb/bin/ftckb
 ```
 
-知识根目录：仓库内 `knowledge/`（43 条规则：37 条已批准 + 6 条候选，候选规则不会进入 resolve 结果）。
+消费方固定审阅过的完整 commit，不跟踪 main。仓库 V0.4.0、CLI 2.0.0、YAML v4、kernel JSON v2、项目接入协议 v2 是独立版本轴。YAML 解码兼容 v1-v3，不代表 kernel v1 消费方兼容 v2。旧机器模式见 [v1 schema](kernel-contract.v1.schema.json)；当前 [v2 schema](kernel-contract.schema.json)。
 
-## 2. 命令与退出码
+知识总数 46（40 已批准 + 6 候选）；validate 包含候选计数，resolve 的 activeRules 不包含候选。
 
-| 命令 | 形式 | 说明 |
-| --- | --- | --- |
-| validate | `ftckb validate <knowledge-root> [--json]` | 加载并校验全部规则；成功输出规则总数 |
-| resolve | `ftckb resolve <knowledge-root> --team N --season YYYY-YYYY [--json]` | 按队伍+赛季裁决出全部**生效规则**；存在规则冲突时退出码为 2 |
-| check | `ftckb check <repo-root> --knowledge <knowledge-root> --team N --season YYYY-YYYY [--diff FILE] [--json]` | 对当前 diff 执行硬检查，并返回 soft 提醒 |
+## 2. 命令与显式 profile
 
-选项约束：
+```bash
+ftckb validate knowledge --json
+ftckb resolve knowledge --team 20827 --season 2025-2026 --generic-profile --json
+ftckb check <repo-root> --knowledge knowledge --team 20827 --season 2025-2026 --profile command-based --json
+```
 
-- `--team`：仅数字（如 `20827`）。
-- `--season`：严格 `YYYY-YYYY`（如 `2025-2026`）。
-- `--json` 可放在命令行的任意位置；出现 `--json` 时**所有输出（包括错误）都是单行 JSON**。
-- `resolve` 的 `--team` / `--season` 为必填，可重复出现时视为错误；`validate` 不接受任何额外参数。
+上面展示两种 profile，实际同一项目的 resolve/check 必须使用相同选择。
 
-退出码（稳定，契约的一部分）：
+- resolve/check 必填数字 `--team`、`YYYY-YYYY` 格式的 `--season`。
+- profile 必须显式选择：`--generic-profile` 表示空集，或可重复 `--profile NAME`。不能混用；重复 generic、缺 profile 值是 usage。
+- 支持 rookiebot、simple-opmode、command-based、ftclib-command；rookiebot 隐含 simple-opmode，ftclib-command 隐含 command-based。simple-opmode 与 command-based 互斥。未知名称或不兼容组合是 invalid-context；缺少选择是 context-required。不从依赖猜架构。
+- validate 只接受知识根目录和可选 --json，不接受 profile。
+- check 可选 `--diff FILE`；省略 --knowledge 时使用当前目录的 knowledge。
+- --json 存在时机器路径的成功与失败均为单行 JSON，无日志噪音；--help 是独立的人类帮助入口。
 
 | 退出码 | 含义 |
 | --- | --- |
-| 0 | 成功（resolve 成功即无冲突） |
-| 1 | check 存在硬违规（violations 非空） |
-| 2 | 知识加载失败、规则校验失败（violations），或 resolve 存在冲突 |
-| 64 | 用法错误（未知命令、缺/错参数） |
+| 0 | validate 成功、resolve 无冲突、check 无硬违规 |
+| 1 | check 硬违规，violations 非空 |
+| 2 | 加载、校验、上下文或冲突失败 |
+| 64 | 未知命令、缺失/错误参数等 usage |
 
-## 3. JSON 契约（schemaVersion = 1）
+## 3. authority 与 policyLevel
 
-所有 JSON 输出都是**单行**（无换行、无日志噪音）写往 stdout。顶层必有：
+`authority` 是来源身份：official / team / shared；`policyLevel` 是适用策略：global / local / shared。有效优先级固定为 **OFFICIAL > GLOBAL > LOCAL > SHARED**。
 
-- `schemaVersion`：整数，当前恒为 1；破坏性变更必须提升版本号。
-- `ok`：布尔。
-- `command`：`"validate"`、`"resolve"` 或 `"check"`（未知命令的用法错误没有此字段）。
+official 来源必须用 policyLevel=global，但有效层级是 official，永远高于共享来源的 global；team 来源必须是 local，且限定队号。shared 来源可以是 global、local 或 shared；local 必须限定 teams 或 profiles。文件目录和 id 前缀不参与裁决。
 
-### 3.1 validate 成功
+只有 approved 且队号、赛季、profile 全部匹配才进入同主题比较。teams/seasons 空集表示该维度不限制；profiles 空集表示无架构要求，非空时要求当前 normalized profiles 包含全部指定值，不是任选其一。同主题最高有效层级并列即冲突，即使 authority 不同也不静默选胜者。其他主题仍可输出 activeRules。
 
-```json
-{"schemaVersion":1,"command":"validate","ok":true,"ruleCount":43,"violations":[]}
-```
+8 条原队伍规则迁移到 global 时只去掉队号限制，保留 2025-2026；2 条 candidate 不转正。当前两队相同赛季/profile 的 active IDs 相同，其他赛季必须重新裁决。
 
-`ruleCount` 为加载到的规则总数（含候选）。退出码 0。
+## 4. JSON v2 字段
 
-### 3.2 resolve 成功
+所有输出含 schemaVersion=2、ok；已识别命令含 command，未知命令 usage 可无 command。
+
+validate 成功：
 
 ```json
-{
-  "schemaVersion": 1,
-  "command": "resolve",
-  "team": "20827",
-  "season": "2025-2026",
-  "ok": true,
-  "activeRules": [
-    {
-      "id": "official.keep-customizations-in-teamcode",
-      "topic": "build-customization-location",
-      "title": "Keep build customizations in TeamCode",
-      "instruction": "Put legacy FTC SDK build customizations in TeamCode/build.gradle instead of build.common.gradle.",
-      "rationale": "The official SDK reserves build.common.gradle for changes delivered with SDK updates.",
-      "status": "approved",
-      "authority": "official",
-      "applicability": { "teams": [], "seasons": [] },
-      "evidence": [
-        {
-          "type": "git",
-          "repository": "FIRST-Tech-Challenge/FtcRobotController",
-          "commit": "26cd1fdd2a3c4b26173d9ff33a3279c27d1c7ad1",
-          "file": "build.common.gradle",
-          "symbol": "build.common.gradle"
-        }
-      ]
-    }
-  ],
-  "conflicts": []
-}
+{"schemaVersion":2,"command":"validate","ok":true,"ruleCount":46,"violations":[]}
 ```
 
-`activeRules` 中每条规则的字段：
+resolve（无冲突或有冲突）都有 team、season、normalized profiles、activeRules、excludedRules、overriddenRules、conflicts，不使用 error 字段。
 
-| 字段 | 类型 | 说明 |
+| 字段 | 元素及含义 |
+| --- | --- |
+| activeRules | id/topic/title/instruction/rationale/status/authority/policyLevel/applicability/evidence/checks/reviewTriggers |
+| applicability | teams、seasons、profiles 字符串数组 |
+| excludedRules | ruleId、reasons；原因可为 profile/season/status/team，同时保留所有不匹配原因 |
+| overriddenRules | ruleId、topic、winnerIds、effectiveLevel；适用但层级较低，effectiveLevel 是最高层级，winnerIds 可是冲突规则 |
+| conflicts | topic、effectiveLevel、ruleIds、authorities；最高有效层级并列，该主题没有 active 胜者 |
+
+冲突元素：
+
+```json
+{"topic":"same-topic","effectiveLevel":"global","ruleIds":["global.a","global.b"],"authorities":{"global.a":"shared","global.b":"shared"}}
+```
+
+resolve 冲突时 ok=false、退出 2；仍保留其他主题 activeRules 和排除/覆盖解释。不要把它当成功。文本模式遇到冲突抑制 active 行。
+
+规则正文可以是中文或英文。evidence 用 type=git 或 web；git 含 repository/commit/file 及可选 symbol/line，web 含 url/title/publisher/accessedAt/section 及可选 version/product/sku。checks 的 kind 在 resolve JSON 使用下划线（path_forbidden 等），YAML 与 check 违规的 check 字段使用连字符（path-forbidden 等）。reviewTriggers 是审阅元数据，不是新的硬检查类型。
+
+check 完成时含 team、season、profiles、ok、violations、soft：
+
+```json
+{"schemaVersion":2,"command":"check","team":"20827","season":"2025-2026","profiles":[],"ok":true,"violations":[],"soft":[]}
+```
+
+violations 必有 ruleId/check/pattern/detail，可有 path/line；soft 为 ruleId/note。soft 非空不导致硬失败，更不是硬件验证证明。
+
+## 5. 错误形状与消费者
+
+```json
+{"schemaVersion":2,"command":"resolve","ok":false,"error":{"code":"context-required","message":"Select a project profile or explicitly select generic"}}
+```
+
+| error.code | 退出码 | 含义 |
 | --- | --- | --- |
-| id | string | 全局唯一规则 id（`official.*` / `shared.*` / `team-<编号>.*`） |
-| topic | string | 规则主题 slug；同一 topic 的多条规则构成冲突 |
-| title / instruction / rationale | string | 规则正文（英文） |
-| status | string | `approved` 或 `candidate`；resolve 结果只含 `approved` |
-| authority | string | `official` / `shared` / `team` |
-| applicability.teams / applicability.seasons | string[] | 空数组 = 对所有队伍/赛季生效 |
-| evidence | array | 每条证据带 `type` 字段，见下 |
-| checks | array | 规则附带的机器可执行检查（`kind`/`pattern`/`appliesTo`/`note`；可能为空数组；见 docs/standardizer-check.md 与 `ftckb check`） |
+| usage | 64 | 参数/命令错误 |
+| load-error | 2 | 知识或 diff/仓库加载失败 |
+| invalid-knowledge | 2 | 规则校验失败，附 violations（ruleId/field/message） |
+| context-required | 2 | 未显式选择 profile |
+| invalid-context | 2 | 未知或互斥 profile |
+| conflict | 2 | check 所需规则冲突，尚未执行 diff 检查 |
 
-兼容细节：resolve 输出 `checks[].kind` 使用 `path_forbidden`、`path_required`、`regex_required`、`regex_forbidden`；知识 YAML 的 kind 与 check 违规字段 `check` 使用连字符（例如 `path-forbidden`）。消费者不要混淆这两种现有字段形式。
+消费方联合检查退出码、JSON Schema、command、team/season、normalized profiles、ok 与违规/冲突数组；非 JSON、schemaVersion!=2 或上下文不符即停止，绝不按通过处理。v1 固定项目保留旧 SHA，只有显式升级且选择 profile 才迁移到 v2。
 
-证据两种形态（按 `type` 区分）：
+## 6. 确定性与检查范围
 
-```json
-{"type":"git","repository":"FIRST-Tech-Challenge/FtcRobotController","commit":"26cd1fdd…","file":"build.common.gradle","symbol":"build.common.gradle","line":12}
-{"type":"web","url":"https://acmerobotics.github.io/ftc-dashboard/gettingstarted.html","title":"FTC Dashboard Getting Started","publisher":"FTC Dashboard","accessedAt":"2026-08-13","section":"Basic Installation","version":"0.6.0"}
-```
+- activeRules 按 id；excludedRules/overriddenRules 按 ruleId；conflicts 按 topic；嵌套 IDs、reasons、profiles、teams/seasons、authorities 键以及 trigger paths/patterns 排序。
+- check violations 按 ruleId/path/line，soft 按 ruleId。证据和 checks 保留规则声明顺序。
+- 同知识内容、team、season、normalized profiles 和相同 diff（对 check）产生逐字节相同 stdout；输出不注入运行时间戳，证据日期来自数据。
+- 默认 check 合并 HEAD→index 与 HEAD→工作区，包括非忽略 untracked；路径检查包含删除、只删行、空文件及重命名前后路径，regex 只看新增行。
+- --diff 替代默认集合；空补丁合法，无法解析的非空补丁失败。见 [规范器](standardizer-check.md)。
 
-- git：`symbol`、`line` 仅在有值时出现。
-- web：`version`、`product`、`sku` 仅在有值时出现。
+## 7. 变更、工件与验证边界
 
-### 3.3 resolve 存在冲突
+删除/改名/改类型等破坏性变更必须提升 schemaVersion；兼容新增字段可忽略，未知错误不能视为成功。CLI 2.0.0 是 kernel v2 破坏性升级对应的 CLI 版本，不等于仓库 V0.4.0。
 
-冲突时 `ok:false`、`conflicts` 非空、退出码 2（仍输出完整 activeRules）：
+[fixtures/kernel](../fixtures/kernel/) 的 10 份 JSON 从实际构建 CLI stdout 生成：validate-ok / resolve-ok / resolve-conflict / error-usage / error-invalid-knowledge / check-pass / check-hard / check-error-usage / check-error-load / check-error-conflict。KernelJsonAcceptanceTest 对每份执行当前 v2 JSON Schema 校验；错误与 check 样例使用隔离合成输入，resolve-ok 和 validate-ok 使用仓库知识。
 
-```json
-{"schemaVersion":1,"command":"resolve","team":"20827","season":"2025-2026","ok":false,"activeRules":[…],"conflicts":[{"topic":"same-topic","authority":"official","ruleIds":["official.first","official.second"]}]}
-```
-
-`conflicts` 元素字段：`topic`（string）、`authority`（string，裁决层级）、`ruleIds`（string[]）。
-
-### 3.4 所有失败路径（统一错误形状）
-
-只要命令行里出现 `--json`，**任何失败**都输出单行 JSON：
-
-```json
-{"schemaVersion":1,"command":"resolve","ok":false,"error":{"code":"usage","message":"missing --season"}}
-```
-
-`error.code` 取值：
-
-| code | 退出码 | 含义 |
-| --- | --- | --- |
-| usage | 64 | 用法错误；`message` 为具体原因（missing --team / unknown command / invalid value for --season …） |
-| load-error | 2 | 知识目录加载失败；`message` 形如 `error loading knowledge: …` |
-| invalid-knowledge | 2 | 规则校验失败；额外带 `violations` 数组 |
-| conflict | 2 | check 所需的生效规则存在冲突，不执行 diff 检查 |
-
-`invalid-knowledge` 示例：
-
-```json
-{"schemaVersion":1,"command":"validate","ok":false,"violations":[{"ruleId":"shared.invalid-commit","field":"evidence[0].commit","message":"commit must be a Git SHA"}],"error":{"code":"invalid-knowledge","message":"1 rule violation(s)"}}
-```
-
-外部 Agent 应联合校验退出码、JSON Schema、command、team/season 和 ok/违规数组的一致性。非 JSON、不支持的 schemaVersion 或字段错误应停止，不能按检查通过处理；项目接入包装器会执行这些检查。
-
-### 3.5 check 成功或硬违规
-
-```json
-{"schemaVersion":1,"command":"check","team":"16093","season":"2025-2026","ok":true,"violations":[],"soft":[{"ruleId":"shared.example","note":"需要实际验证的提醒"}]}
-```
-
-`violations` 每项必有 `ruleId/check/pattern/detail`，可选 `path/line`；`soft` 每项包含 `ruleId/note`。无硬违规退出 0，存在硬违规退出 1；错误形状同 3.4。soft 非空并不导致硬失败，也不是已完成硬件验证。
-
-默认变化集合合并 HEAD→index 与 HEAD→工作区，覆盖非忽略 untracked 文件，避免“暂存了违规、只在工作区撤销”漏检。路径规则包括删除、只删行和重命名前后路径；regex 仅看新增行。`--diff` 替代默认变化集合，空补丁合法，无法解析的非空补丁失败。详见 [standardizer-check.md](standardizer-check.md)。
-
-## 4. 确定性保证
-
-- `activeRules` 按 `id` 字典序排序；`conflicts` 按 `topic` 排序，`ruleIds` 排序；`applicability.teams/seasons` 排序。
-- 相同输入（knowledge-root 内容 + team + season）必定产生逐字节相同的 stdout。
-- 输出不含运行时间戳（`evidence.accessedAt` 来自规则数据本身）。
-- 规则裁决优先级固定：OFFICIAL > TEAM > SHARED；同主题同层级冲突上报而不是静默覆盖。
-
-## 5. 文本模式（给人看）
-
-不带 `--json` 时输出人类可读文本：
-
-```
-$ ftckb validate knowledge
-validation=ok rules=43
-$ ftckb resolve knowledge --team 20827 --season 2025-2026
-active official.keep-customizations-in-teamcode
-active shared.dashboard-pin-stable-dependency
-…
-$ ftckb resolve knowledge --team 20827 --season 2025-2026   # 有冲突时
-conflict topic=build-customization-location rules=official.a,shared.b   # 退出码 2
-```
-
-## 6. 变更策略
-
-- 只增不改：新增字段、新增 error.code 是向后兼容的；删除/改名/改类型必须提升 `schemaVersion`。
-- 消费方应以 `schemaVersion==1` 判断兼容性，未知字段一律忽略。
-- 相关测试：`apps/knowledge-cli/src/test/kotlin/org/ftckb/cli/KernelJsonAcceptanceTest.kt`（含契约、确定性、冲突、错误形状共 7 个用例），这是契约的可执行定义。
-
-## 7. 边界与已知限制
-
-- 候选规则（status=candidate）只出现在 `validate` 的 `ruleCount` 里，不会进入 `resolve`。
-- **`--team` 会改变结果**：20827 已批准 6 条队伍风格规则（比 16093 多 6 条 active 规则）；16093 的队伍规则仍全部是 candidate。对接方请按队号分别裁决。
-- 程序输出的错误消息为英文；规则正文（title/instruction/rationale）为英文，界面文案（web 会话等）另做中文化。
-- `chat` / `eval` / `serve` 不在本契约内：它们基于同一内核构建，但不是给机器消费的接口。
-- 规则冲突目前只能检测（退出码 2），不能自动裁决；由上层 Agent 决定如何处理。
-
-## 8. 当前快照
-
-- 知识规则：43 条（37 approved + 6 candidate；12 条 RookieBot 项目实践已批准，candidate 仍含 4 条 Control Hub LED 官方候选）。
-- 契约测试随 `./gradlew test` 执行；接入 Python 测试与本次验收结果见 `docs/project-integration.md`。
-- 机器可消费工件：`docs/kernel-contract.schema.json` 与 `fixtures/kernel/*.json`；除 validate/resolve 示例外，包含 check-pass、check-hard、check-error-usage/load/conflict 的实际输出。
-- 所有命令支持 `--help`（退出码 0）；`ftckb --version` 输出的 CLI 版本（当前 1.0.0）与契约 `schemaVersion`（当前 1）互相独立。
-- 知识规则快照更新：2026-09-07。
+编译、CLI、JSON Schema 验证不等于 Robot Controller、Driver Station、IDE 交互、部署或真机验证。两条 Limelight regex-required 当前作用于所有 Java 新增行，有误报限制；不得插入无意义代码绕过。冲突须由授权维护者修订规则/范围并重新校验，不由模型猜测。

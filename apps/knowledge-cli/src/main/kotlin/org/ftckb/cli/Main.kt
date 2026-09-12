@@ -149,7 +149,7 @@ fun runCli(
     }
 }
 
-const val FTCKB_VERSION="1.0.0"
+const val FTCKB_VERSION="2.0.0"
 
 private fun printTopLevelHelp(out:PrintStream) {
     out.println("ftckb - FTC Knowledge Bank command line agent (v$FTCKB_VERSION)")
@@ -158,7 +158,9 @@ private fun printTopLevelHelp(out:PrintStream) {
     out.println("  validate <knowledge-root> [--json]")
     out.println("      load and validate knowledge rules")
     out.println("  resolve <knowledge-root> --team N --season YYYY-YYYY [--profile NAME ... | --generic-profile] [--json]")
-    out.println("      resolve active rules deterministically (OFFICIAL > TEAM > SHARED)")
+    out.println("      resolve active rules deterministically (OFFICIAL > GLOBAL > LOCAL > SHARED)")
+    out.println("  check <repo-root> --knowledge PATH --team N --season YYYY-YYYY [--profile NAME ... | --generic-profile] [--diff FILE] [--json]")
+    out.println("      check the diff using the same explicit profile as resolve; no API key required")
     out.println("  candidates <knowledge-root> [--json]")
     out.println("      list candidate rules awaiting approval")
     out.println("  approve | reject <knowledge-root> --id X --approver NAME --role ROLE [--team N]")
@@ -172,8 +174,10 @@ private fun printTopLevelHelp(out:PrintStream) {
     out.println("  eval --cases PATH --knowledge PATH --provider NAME --output PATH")
     out.println("      run the fixed evaluation scenarios")
     out.println()
-    out.println("exit codes: 0 ok | 2 knowledge/conflict failure | 64 usage error")
+    out.println("exit codes: 0 ok | 1 check hard violation | 2 knowledge/context/conflict failure | 64 usage error")
     out.println("machine contract for external agents: docs/kernel-contract.md")
+    out.println("example: ftckb resolve knowledge --team 20827 --season 2025-2026 --generic-profile --json")
+    out.println("example: ftckb check <repo-root> --knowledge knowledge --team 20827 --season 2025-2026 --profile command-based --json")
     out.println("note: the CLI version ($FTCKB_VERSION) is independent of the kernel contract schemaVersion (${KernelJson.SCHEMA_VERSION})")
     out.println("run 'ftckb <command> --help' for command usage")
 }
