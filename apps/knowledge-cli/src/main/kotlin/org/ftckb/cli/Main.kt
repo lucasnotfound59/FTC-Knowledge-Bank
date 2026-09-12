@@ -39,7 +39,8 @@ fun runCli(
         if (args.first()=="validate") {
             out.println("usage: knowledge-cli validate <knowledge-root> [--json]")
         } else {
-            out.println("usage: knowledge-cli resolve <knowledge-root> --team N --season S [--profile NAME ... | --generic-profile] [--json]")
+            out.println("usage: knowledge-cli resolve <knowledge-root> --team N --season S (--profile NAME [--profile NAME ...] | --generic-profile) [--json]")
+            out.println("required: choose exactly one profile mode; --profile NAME may be repeated")
         }
         return 0
     }
@@ -53,8 +54,8 @@ fun runCli(
     }
     if (args.size<2) {
         return fail(
-            "usage: knowledge-cli <validate|resolve> <knowledge-root> [--team N --season S] "+
-                "[--profile NAME ... | --generic-profile] [--json]",
+            "usage: knowledge-cli validate <knowledge-root> [--json]; or resolve <knowledge-root> --team N --season S "+
+                "(--profile NAME [--profile NAME ...] | --generic-profile) [--json]",
             "usage",64
         )
     }
@@ -157,9 +158,9 @@ private fun printTopLevelHelp(out:PrintStream) {
     out.println("commands:")
     out.println("  validate <knowledge-root> [--json]")
     out.println("      load and validate knowledge rules")
-    out.println("  resolve <knowledge-root> --team N --season YYYY-YYYY [--profile NAME ... | --generic-profile] [--json]")
+    out.println("  resolve <knowledge-root> --team N --season YYYY-YYYY (--profile NAME [--profile NAME ...] | --generic-profile) [--json]")
     out.println("      resolve active rules deterministically (OFFICIAL > GLOBAL > LOCAL > SHARED)")
-    out.println("  check <repo-root> --knowledge PATH --team N --season YYYY-YYYY [--profile NAME ... | --generic-profile] [--diff FILE] [--json]")
+    out.println("  check <repo-root> --knowledge PATH --team N --season YYYY-YYYY (--profile NAME [--profile NAME ...] | --generic-profile) [--diff FILE] [--json]")
     out.println("      check the diff using the same explicit profile as resolve; no API key required")
     out.println("  candidates <knowledge-root> [--json]")
     out.println("      list candidate rules awaiting approval")
@@ -176,6 +177,7 @@ private fun printTopLevelHelp(out:PrintStream) {
     out.println()
     out.println("exit codes: 0 ok | 1 check hard violation | 2 knowledge/context/conflict failure | 64 usage error")
     out.println("machine contract for external agents: docs/kernel-contract.md")
+    out.println("resolve/check require exactly one profile mode; --profile NAME may be repeated")
     out.println("example: ftckb resolve knowledge --team 20827 --season 2025-2026 --generic-profile --json")
     out.println("example: ftckb check <repo-root> --knowledge knowledge --team 20827 --season 2025-2026 --profile command-based --json")
     out.println("note: the CLI version ($FTCKB_VERSION) is independent of the kernel contract schemaVersion (${KernelJson.SCHEMA_VERSION})")

@@ -9,7 +9,6 @@ import org.ftckb.model.ProviderConfigLoader
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
 
 class CliDocumentationAcceptanceTest {
@@ -86,9 +85,19 @@ class CliDocumentationAcceptanceTest {
     }
 
     @Test
+    fun `kernel help marks explicit profile selection as required`() {
+        for (args in listOf(listOf("--help"),listOf("resolve","--help"))) {
+            val out=ByteArrayOutputStream()
+            assertEquals(0,runCli(args,PrintStream(out)))
+            assertTrue(out.toString().contains("(--profile NAME [--profile NAME ...] | --generic-profile)"))
+            assertFalse(out.toString().contains("[--profile NAME ... | --generic-profile]"))
+        }
+    }
+
+    @Test
     fun `installDist launcher runs help without credentials`() {
-        val script=Path.of("build","install","knowledge-cli","bin","ftckb").normalize()
-        assumeTrue(Files.exists(script),"installDist output is not present")
+        val script=Path.of("build","install","ftckb","bin","ftckb").normalize()
+        assertTrue(Files.isRegularFile(script),"Run :apps:knowledge-cli:installDist before launcher acceptance: $script")
 
         val process=ProcessBuilder(script.toString(),"chat","--help").start()
         val finished=process.waitFor(60,TimeUnit.SECONDS)
@@ -97,5 +106,10 @@ class CliDocumentationAcceptanceTest {
         val output=process.inputStream.bufferedReader().readText()
         assertTrue(output.contains("usage: knowledge-cli chat"))
         assertFalse(output.contains("missing API key"))
+
+        val version=ProcessBuilder(script.toString(),"--version").redirectErrorStream(true).start()
+        assertTrue(version.waitFor(60,TimeUnit.SECONDS),"version command did not finish in time")
+        assertEquals(0,version.exitValue())
+        assertEquals("ftckb 2.0.0 (kernel contract schemaVersion 2)\n",version.inputStream.bufferedReader().readText())
     }
 }

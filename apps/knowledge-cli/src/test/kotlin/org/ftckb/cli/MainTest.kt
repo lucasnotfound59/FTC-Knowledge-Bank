@@ -322,7 +322,7 @@ class MainTest {
         val resolveHelp=ByteArrayOutputStream()
         assertEquals(0,runCli(listOf("resolve","--help"),PrintStream(resolveHelp)))
         assertTrue(resolveHelp.toString().startsWith("usage: knowledge-cli resolve"))
-        assertTrue(resolveHelp.toString().contains("--profile NAME ... | --generic-profile"))
+        assertTrue(resolveHelp.toString().contains("(--profile NAME [--profile NAME ...] | --generic-profile)"))
     }
 
     @Test
