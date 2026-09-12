@@ -12,7 +12,8 @@ from urllib.parse import urlsplit
 
 sys.dont_write_bytecode=True
 from project import (CONFIG,SOURCE,SKILL,BEGIN,END,IntegrationError,agents_block,check_pin,
-                     digest,git,identity,load_config,module_metadata,project_root,run,safe_path,validator)
+                     digest,git,identity,load_config,module_metadata,project_root,run,safe_path,source_versions,validator)
+from integration_contract import normalize_profiles
 
 REPOSITORY="https://github.com/lucasnotfound59/FTC-Knowledge-Bank.git"
 BUNDLE=".agents/skills/ftckb-integrate"
@@ -127,6 +128,8 @@ def write_files(root,files,before):
 
 
 def integrate(args):
+    if args.generic_profile and args.profile is not None:
+        raise IntegrationError("--profile and --generic-profile are mutually exclusive")
     root=project_root(args.project)
     if not (root/"TeamCode").is_dir() or not any((root/name).is_file() for name in ("settings.gradle","settings.gradle.kts")):
         raise IntegrationError("Expected an FTC Gradle project with TeamCode and settings.gradle[.kts]")
@@ -157,18 +160,35 @@ def integrate(args):
             raise IntegrationError("Submodule name ftckb is already used")
         if git(root,"config","--local","--get-regexp",r"^submodule\.ftckb\.",check=False).stdout:
             raise IntegrationError("A previous submodule.ftckb registration exists; inspect it before retrying")
-    config={"schemaVersion":1,"kernelSchemaVersion":1,"integrationVersion":1,"team":team,"season":season,
-            "source":{"repository":repository,"ref":ref,"commit":commit,"path":SOURCE}}
     with pinned_source(repository,commit,existing) as source:
         skill,block=template_files(source)
+        protocol=source_versions(source)
+        if protocol["schemaVersion"]==1 and not old:
+            raise IntegrationError("New installs require a protocol v2 revision and an explicit profile choice")
+        if protocol["schemaVersion"]==1 and old["schemaVersion"]!=1:
+            raise IntegrationError("Automatic protocol downgrade from v2 to v1 is not supported")
+        if protocol["schemaVersion"]==1 and (args.profile is not None or args.generic_profile):
+            raise IntegrationError("Protocol v1 does not support profiles; explicitly upgrade to v2 first")
+        config=protocol|{"team":team,"season":season,
+                         "source":{"repository":repository,"ref":ref,"commit":commit,"path":SOURCE}}
+        if protocol["schemaVersion"]==2:
+            if not safe_path(source,BUNDLE+"/scripts/integration_contract.py").is_file():
+                raise IntegrationError("Selected v2 revision is missing scripts/integration_contract.py")
+            selected=[] if args.generic_profile else args.profile
+            if selected is None and old and old["schemaVersion"]==2:
+                selected=old["profiles"]
+            normalize_profiles(selected)
+            config["profiles"]=list(selected)
         files,before=managed_plan(root,old,config,skill,block)
         changes=[relative for relative,data in files.items() if before[relative]!=data]
-        plan={"dryRun":args.dry_run,"team":team,"season":season,"commit":commit,"files":changes,
+        plan=protocol|{"dryRun":args.dry_run,"team":team,"season":season,"commit":commit,"files":changes,
               "submodule":"add" if not old else "upgrade" if commit!=old["source"]["commit"] else "keep",
               "gitEffects":["submodule registration; .gitmodules and gitlink are staged"] if not old else
                            ["only the updated gitlink is staged"] if commit!=old["source"]["commit"] else [],
               "branch":git(root,"symbolic-ref","--short","HEAD",check=False).stdout.strip() or "detached HEAD",
               "commitOrPush":False}
+        if "profiles" in config:
+            plan["profiles"]=config["profiles"]
         if args.dry_run:
             return 0,plan
         validator(source)  # Dependency/schema preflight, before changing the target.
@@ -195,6 +215,9 @@ def main(argv=None):
     parser.add_argument("--season")
     parser.add_argument("--repository")
     parser.add_argument("--ref",help="Exact release tag or full commit SHA; never a branch")
+    profiles=parser.add_mutually_exclusive_group()
+    profiles.add_argument("--profile",action="append",help="Explicit project profile; repeat to select several compatible profiles")
+    profiles.add_argument("--generic-profile",action="store_true",help="Explicitly select no project profiles")
     parser.add_argument("--dry-run",action="store_true")
     args=parser.parse_args(argv)
     try:

@@ -10,15 +10,13 @@ import subprocess
 import sys
 
 sys.dont_write_bytecode=True
+from integration_contract import IntegrationError,capabilities,normalize_profiles,profile_args,versions
+
 CONFIG=".ftckb/project.yaml"
 SOURCE="tools/FTC-Knowledge-Bank"
 SKILL=".agents/skills/ftc-knowledge-bank/SKILL.md"
 BEGIN="<!-- BEGIN FTC-KNOWLEDGE-BANK -->"
 END="<!-- END FTC-KNOWLEDGE-BANK -->"
-
-
-class IntegrationError(Exception):
-    pass
 
 
 def run(args,cwd=None,check=True):
@@ -83,6 +81,16 @@ def no_duplicate_keys(pairs):
     return result
 
 
+def source_versions(source):
+    manifest=safe_path(source,".agents/skills/ftckb-integrate/assets/integration.json")
+    if not manifest.exists():
+        return capabilities(None)
+    data=json.loads(manifest.read_text(encoding="utf-8"),object_pairs_hook=no_duplicate_keys)
+    if not isinstance(data,dict):
+        raise IntegrationError("Integration capability manifest must be an object")
+    return capabilities(data)
+
+
 def load_config(root):
     path=safe_path(root,CONFIG)
     try:
@@ -91,9 +99,11 @@ def load_config(root):
         raise IntegrationError(f"Cannot read {CONFIG}: {error}. Use JSON syntax (valid YAML 1.2).") from error
     if not isinstance(config,dict):
         raise IntegrationError("Project configuration must be an object")
-    for field in ("schemaVersion","kernelSchemaVersion","integrationVersion"):
-        if type(config.get(field)) is not int or config[field]!=1:
-            raise IntegrationError(f"Unsupported {field}; expected 1")
+    protocol=versions(config)
+    if protocol["schemaVersion"]==2:
+        normalize_profiles(config.get("profiles"))
+    elif "profiles" in config:
+        raise IntegrationError("Protocol v1 does not support profiles; explicitly upgrade before selecting them")
     identity(config.get("team"),config.get("season"))
     source=config.get("source")
     if not isinstance(source,dict) or source.get("path")!=SOURCE:
@@ -154,6 +164,8 @@ def check_pin(root,config):
         raise IntegrationError("Knowledge submodule has local changes; review them before using its pinned rules")
     if not (source/"knowledge").is_dir():
         raise IntegrationError("Knowledge directory is missing")
+    if versions(config)!=source_versions(source):
+        raise IntegrationError("Configured protocol versions do not match pinned source capabilities")
     return source
 
 
@@ -199,6 +211,7 @@ def build_cli(source,commit):
 
 
 def kernel(source,config,command,root,diff=None):
+    protocol=versions(config)
     args=launcher(source)+[command]
     if command=="validate":
         args+=[str(source/"knowledge")]
@@ -210,6 +223,8 @@ def kernel(source,config,command,root,diff=None):
             args+=["--diff",str(Path(diff).resolve(strict=True))]
     else:
         raise IntegrationError(f"Unsupported kernel command: {command}")
+    if command in ("resolve","check") and protocol["kernelSchemaVersion"]==2:
+        args+=profile_args(config)
     result=run(args+["--json"],cwd=root,check=False)
     try:
         payload=json.loads(result.stdout)
@@ -218,7 +233,7 @@ def kernel(source,config,command,root,diff=None):
     errors=list(validator(source).iter_errors(payload))
     if errors:
         raise IntegrationError(f"{command} violates kernel JSON Schema: {errors[0].message}")
-    if payload.get("schemaVersion")!=1 or payload.get("command")!=command:
+    if payload.get("schemaVersion")!=protocol["kernelSchemaVersion"] or payload.get("command")!=command:
         raise IntegrationError("Unsupported kernel version or mismatched command")
     if "error" in payload:
         expected=64 if payload["error"]["code"]=="usage" else 2
@@ -226,6 +241,8 @@ def kernel(source,config,command,root,diff=None):
         if command in ("resolve","check"):
             if (payload.get("team"),payload.get("season"))!=(config["team"],config["season"]):
                 raise IntegrationError("Kernel response does not match the configured team and season")
+            if protocol["kernelSchemaVersion"]==2 and payload.get("profiles")!=normalize_profiles(config.get("profiles")):
+                raise IntegrationError("Kernel response does not match the configured normalized profiles")
         issues=payload["conflicts"] if command=="resolve" else payload["violations"]
         if payload["ok"]!=(len(issues)==0):
             raise IntegrationError("Kernel ok field contradicts reported conflicts/violations")

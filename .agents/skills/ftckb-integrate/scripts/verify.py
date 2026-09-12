@@ -7,10 +7,14 @@ import sys
 sys.dont_write_bytecode=True
 from project import (IntegrationError,build_cli,check_managed,check_pin,kernel,load_config,
                      project_root,validator)
+from integration_contract import versions
 
 
 def verify(root):
     config=load_config(root)
+    context=versions(config)|{"team":config["team"],"season":config["season"]}
+    if "profiles" in config:
+        context["profiles"]=config["profiles"]
     source=check_pin(root,config)
     check_managed(root,config)
     validator(source)
@@ -20,11 +24,11 @@ def verify(root):
         code,payload=kernel(source,config,command,root)
         results[command]={"exitCode":code,"output":payload}
         if code not in (0,1):
-            return 2,{"installationOk":False,"team":config["team"],"season":config["season"],
+            return 2,context|{"installationOk":False,
                       "checks":results,"error":f"{command} cannot proceed; resolve errors/conflicts before editing"}
     check=results["check"]
-    return check["exitCode"],{
-        "installationOk":True,"team":config["team"],"season":config["season"],
+    return check["exitCode"],context|{
+        "installationOk":True,
         "commit":config["source"]["commit"],"checks":results,
         "projectCheck":{"ok":check["output"]["ok"],"exitCode":check["exitCode"],
                         "violations":check["output"]["violations"],"soft":check["output"]["soft"]},

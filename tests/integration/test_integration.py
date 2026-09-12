@@ -19,6 +19,49 @@ import project
 import verify
 
 
+class IntegrationContractTest(unittest.TestCase):
+    def test_profile_args_are_explicit(self):
+        from integration_contract import IntegrationError,normalize_profiles,profile_args
+        self.assertEqual(["--generic-profile"],profile_args({"profiles":[]}))
+        self.assertEqual(["--profile","command-based"],profile_args({"profiles":["command-based"]}))
+        with self.assertRaises(IntegrationError):
+            normalize_profiles(None)
+        with self.assertRaises(IntegrationError):
+            normalize_profiles(["simple-opmode","command-based"])
+
+    def test_profiles_validate_implications_without_changing_selection(self):
+        from integration_contract import IntegrationError,normalize_profiles,profile_args
+        for selected,normalized in ((["rookiebot"],["rookiebot","simple-opmode"]),
+                                    (["ftclib-command"],["command-based","ftclib-command"])):
+            with self.subTest(selected=selected):
+                config={"profiles":selected.copy()}
+                self.assertEqual(normalized,normalize_profiles(selected))
+                self.assertEqual([part for value in normalized for part in ("--profile",value)],profile_args(config))
+                self.assertEqual(selected,config["profiles"])
+        for values in (None,"rookiebot",[1],[{}],["unknown"],["rookiebot","rookiebot"],
+                       ["rookiebot","command-based"],["simple-opmode","ftclib-command"],
+                       ["rookiebot","ftclib-command"]):
+            with self.subTest(values=values),self.assertRaises(IntegrationError):
+                normalize_profiles(values)
+
+    def test_versions_and_capabilities_reject_mixed_or_unknown_protocols(self):
+        from integration_contract import IntegrationError,capabilities,versions
+        for version in (1,2):
+            config={"schemaVersion":version,"kernelSchemaVersion":version,"integrationVersion":version}
+            manifest={"projectSchemaVersion":version,"kernelSchemaVersion":version,"integrationVersion":version}
+            self.assertEqual(config,versions(config))
+            self.assertEqual(config,capabilities(manifest))
+        self.assertEqual(versions({"schemaVersion":1,"kernelSchemaVersion":1,"integrationVersion":1}),capabilities(None))
+        for value in (None,{},[],{"schemaVersion":2,"kernelSchemaVersion":1,"integrationVersion":2},
+                      {"schemaVersion":True,"kernelSchemaVersion":1,"integrationVersion":1},
+                      {"schemaVersion":3,"kernelSchemaVersion":3,"integrationVersion":3}):
+            with self.subTest(value=value),self.assertRaises(IntegrationError):
+                versions(value)
+        for value in ({},[],{"projectSchemaVersion":2,"kernelSchemaVersion":2,"integrationVersion":1}):
+            with self.subTest(value=value),self.assertRaises(IntegrationError):
+                capabilities(value)
+
+
 def command(*args,cwd=None,env=None):
     return subprocess.run([str(a) for a in args],cwd=cwd,env=env,capture_output=True,text=True,check=True)
 
@@ -55,14 +98,28 @@ FAKE_KERNEL='''import json,sys
 from pathlib import Path
 args=sys.argv[1:]
 command=args[0]
-payload={"schemaVersion":1,"command":command,"ok":True}
+version=2 if (Path(__file__).resolve().parent.parent/".agents/skills/ftckb-integrate/assets/integration.json").exists() else 1
+payload={"schemaVersion":version,"command":command,"ok":True}
 code=0
 if command=="validate":
     payload.update(ruleCount=1,violations=[])
 else:
     payload.update(team=args[args.index("--team")+1],season=args[args.index("--season")+1])
+    if version==2:
+        profiles={args[index+1] for index,arg in enumerate(args) if arg=="--profile"}
+        if not profiles and "--generic-profile" not in args:
+            sys.exit("Missing explicit profile choice")
+        if "rookiebot" in profiles:
+            profiles.add("simple-opmode")
+        if "ftclib-command" in profiles:
+            profiles.add("command-based")
+        payload.update(profiles=sorted(profiles))
+    elif "--profile" in args or "--generic-profile" in args:
+        sys.exit("Legacy kernel does not support profile flags")
     if command=="resolve":
         payload.update(activeRules=[],conflicts=[])
+        if version==2:
+            payload.update(excludedRules=[],overriddenRules=[])
     else:
         hard=(Path(args[1])/"build.common.gradle").exists()
         violations=[{"ruleId":"fixture.path","check":"path-forbidden","path":"build.common.gradle","pattern":"build.common.gradle","detail":"fixture"}] if hard else []
@@ -112,13 +169,166 @@ class IntegrationTest(unittest.TestCase):
 
     def args(self,**kwargs):
         values=dict(project=str(self.target),team="16093",season="2025-2026",
-                    repository=str(self.source),ref="v-test",dry_run=False)
+                    repository=str(self.source),ref="v-test",dry_run=False,profile=None,generic_profile=True)
         values.update(kwargs)
         return type("Args",(),values)()
 
     def install(self,**kwargs):
         with tempfile.TemporaryFile(mode="w+") as logs,contextlib.redirect_stderr(logs):
             return integrate.integrate(self.args(**kwargs))
+
+    def legacy_install(self):
+        # Seed an already installed v1 pin, not a new installation via the v2 installer.
+        (self.source/BUNDLE/"assets/integration.json").unlink()
+        (self.source/BUNDLE/"scripts/integration_contract.py").unlink()
+        write(self.source,"docs/kernel-contract.schema.json",(ROOT/"docs/kernel-contract.v1.schema.json").read_text())
+        sha=commit(self.source,"legacy v1 fixture without capability manifest")
+        repository=str(self.source.resolve())
+        git(self.target,"submodule","add","--name","ftckb","--",repository,project.SOURCE)
+        skill=(self.source/BUNDLE/"assets/project-skill/SKILL.md").read_bytes()
+        block=(self.source/BUNDLE/"assets/AGENTS.block.md").read_bytes().rstrip(b"\r\n")
+        write(self.target,project.SKILL,skill.decode())
+        write(self.target,"AGENTS.md",(self.target/"AGENTS.md").read_text()+"\n"+block.decode()+"\n")
+        config={"schemaVersion":1,"kernelSchemaVersion":1,"integrationVersion":1,"team":"16093","season":"2025-2026",
+                "source":{"repository":repository,"ref":sha,"commit":sha,"path":project.SOURCE},
+                "managedFiles":{project.SKILL:project.digest(skill),"AGENTS.md#ftckb":project.digest(block)}}
+        write(self.target,project.CONFIG,json.dumps(config,ensure_ascii=False,indent=2)+"\n")
+        return sha
+
+    def publish_v2_fixture(self):
+        write(self.source,str(BUNDLE/"assets/integration.json"),(ROOT/BUNDLE/"assets/integration.json").read_text())
+        write(self.source,str(BUNDLE/"scripts/integration_contract.py"),(ROOT/BUNDLE/"scripts/integration_contract.py").read_text())
+        write(self.source,"docs/kernel-contract.schema.json",(ROOT/"docs/kernel-contract.schema.json").read_text())
+        return commit(self.source,"v2 upgrade fixture")
+
+    def test_existing_v1_pin_is_retained_without_implicit_upgrade(self):
+        sha=self.legacy_install()
+        self.assertEqual(0,verify.verify(self.target)[0])
+        self.publish_v2_fixture()
+        before=(self.target/project.CONFIG).read_bytes()
+        code,result=self.install(team=None,season=None,ref=None,repository=None,profile=None,generic_profile=False)
+        self.assertEqual(0,code)
+        self.assertEqual(sha,result["commit"])
+        self.assertEqual(1,result["kernelSchemaVersion"])
+        self.assertNotIn("profiles",result)
+        self.assertEqual(before,(self.target/project.CONFIG).read_bytes())
+        self.assertEqual(sha,git(self.target/project.SOURCE,"rev-parse","HEAD"))
+
+    def test_v1_to_v2_upgrade_requires_explicit_choice(self):
+        self.legacy_install()
+        sha=self.publish_v2_fixture()
+        before=snapshot(self.target)
+        with self.assertRaisesRegex(project.IntegrationError,"profile"):
+            self.install(ref=sha,profile=None,generic_profile=False)
+        self.assertEqual(before,snapshot(self.target))
+        code,plan=self.install(ref=sha,profile=["command-based"],generic_profile=False,dry_run=True)
+        self.assertEqual(0,code)
+        self.assertEqual(["command-based"],plan["profiles"])
+        self.assertEqual(before,snapshot(self.target))
+        code,result=self.install(ref=sha,profile=["command-based"],generic_profile=False)
+        self.assertEqual(0,code)
+        self.assertEqual(sha,result["commit"])
+        self.assertEqual(2,result["schemaVersion"])
+        self.assertEqual(["command-based"],result["profiles"])
+
+    def test_v1_rejects_profile_selection_instead_of_ignoring_it(self):
+        self.legacy_install()
+        for values in ({"profile":["command-based"],"generic_profile":False},
+                       {"profile":None,"generic_profile":True}):
+            with self.subTest(values=values):
+                before=snapshot(self.target)
+                with self.assertRaisesRegex(project.IntegrationError,"v1"):
+                    self.install(ref=None,**values)
+                self.assertEqual(before,snapshot(self.target))
+
+    def test_v2_upgrade_preserves_user_choice_when_omitted(self):
+        self.install(profile=["ftclib-command"],generic_profile=False)
+        write(self.source,"knowledge/.keep","new release fixture\n")
+        sha=commit(self.source,"next v2 release")
+        code,result=self.install(ref=sha,profile=None,generic_profile=False)
+        self.assertEqual(0,code)
+        self.assertEqual(["ftclib-command"],result["profiles"])
+        self.assertEqual(["ftclib-command"],project.load_config(self.target)["profiles"])
+        self.assertEqual(["command-based","ftclib-command"],result["checks"]["resolve"]["output"]["profiles"])
+
+    def test_invalid_capability_manifest_is_rejected_before_mutation(self):
+        for manifest in ("null","[]",'{}',
+                         '{"projectSchemaVersion":2,"kernelSchemaVersion":1,"integrationVersion":2}'):
+            with self.subTest(manifest=manifest):
+                write(self.source,str(BUNDLE/"assets/integration.json"),manifest)
+                sha=commit(self.source,"invalid manifest fixture")
+                before=snapshot(self.target)
+                with self.assertRaisesRegex(project.IntegrationError,"manifest|[Pp]rotocol"):
+                    self.install(ref=sha,dry_run=True)
+                self.assertEqual(before,snapshot(self.target))
+
+    def test_config_protocol_must_match_the_pinned_capability_manifest(self):
+        self.install()
+        config=project.load_config(self.target)
+        config.update(schemaVersion=1,kernelSchemaVersion=1,integrationVersion=1)
+        config.pop("profiles")
+        write(self.target,project.CONFIG,json.dumps(config))
+        with self.assertRaisesRegex(project.IntegrationError,"capabilit"):
+            project.check_pin(self.target,project.load_config(self.target))
+
+    def test_v2_revision_requires_shared_protocol_helper_before_install(self):
+        (self.source/BUNDLE/"scripts/integration_contract.py").unlink()
+        sha=commit(self.source,"incomplete bundle fixture")
+        before=snapshot(self.target)
+        with self.assertRaisesRegex(project.IntegrationError,"integration_contract.py"):
+            self.install(ref=sha,dry_run=True)
+        self.assertEqual(before,snapshot(self.target))
+
+    def test_legacy_capabilities_do_not_silently_downgrade_v2_config(self):
+        self.install()
+        (self.source/BUNDLE/"assets/integration.json").unlink()
+        write(self.source,"docs/kernel-contract.schema.json",(ROOT/"docs/kernel-contract.v1.schema.json").read_text())
+        sha=commit(self.source,"legacy revision fixture")
+        before=snapshot(self.target)
+        with self.assertRaisesRegex(project.IntegrationError,"downgrade"):
+            self.install(ref=sha,profile=None,generic_profile=False,dry_run=True)
+        self.assertEqual(before,snapshot(self.target))
+
+    def test_new_generic_install_uses_v2_and_reports_explicit_profiles(self):
+        code,result=self.install()
+        self.assertEqual(0,code)
+        config=project.load_config(self.target)
+        for field in ("schemaVersion","kernelSchemaVersion","integrationVersion"):
+            self.assertEqual(2,config[field])
+            self.assertEqual(2,result[field])
+        self.assertEqual([],config["profiles"])
+        self.assertEqual([],result["profiles"])
+        for name in ("resolve","check"):
+            self.assertEqual([],result["checks"][name]["output"]["profiles"])
+
+    def test_cli_profile_install_preserves_selection_and_normalizes_response(self):
+        for flags,selected,normalized in ((["--profile","command-based"],["command-based"],["command-based"]),
+                                          (["--profile","ftclib-command","--profile","command-based"],
+                                           ["ftclib-command","command-based"],["command-based","ftclib-command"]),
+                                          (["--profile","rookiebot"],["rookiebot"],["rookiebot","simple-opmode"]),
+                                          (["--generic-profile"],[],[])):
+            with self.subTest(flags=flags):
+                result=command(sys.executable,ROOT/BUNDLE/"scripts/integrate.py","--project",self.target,
+                               "--team","16093","--season","2025-2026","--repository",self.source,
+                               "--ref","v-test",*flags)
+                payload=json.loads(result.stdout)
+                self.assertEqual(selected,project.load_config(self.target)["profiles"])
+                self.assertEqual(selected,payload["profiles"])
+                for name in ("resolve","check"):
+                    self.assertEqual(normalized,payload["checks"][name]["output"]["profiles"])
+
+    def test_invalid_or_missing_profile_choice_fails_before_mutation(self):
+        for values in ({"profile":None,"generic_profile":False},
+                       {"profile":["unknown"],"generic_profile":False},
+                       {"profile":["rookiebot","rookiebot"],"generic_profile":False},
+                       {"profile":["simple-opmode","command-based"],"generic_profile":False},
+                       {"profile":["rookiebot","ftclib-command"],"generic_profile":False},
+                       {"profile":["command-based"],"generic_profile":True}):
+            with self.subTest(values=values):
+                before=snapshot(self.target)
+                with self.assertRaises(project.IntegrationError):
+                    self.install(**values)
+                self.assertEqual(before,snapshot(self.target))
 
     def test_dry_run_does_not_touch_files_index_or_config(self):
         before=snapshot(self.target)
@@ -280,14 +490,26 @@ class IntegrationTest(unittest.TestCase):
         self.install()
         config=project.load_config(self.target)
         source=self.target/project.SOURCE
-        valid={"schemaVersion":1,"command":"check","team":"16093","season":"2025-2026",
-               "ok":True,"violations":[],"soft":[]}
-        for changes,code in (({},1),({"schemaVersion":2},0),({"team":"20827"},0),({"ok":False},1),({"soft":"not an array"},0)):
+        valid={"schemaVersion":2,"command":"check","team":"16093","season":"2025-2026",
+               "profiles":[],"ok":True,"violations":[],"soft":[]}
+        for changes,code in (({},1),({"schemaVersion":1},0),({"team":"20827"},0),({"ok":False},1),({"soft":"not an array"},0)):
             payload=valid|changes
             completed=subprocess.CompletedProcess([],code,json.dumps(payload),"")
             with self.subTest(changes=changes,code=code),patch.object(project,"run",return_value=completed):
                 with self.assertRaises(project.IntegrationError):
                     project.kernel(source,config,"check",self.target)
+
+    def test_kernel_rejects_different_or_unnormalized_profiles(self):
+        self.install(profile=["rookiebot"],generic_profile=False)
+        config=project.load_config(self.target)
+        source=self.target/project.SOURCE
+        for name in ("resolve","check"):
+            _,valid=project.kernel(source,config,name,self.target)
+            for profiles in ([],["command-based"],["rookiebot"],["simple-opmode","rookiebot"]):
+                response=subprocess.CompletedProcess([],0,json.dumps(valid|{"profiles":profiles}),"")
+                with self.subTest(command=name,profiles=profiles),patch.object(project,"run",return_value=response):
+                    with self.assertRaisesRegex(project.IntegrationError,"profiles"):
+                        project.kernel(source,config,name,self.target)
 
     def test_wrapper_returns_kernel_json_without_plan_noise(self):
         self.install()
@@ -313,12 +535,17 @@ class IntegrationTest(unittest.TestCase):
         self.assertEqual(self.sha,integrate.resolve_ref(str(self.source),"v-annotated"))
 
     def test_all_kernel_fixtures_validate_against_schema(self):
-        schema=project.validator(ROOT)
+        from jsonschema import Draft7Validator
+        # Historical v1 fixtures remain valid against their archived contract.
+        schemas={1:Draft7Validator(json.loads((ROOT/"docs/kernel-contract.v1.schema.json").read_text())),
+                 2:project.validator(ROOT)}
         paths=list((ROOT/"fixtures/kernel").glob("*.json"))
         self.assertGreaterEqual(len(paths),10)
         for path in paths:
             with self.subTest(path=path.name):
-                schema.validate(json.loads(path.read_text()))
+                payload=json.loads(path.read_text())
+                self.assertIn(payload["schemaVersion"],schemas)
+                schemas[payload["schemaVersion"]].validate(payload)
 
     @unittest.skipUnless(os.environ.get("FTCKB_REAL_INTEGRATION")=="1","Set FTCKB_REAL_INTEGRATION=1 for a real pinned-source Gradle build and CLI run")
     def test_real_cli_from_pinned_source(self):
