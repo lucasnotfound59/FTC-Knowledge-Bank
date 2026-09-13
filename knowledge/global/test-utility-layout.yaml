@@ -1,0 +1,53 @@
+# 2026-09-13 user-approved cross-season project layout policy.
+# Decision evidence: docs/superpowers/specs/2026-09-13-ftc-test-utils-layout-design.md.
+schemaVersion: 4
+rules:
+  - id: global.test-utility-layout
+    topic: test-utility-layout
+    title: Keep robot tests and utilities in canonical TeamCode packages
+    instruction: "机器人侧测试、诊断和校准 OpMode 必须放在 TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/；可复用且无机构所有权的 helper、conversion 和 adapter 类必须放在同级 utils/。tests/ 与 utils/ 和 subsystems/、commands/ 平级，package 声明必须匹配目录；subsystem 或 command 不得伪装成 utils。目标 TeamCode 项目不创建或使用 JUnit、src/test 或 src/androidTest。"
+    rationale: "固定目录让队员和 Agent 能区分可部署测试、复用工具、机构能力与命令编排；明确排除 JUnit 可避免同时维护两套测试入口。"
+    status: approved
+    approval:
+      approver: "lucasnotfound59"
+      role: overall_software_lead
+      approvedAt: 2026-09-13T09:12:38Z
+    authority: shared
+    policyLevel: global
+    applicability:
+      teams: []
+      seasons: []
+      profiles: []
+    evidence:
+      - type: git
+        repository: "lucasnotfound59/FTC-Knowledge-Bank"
+        commit: "6aa385d75484b22b3f73c3b493a695e753ccc76e"
+        file: "docs/superpowers/specs/2026-09-13-ftc-test-utils-layout-design.md"
+        line: 8
+    positiveExample: |-
+      TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/DriveDiagnostic.java
+      TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/AngleUtils.java
+    negativeExample: |-
+      TeamCode/src/main/java/tests/DriveDiagnostic.java
+      TeamCode/src/test/java/org/firstinspires/ftc/teamcode/DriveTest.java
+    checks:
+      - kind: path-forbidden
+        pattern: "TeamCode/src/{test,androidTest}/**"
+        note: "TeamCode 不使用 JUnit test/androidTest source set；机器人侧测试放入 teamcode/tests"
+      - kind: path-forbidden
+        pattern: "TeamCode/src/main/java/{tests,utils}/**"
+        note: "tests/utils 不能直接建立在 src/main/java 下；放入 org/firstinspires/ftc/teamcode"
+      - kind: path-forbidden
+        pattern: "TeamCode/src/main/java/org/firstinspires/ftc/{tests,utils}/**"
+        note: "tests/utils 必须位于 teamcode 包内，不能与 teamcode 平级"
+      - kind: path-forbidden
+        pattern: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/{test,util,tool,tools}/**"
+        note: "使用统一的复数目录名 tests 或 utils"
+      - kind: regex-forbidden
+        pattern: '(?i)^\s*import\s+(?:static\s+)?(?:org\.junit|junit\.)'
+        appliesTo: "TeamCode/**/*.java"
+        note: "目标 TeamCode 项目不使用 JUnit；改为 teamcode/tests 中的机器人侧 OpMode"
+      - kind: regex-forbidden
+        pattern: '(?i)\b(?:testImplementation|androidTestImplementation|testCompile|androidTestCompile)\b.*(?:org\.junit|junit:)'
+        appliesTo: "TeamCode/build.gradle*"
+        note: "目标 TeamCode 构建不添加 JUnit test dependency"
