@@ -327,6 +327,14 @@ class KernelJsonAcceptanceTest {
         assertTrue(resolve["activeRules"].isArray)
         assertTrue(resolve["activeRules"].size()>=1)
         assertTrue(resolve["conflicts"].isArray)
+        val resolveById=resolve["activeRules"].associateBy { it["id"].asText() }
+        setOf(
+            "shared.limelight-check-result-validity",
+            "shared.limelight-enforce-freshness-policy"
+        ).forEach { id ->
+            assertEquals(0,resolveById.getValue(id)["checks"].size(),id)
+            assertEquals(1,resolveById.getValue(id)["reviewTriggers"].size(),id)
+        }
 
         val error=mapper.readTree(Files.readString(base.resolve("error-usage.json")))
         assertFalse(error["ok"].booleanValue())

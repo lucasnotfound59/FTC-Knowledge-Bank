@@ -11,7 +11,7 @@ cd FTC-Knowledge-Bank
 # JDK 21+；产物 apps/knowledge-cli/build/install/ftckb/bin/ftckb
 ```
 
-消费方固定审阅过的完整 commit，不跟踪 main。仓库 V0.4.0、CLI 2.0.0、YAML v4、kernel JSON v2、项目接入协议 v2 是独立版本轴。YAML 解码兼容 v1-v3，不代表 kernel v1 消费方兼容 v2。旧机器模式见 [v1 schema](kernel-contract.v1.schema.json)；当前 [v2 schema](kernel-contract.schema.json)。
+消费方固定审阅过的完整 commit，不跟踪 main。仓库 V0.5.0、CLI 2.0.0、YAML v4、kernel JSON v2、项目接入协议 v2 是独立版本轴。YAML 解码兼容 v1-v3，不代表 kernel v1 消费方兼容 v2。旧机器模式见 [v1 schema](kernel-contract.v1.schema.json)；当前 [v2 schema](kernel-contract.schema.json)。
 
 知识总数 46（40 已批准 + 6 候选）；validate 包含候选计数，resolve 的 activeRules 不包含候选。
 
@@ -77,7 +77,9 @@ resolve（无冲突或有冲突）都有 team、season、normalized profiles、a
 
 resolve 冲突时 ok=false、退出 2；仍保留其他主题 activeRules 和排除/覆盖解释。不要把它当成功。文本模式遇到冲突抑制 active 行。
 
-规则正文可以是中文或英文。evidence 用 type=git 或 web；git 含 repository/commit/file 及可选 symbol/line，web 含 url/title/publisher/accessedAt/section 及可选 version/product/sku。checks 的 kind 在 resolve JSON 使用下划线（path_forbidden 等），YAML 与 check 违规的 check 字段使用连字符（path-forbidden 等）。reviewTriggers 是审阅元数据，不是新的硬检查类型。
+规则正文可以是中文或英文。evidence 用 type=git 或 web；git 含 repository/commit/file 及可选 symbol/line，web 含 url/title/publisher/accessedAt/section 及可选 version/product/sku。checks 的 kind 在 resolve JSON 使用下划线（path_forbidden 等），YAML 与 check 违规的 check 字段使用连字符（path-forbidden 等）。
+
+检查执行规则是确定的：无 checks、无 `reviewTriggers` 的生效规则始终输出 soft；无 checks、有 `reviewTriggers` 的规则是**条件式 soft**，仅当同一 trigger 的路径和新增行模式匹配时输出 soft；有 checks 的规则保持硬检查。当前 **4 条生效规则带硬检查**。Limelight validity/freshness 的 trigger 命中不产生 violations，若没有其他硬违规则退出码 0；soft 只表示需人工/模型复核，不是机器证明的违规或真机验证，**Agent 必须向用户报告**它。
 
 check 完成时含 team、season、profiles、ok、violations、soft：
 
@@ -114,8 +116,8 @@ violations 必有 ruleId/check/pattern/detail，可有 path/line；soft 为 rule
 
 ## 7. 变更、工件与验证边界
 
-删除/改名/改类型等破坏性变更必须提升 schemaVersion；兼容新增字段可忽略，未知错误不能视为成功。CLI 2.0.0 是 kernel v2 破坏性升级对应的 CLI 版本，不等于仓库 V0.4.0。
+删除/改名/改类型等破坏性变更必须提升 schemaVersion；兼容新增字段可忽略，未知错误不能视为成功。CLI 2.0.0 是 kernel v2 破坏性升级对应的 CLI 版本，不等于仓库 V0.5.0。
 
 [fixtures/kernel](../fixtures/kernel/) 的 10 份 JSON 从实际构建 CLI stdout 生成：validate-ok / resolve-ok / resolve-conflict / error-usage / error-invalid-knowledge / check-pass / check-hard / check-error-usage / check-error-load / check-error-conflict。KernelJsonAcceptanceTest 对每份执行当前 v2 JSON Schema 校验；错误与 check 样例使用隔离合成输入，resolve-ok 和 validate-ok 使用仓库知识。
 
-编译、CLI、JSON Schema 验证不等于 Robot Controller、Driver Station、IDE 交互、部署或真机验证。两条 Limelight regex-required 当前作用于所有 Java 新增行，有误报限制；不得插入无意义代码绕过。冲突须由授权维护者修订规则/范围并重新校验，不由模型猜测。
+编译、CLI、JSON Schema 验证不等于 Robot Controller、Driver Station、IDE 交互、部署或真机验证。Limelight 的 approved 条件式 soft 只按触发的新增行请求复核；无匹配不输出 Limelight soft。不得插入无意义代码改变检查结果。冲突须由授权维护者修订规则/范围并重新校验，不由模型猜测。

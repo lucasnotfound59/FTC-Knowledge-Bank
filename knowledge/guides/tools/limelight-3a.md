@@ -101,7 +101,7 @@ public class LimelightSmokeTest extends OpMode {
 - `ta`：目标占图像面积，0–100%；
 - `getStaleness()`：结果年龄，ms。
 
-FTC SDK 10.3 起在尚未收到数据时也可能返回一个 invalid `LLResult`，所以 `isValid()` 是核心门槛；保留 null 检查可兼容保守调用。`shared.limelight-check-result-validity` 与 `shared.limelight-enforce-freshness-policy` 分别禁止使用 invalid 和过期结果。
+FTC SDK 10.3 起在尚未收到数据时也可能返回一个 invalid `LLResult`，所以 `isValid()` 是核心门槛；保留 null 检查可兼容保守调用。`shared.limelight-check-result-validity` 与 `shared.limelight-enforce-freshness-policy` 分别指导拒绝 invalid 和过期结果；它们要求人工/模型审阅，不是静态检查已经证明代码违反控制流要求。
 
 ### 如何决定 freshness threshold
 
@@ -211,7 +211,7 @@ Limelight `botPose` 使用 FTC standard field coordinates；Pedro 使用另一�
 - `shared.limelight-configure-camera-pose`
 - `shared.limelight-back-up-before-os-update`
 
-这些规则当前都是 `candidate`。
+五条相关规则当前都已获批（approved）。其中 validity/freshness 是条件式 soft 指引（validity/freshness 是条件式 soft 指引）：其 `reviewTriggers` 只在新增 Java 行出现 Limelight 类型或结果读取时请求审阅；无关 Java 不产生 Limelight soft。命中时没有其他硬违规仍为退出码 0，且 Agent 必须向用户报告 soft。它不是 hard check，不代表机器已经证明违规，也不代表真机验证；其余三条继续是无条件 soft 指引。
 
 ## 官方来源
 

@@ -5,7 +5,7 @@
 面向 Codex / Claude Code / Qoder / DSH 等任何能执行 shell、读文件的 Agent。
 本文件是入口；完整契约见 `docs/kernel-contract.md`。
 
-版本轴：仓库 V0.4.0、CLI 2.0.0、YAML v4、kernel JSON v2、项目接入协议 v2。
+版本轴：仓库 V0.5.0、CLI 2.0.0、YAML v4、kernel JSON v2、项目接入协议 v2。
 `authority` 表示来源，`policyLevel` 表示 global/local/shared 策略；official 来源始终最高。
 resolve/check 不需要 API key。必须显式选择 generic 或命名 profile，不从依赖猜测：
 `--profile command-based`、`--profile ftclib-command`、`--profile rookiebot`、`--profile simple-opmode`。
@@ -49,7 +49,7 @@ ftckb check <repo-root> --knowledge knowledge --team 20827 --season 2025-2026 --
 - 退出码：validate/resolve 为 `0` 成功；`2` 加载/校验失败或存在冲突；`64` 参数错误。
   `check` 为 `0` 通过；`1` 存在硬违规；`2` 加载失败/冲突；`64` 参数错误。
 - 带 `--json` 时**所有失败路径也是 JSON**（`error.code`: `usage` | `load-error` | `invalid-knowledge` | `conflict` | `context-required` | `invalid-context`）。
-- **规范器**：`check` 合并 HEAD→index 与 HEAD→工作区（含非忽略 untracked）的变化，路径规则检查所有触及路径（含删除/重命名），regex 规则仅检查新增行；无 checks 的规则输出为 `soft` 提示。详见 `docs/standardizer-check.md`。Limelight 两条 Java regex-required 有过宽适用范围的已知限制，不要插入无意义代码绕过，须如实报告。
+- **规范器**：`check` 合并 HEAD→index 与 HEAD→工作区（含非忽略 untracked）的变化，路径规则检查所有触及路径（含删除/重命名），regex 规则仅检查新增行。无 checks 且无 `reviewTriggers` 是无条件 soft；无 checks 且有 triggers 是**条件式 soft**，只有路径与新增行匹配才进入 `soft`；有 checks 才是硬检查。当前 **4 条生效规则带硬检查**。Limelight validity/freshness 的 `reviewTriggers` 命中仍保持退出码 0（没有其他硬违规时），只请求人工/模型复核，不能证明违规或真机安全；**Agent 必须向用户报告**每项 soft。详见 `docs/standardizer-check.md`。
 - 确定性：activeRules 按 id 排序、conflicts 按 topic 排序——同输入同输出，可以缓存。
 - 完整字段表、示例与变更策略见 `docs/kernel-contract.md`；摘要见 README「用法二」。
 

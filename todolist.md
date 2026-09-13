@@ -10,7 +10,7 @@
 - [x] 完成本地接入验收：核心/CLI Kotlin、Python Git 场景、真实固定源码构建与 CLI、schema、Skill 校验；平台边界见接入文档。
 - [ ] 发布明确 tag（不能把旧 README V0.1.1 当作 tag）；代码提交与推送已获用户单独授权，tag 不随本次推送自动创建。
 - [ ] 在 Windows 原生环境验证完整安装/构建/升级；命令构造测试不算实机验证。
-- [ ] 经维护者确认后治理 Limelight 两条 `**/*.java` 硬检查误报：缩小到可可靠识别的适用范围，或转为 soft；不要求无关代码添加 isValid/时间戳。
+- [x] V0.5.0：将 Limelight validity/freshness 迁移为 `reviewTriggers` 驱动的条件式 soft；无关 Java 不产生 Limelight soft，触发项保持退出码 0 并由 Agent 向用户报告。
 - [ ] 维护者可选配置 PR diff CI 与受保护合并门禁；Skill 自身不保证所有 Agent 自动遵循。
 
 ## 已确认设计：规则适用范围与优先级 v2
@@ -21,7 +21,7 @@
 - [ ] 新规则显式声明赛季范围；支持本赛季限定和明确不限赛季，旧规则不批量清空 seasons。
 - [ ] 实现官方 > 明确全局 > 本地 > 普通共享的确定性优先级及排除／覆盖解释，保留审批职责。
 - [ ] 增加项目 profile，解决 RookieBot 与 FTCLib 架构适用冲突，所有消费入口使用同一上下文。
-- [ ] 以带位置和检测边界的人工复核替代不可靠的 Limelight 硬正则；具体规则差异经审批再迁移。
+- [x] 以带位置和检测边界的人工复核替代 Limelight 硬正则；V0.5.0 的条件式 soft 保留已审批规则并报告命中。
 - [ ] 升级 YAML v4、kernel／项目接入 v2，验证旧固定版本不自动升级及新版本真实端到端。
 - [ ] 在现有 Git 联网安装中添加阶段进度、每操作超时、子进程清理及失败恢复说明；这不是 Agent 联网检索功能。
 - [ ] 按 README 的 V0.3.1 标记和 feat／patch／大更新约定管理后续版本，Git tag／Release 发布另行确认。
@@ -43,7 +43,7 @@
 - [x] 稳定机器接口：`ftckb validate/resolve --json`（schemaVersion=1、确定性排序、统一 JSON 错误形状），供外部 Agent 把知识库当确定性“策略裁决器”调用（契约文档 `docs/kernel-contract.md`）；
 - [x] 本地网页会话 `ftckb serve`：127.0.0.1 单会话中文界面，随机端口 + 一次性 token，页内改参数保留对话历史，API key 只进内存；
 - [x] 固定场景质量评估 `ftckb eval`（5 个场景、逐条 PASS/FAIL）；离线脚本化全绿，线上 deepseek-v4-pro 连续多轮 5/5（预算提升 + 检索兜底 + 提示词加固后稳定）；
-- [x] 规范器 `ftckb check`：对 diff 做确定性执法（path 看触及路径，regex 看新增行）；当前 6 条生效规则带硬检查，行为类规则为 soft；AS 插件 Edit 后自动检查；CI 门禁 `scripts/check-gate.sh`；
+- [x] 规范器 `ftckb check`：对 diff 做确定性执法（path 看触及路径，regex 看新增行）；当前 4 条生效规则带硬检查；无 checks/无 trigger 为无条件 soft，Limelight validity/freshness 的 `reviewTriggers` 为条件式 soft，命中不阻塞（退出码 0）但 Agent 必须向用户报告；AS 插件 Edit 后自动检查；CI 门禁 `scripts/check-gate.sh`；
 - [x] 建立测试样例，验证 Agent 不会把遗留代码、重复依赖或单次写法误判为正式规范（`ExtractAcceptanceTest` 覆盖：提示词禁令契约、注释符号证据丢弃、话题重复跳过、单点证据降级）；
 - [ ] 制作 Android Studio 插件的最小交互界面；
 

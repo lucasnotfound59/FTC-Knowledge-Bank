@@ -45,7 +45,7 @@ v1 使用旧式 Git 证据；v2 引入带 type 的 Git/网页证据；v3 在 v2 
 | `positiveExample` | 否 | 字符串 | 正确做法示例 |
 | `negativeExample` | 否 | 字符串 | 错误做法示例 |
 | `checks` | 否 | 列表，schema v3/v4 | 机器检查；类型与语义见[规范器参考](../../docs/standardizer-check.md) |
-| `reviewTriggers` | 否 | 非空列表，仅 YAML v4 | 审阅触发元数据；每项含 paths/addedLinePatterns，不改变硬 checks |
+| `reviewTriggers` | 否 | 非空列表，仅 YAML v4 | 审阅触发元数据；每项含 paths/addedLinePatterns；无 checks 的规则据此成为条件式 soft |
 
 `applicability` 字段：
 
@@ -55,7 +55,7 @@ v1 使用旧式 Git 证据；v2 引入带 type 的 Git/网页证据；v3 在 v2 
 | `seasons` | v4 是 | 字符串列表 | 适用赛季；空列表表示不限制赛季 |
 | `profiles` | v4 是 | 字符串列表 | 空集无架构限制；否则 normalized context 必须包含全部 profiles |
 
-v4 可选 `reviewTriggers`：出现时必须是非空列表，每项必含 `paths`（非空 glob 列表）和 `addedLinePatterns`（可为空的 Java 正则列表）。它们仅为审阅触发元数据，不是硬 checks。未知字段/重复键/错误类型/null 均拒绝；v1-v3 不允许声明 v4 字段。
+v4 可选 `reviewTriggers`：出现时必须是非空列表，每项必含 `paths`（非空 glob 列表）和 `addedLinePatterns`（可为空的 Java 正则列表）。执行时，无 checks/无 trigger 是无条件 soft；无 checks/有 trigger 是**条件式 soft**，只有同一 trigger 的路径和新增行模式都匹配才输出 soft；有 checks 才是硬检查。未知字段/重复键/错误类型/null 均拒绝；v1-v3 不允许声明 v4 字段。
 
 支持 profiles：rookiebot、simple-opmode、command-based、ftclib-command。rookiebot 隐含 simple-opmode，ftclib-command 隐含 command-based；simple-opmode 与 command-based 互斥。规则空 profiles 不是仅限 generic，表示无架构要求。
 

@@ -1,6 +1,6 @@
 # 项目接入与确定性检查
 
-本文是文档站新增功能的技术正文，按网站七个栏目组织。安装细节以 [项目接入指南](../project-integration.md) 为准，机器输出以 [Kernel 契约](../kernel-contract.md) 为准。接入功能的公开可用版本需在发布前确认，不能将 README 中的 V0.1.1 当作包含新功能的已发布 tag。
+本文是文档站新增功能的技术正文，按网站七个栏目组织。安装细节以 [项目接入指南](../project-integration.md) 为准，机器输出以 [Kernel 契约](../kernel-contract.md) 为准。当前仓库版本为 V0.5.0（CLI 2.0.0、YAML v4、kernel JSON v2、项目接入协议 v2）；接入功能的公开可用版本需在发布前确认，不能将 README 中的 V0.1.1 当作包含新功能的已发布 tag。
 
 ## 一、项目介绍：将规范接入日常编码
 
@@ -114,11 +114,11 @@ SDK、Pedro Pathing、Dashboard 和故障排查等教程继续归入 FTC 教程�
 | regex-required | 适用文件的新增行集合必须包含匹配模式 |
 | regex-forbidden | 新增行出现禁止模式即违规 |
 
-无 checks 的生效规则返回 soft 提醒。已知两条 Limelight regex-required 的 Java 适用范围过宽，可能误报无关新增代码；应报告并交维护者处理，不能插入无意义调用绕过。
+无 checks/无 trigger 的生效规则返回无条件 soft；无 checks/有 `reviewTriggers` 的规则是**条件式 soft**，同一 trigger 的路径和新增行模式都匹配才返回 soft；有 checks 才产生硬违规。当前 **4 条生效规则带硬检查**。两条 approved Limelight validity/freshness 规则使用条件式 soft：无关 Java 不产生 Limelight soft，命中时若没有其他硬违规仍是退出码 0。soft 是人工/模型复核请求，不是机器已经证明违规或真机验证；**Agent 必须向用户报告**每个命中的 soft。
 
 ### JSON 与退出码
 
-kernel schemaVersion 当前为 1。check 的 violations 包含 ruleId、check、pattern、detail，以及可选 path/line；soft 包含 ruleId/note。退出码 0 表示无硬违规，1 表示存在硬违规，2 表示加载、校验或冲突等错误，64 表示参数错误。
+kernel schemaVersion 当前为 2。check 的 violations 包含 ruleId、check、pattern、detail，以及可选 path/line；soft 包含 ruleId/note。退出码 0 表示无硬违规，1 表示存在硬违规，2 表示加载、校验或冲突等错误，64 表示参数错误。
 
 兼容细节：resolve 的 checks[].kind 使用下划线，例如 path_forbidden；知识 YAML 和 check 违规字段使用连字符，例如 path-forbidden。消费者应使用仓库 Schema 与 fixtures 对拍，不能自行统一字符串后假定兼容。
 

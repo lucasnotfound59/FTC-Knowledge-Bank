@@ -16,4 +16,4 @@
 
 请在 [GitHub Issues](https://github.com/lucasnotfound59/FTC-Knowledge-Bank/issues) 提供命令、退出码、版本和脱敏后的错误信息。不要包含 API key、敏感队伍数据或个人路径。
 
-当前两条 Limelight Java regex-required 的适用范围较宽，可能误报无关新增代码。应报告问题，不要插入无意义调用绕过检查。
+Limelight validity/freshness 是 approved 的**条件式 soft**：只有 `reviewTriggers` 匹配相机类型或结果读取的新增行才出现；无关 Java 不产生 Limelight soft，命中后若无其他硬违规仍是退出码 0。soft 只要求人工/模型复核，不是机器证明的违规或真机验证；**Agent 必须向用户报告**命中的 soft，不要插入无意义调用改变结果。

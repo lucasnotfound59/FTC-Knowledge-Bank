@@ -167,6 +167,16 @@ class KnowledgeGuideAcceptanceTest {
     }
 
     @Test
+    fun `Limelight guide describes approved triggered soft validity and freshness guidance`() {
+        val guide=Files.readString(root.resolve("guides/tools/limelight-3a.md"))
+        listOf(
+            "五条相关规则当前都已获批",
+            "validity/freshness 是条件式 soft 指引"
+        ).forEach { phrase -> assertTrue(guide.contains(phrase),phrase) }
+        assertTrue("这些规则当前都是 `candidate`" !in guide)
+    }
+
+    @Test
     fun `RookieBot approval covers exactly twelve scoped rules and preserves remaining candidates`() {
         val loaded=FileKnowledgeRepository.load(root)
         assertTrue(loaded.violations.isEmpty(),loaded.violations.joinToString())

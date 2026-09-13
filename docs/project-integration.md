@@ -29,7 +29,7 @@ python3 -m venv /path/to/ftckb-venv
 
 下文 `python3` 替换为该虚拟环境 Python。Windows 使用环境内 `python.exe`，或 `py -3`。不要向共享配置提交个人 `JAVA_HOME`、`sdk.dir` 或 SDK 绝对路径。这个独立 CLI 构建不需要 Android SDK；机器人编译仍需要队员自己的 Android SDK。
 
-首次安装须指定包含本功能的 tag 或完整 40 位 commit SHA。仓库 V0.4.0、CLI 2.0.0、YAML v4、kernel JSON v2、项目接入协议 v2 是独立版本轴；README 的版本不代表同名 tag 已发布。正式 tag 发布前，请使用包含本 Skill 和脚本的已提交版本；审阅所选 checkout 后用 `git rev-parse HEAD` 获取完整 SHA，不要把旧版本 SHA 或 `main` 传给安装器。
+首次安装须指定包含本功能的 tag 或完整 40 位 commit SHA。仓库 V0.5.0、CLI 2.0.0、YAML v4、kernel JSON v2、项目接入协议 v2 是独立版本轴；README 的版本不代表同名 tag 已发布。正式 tag 发布前，请使用包含本 Skill 和脚本的已提交版本；审阅所选 checkout 后用 `git rev-parse HEAD` 获取完整 SHA，不要把旧版本 SHA 或 `main` 传给安装器。
 
 ## 安装与 dry-run
 
@@ -117,7 +117,7 @@ python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/verify.p
 
 硬规则与软建议应区分：接入参数、版本一致性、避免覆盖用户内容是工程保护；只有适用范围明确、可可靠判定的代码规范才适合硬检查。命名、架构、调参经验等当前多数是 soft。
 
-已知限制：两条 Limelight `regex-required` 的 `appliesTo` 当前是 `**/*.java`，对无关 Java 新增行也可能产生误报。此接入版本不擅自修改规则审批结果，Agent 不应插入无意义 `isValid()`/时间戳代码来通过。后续需维护者确认后缩小触发范围或转为 soft；见 roadmap。check 是静态文本检查，不是完整 Java 语义分析，也不能证明硬件安全。
+当前 **4 条生效规则带硬检查**。两条 approved Limelight validity/freshness 规则没有 hard checks，而是 `reviewTriggers` 驱动的**条件式 soft**：相机类型或结果读取的新增行命中触发条件才进入 `soft`；无关 Java 不产生 Limelight soft。触发 soft 时 check 仍是退出码 0（没有其他硬违规时），只要求人工/模型复核，不是机器已证明违规或硬件安全；**Agent 必须向用户报告**该 soft，且不得插入无意义的 `isValid()`/时间戳代码。check 仍是静态文本检查，不是完整 Java 语义分析，也不能证明硬件安全。
 
 ## fresh clone、升级和失败恢复
 
@@ -161,4 +161,4 @@ FTCKB_REAL_INTEGRATION=1 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover 
 
 普通 Python 用例使用真实 Git、隔离构建/CLI 夹具检验安装行为。真实 CLI 与发布验证结果单独记录，不把夹具成功或 Windows launcher 参数测试称为 Windows 实机通过。
 
-历史基线（不是 V0.4.0 当前验收），2026-09-08 验收：Python 常规 22 项通过（含已安装项目 dry-run 不刷新 index 回归）；单独开启的真实源码安装测试 1 项通过（临时 Git 源仓库固定 SHA→真实 Gradle installDist→validate/resolve→故意违规的 check exit 1），在最终 Git dry-run 修复后再次通过。Kotlin 核心与 CLI 422 项，421 通过、1 项原有 installDist 预期路径假设检查跳过；无失败。10 份 kernel JSON fixtures 均通过 jsonschema；两份 Skill 通过结构校验；本知识库 validate/resolve/check 通过。`./gradlew test` 全仓库尝试长时间无输出后中止，因此 Android Studio 插件全量测试未完成；Windows 原生环境、部署和真机运行未验证。
+历史基线（不是 V0.5.0 当前验收），2026-09-08 验收：Python 常规 22 项通过（含已安装项目 dry-run 不刷新 index 回归）；单独开启的真实源码安装测试 1 项通过（临时 Git 源仓库固定 SHA→真实 Gradle installDist→validate/resolve→故意违规的 check exit 1），在最终 Git dry-run 修复后再次通过。Kotlin 核心与 CLI 422 项，421 通过、1 项原有 installDist 预期路径假设检查跳过；无失败。10 份 kernel JSON fixtures 均通过 jsonschema；两份 Skill 通过结构校验；本知识库 validate/resolve/check 通过。`./gradlew test` 全仓库尝试长时间无输出后中止，因此 Android Studio 插件全量测试未完成；Windows 原生环境、部署和真机运行未验证。

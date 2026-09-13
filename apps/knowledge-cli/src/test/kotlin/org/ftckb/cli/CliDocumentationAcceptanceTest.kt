@@ -65,7 +65,7 @@ class CliDocumentationAcceptanceTest {
     fun `release documents publish all version axes and profile aware governance`() {
         val root=Path.of("..","..").normalize()
         val readme=Files.readString(root.resolve("README.md"))
-        listOf("**版本：V0.4.0**","46（40 已批准 + 6 候选）","CLI 2.0.0","YAML v4","kernel JSON v2","项目接入协议 v2").forEach {
+        listOf("**版本：V0.5.0**","46（40 已批准 + 6 候选）","CLI 2.0.0","YAML v4","kernel JSON v2","项目接入协议 v2").forEach {
             assertTrue(readme.contains(it),it)
         }
         listOf("AGENTS.md","docs/kernel-contract.md","docs/handbook/resolution.md").forEach { file ->
@@ -78,6 +78,27 @@ class CliDocumentationAcceptanceTest {
         listOf("YAML v4","policyLevel","profiles","reviewTriggers").forEach { assertTrue(schema.contains(it),it) }
         val approval=Files.readString(root.resolve("docs/handbook/approval.md"))
         listOf("team→global","新的总软件负责人审批","旧审批","迁移台账").forEach { assertTrue(approval.contains(it),it) }
+
+        val conditionalSoftDocuments=listOf(
+            "README.md","AGENTS.md","todolist.md","docs/project-integration.md",
+            "docs/kernel-contract.md","docs/standardizer-check.md","docs/cli-agent.md",
+            "docs/handbook/rule-schema.md","docs/handbook/troubleshooting.md",
+            "docs/website/integration-and-checks.md"
+        )
+        val conditionalSoftText=conditionalSoftDocuments.joinToString("\n") { file ->
+            Files.readString(root.resolve(file))
+        }
+        listOf("条件式 soft","reviewTriggers","退出码 0","Agent 必须向用户报告","4 条生效规则带硬检查").forEach { phrase ->
+            assertTrue(conditionalSoftText.contains(phrase),phrase)
+        }
+        conditionalSoftDocuments.forEach { file ->
+            val text=Files.readString(root.resolve(file))
+            listOf(
+                "Limelight `regex-required` 的 `appliesTo` 当前是 `**/*.java`",
+                "当前两条 Limelight regex-required",
+                "这些规则当前都是 `candidate`"
+            ).forEach { stale -> assertFalse(text.contains(stale),"$file: $stale") }
+        }
     }
 
     @Test

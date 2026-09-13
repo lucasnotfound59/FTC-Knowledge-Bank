@@ -28,15 +28,11 @@ JSON 契约（沿用 kernel 风格，退出码扩展）：
   "schemaVersion": 2,
   "command": "check",
   "team": "20827", "season": "2025-2026", "profiles": [],
-  "ok": false,
-  "violations": [
-    {"ruleId": "shared.limelight-check-result-validity", "check": "regex-required",
-     "path": "TeamCode/src/main/java/example/Vision.java", "line": 42,
-     "pattern": "isValid()", "detail": "added line uses getLatestResult without a validity check"}
-  ],
+  "ok": true,
+  "violations": [],
   "soft": [
-    {"ruleId": "shared.dependency-verify-sync-build-run",
-     "note": "改动依赖后请执行 Sync/Build/Run 验证（机器无法验证行为）"}
+    {"ruleId": "shared.limelight-check-result-validity",
+     "note": "Check that the latest Limelight result exists and is valid before using target or pose fields."}
   ]
 }
 ```
@@ -49,7 +45,7 @@ JSON 契约（沿用 kernel 风格，退出码扩展）：
 
 ## 2. 检查类型库（v1，数据驱动）
 
-规则 YAML 新增可选 `checks:` 数组（schema v3/v4；不写 checks 的规则视为仅告知/软提示）：
+规则 YAML 可含 `checks:`（schema v3/v4；有 checks 的规则是硬检查）或 v4 的 `reviewTriggers:`（审阅触发元数据）：
 
 | kind | 语义 | 判定 |
 | --- | --- | --- |
@@ -68,11 +64,11 @@ YAML 示例：
 ```yaml
   - id: shared.limelight-check-result-validity
     # ...既有字段...
-    checks:
-      - kind: regex-required
-        appliesTo: "**/*.java"
-        pattern: "\\.isValid\\(\\)|getLatestResult\\(\\).*\\.isValid\\(\\)"
-        note: "新增的 Limelight 结果读取必须有有效性检查"
+    reviewTriggers:
+      - paths: ["**/*.java"]
+        addedLinePatterns:
+          - '\\b(?:Limelight3A|LLResult)\\b'
+          - '\\.(?:getLatestResult|getBotpose(?:_[A-Za-z0-9]+)?|getTargetTimestamp|getStaleness)\\s*\\('
   - id: official.keep-customizations-in-teamcode
     checks:
       - kind: path-forbidden
@@ -95,23 +91,21 @@ YAML 示例：
 | shared.ftc-sdk-pin-release | regex-forbidden 依赖行含 `+`/`SNAPSHOT`（RobotCore/Hardware/Inspection） |
 | shared.ftc-sdk-preserve-build-tooling | path-forbidden gradle/wrapper/*、gradlew、gradlew.bat |
 | shared.dashboard-pin-stable-dependency | regex-forbidden dashboard 依赖行含 `+`/`SNAPSHOT` |
-| shared.limelight-check-result-validity | regex-required 新增结果读取必须带有效性检查 |
-| shared.limelight-enforce-freshness-policy | regex-required 新增结果使用必须带 freshness 检查 |
 
 软提示（行为/结构类，机器无法验证，check 输出 soft）：
 
 dependency-verify-sync-build-run、ftc-sdk-separate-toolchain-versions、
 gobilda 四条（SKU/档位/伺服/PID）、limelight-back-up-before-os-update、limelight-configure-camera-pose、
-limelight-synchronize-pipeline-dependent-reads、pedro 三条（坐标转换/定位先行/实机调参）。
+limelight-synchronize-pipeline-dependent-reads、pedro 三条（坐标转换/定位先行/实机调参），以及由 `reviewTriggers` 命中时才输出的 Limelight validity/freshness 条件式 soft。
 
 诚实声明：机器只对“能从 diff 文本确定性判定”的事项执法；行为类规则一律走 soft + 人工确认，不假装全能。
 
-已知误报范围：当前两条 Limelight regex-required 的 `appliesTo` 均为 `**/*.java`，并未检测新增行是否真的使用 Limelight；普通 Java 新增行也可能被拦住。本次接入更新没有擅自改动这些已审批规则。维护者应确认后缩小触发条件或转为 soft，Agent 不得硬塞无意义调用来过检查。
+无 checks/无 trigger 的生效规则始终输出 soft；无 checks/有 `reviewTriggers` 的规则为**条件式 soft**，同一 trigger 的路径和新增行模式都匹配才输出一项 soft；有 checks 才产生硬 violations。两条 Limelight validity/freshness 规则保留 approved，使用第二种模式：无关 Java 不产生 Limelight soft，命中后若没有其他硬违规仍为退出码 0。当前 **4 条生效规则带硬检查**；soft 只请求人工/模型审阅，不是机器已证明违规或真机验证，**Agent 必须向用户报告**每个 soft。
 
 ## 4. 分阶段计划（M1–M4 已交付，M5 即文档合并）
 
 > 状态：M1 schema v3 + checks 模型 ✅；M2 检查引擎 + `ftckb check` + 离线测试 ✅；
-> M3 硬检查规则落地（当前六条生效规则含 checks）+ 正反例冒烟 ✅；M4 standardizer 模块（CLI 与 AS 插件共用）+
+> M3 硬检查规则落地（当前 4 条生效规则含 checks，Limelight 改为条件式 soft）+ 正反例冒烟 ✅；M4 standardizer 模块（CLI 与 AS 插件共用）+
 > 插件 Edit 后自动检查 + `scripts/check-gate.sh` CI 门禁 ✅；已合并 main。
 
 - M1 schema v3 + 领域模型：`Checks` 模型、RuleYamlCodec/RuleValidator 扩展、resolve --json 增量输出
@@ -127,7 +121,7 @@ limelight-synchronize-pipeline-dependent-reads、pedro 三条（坐标转换/定
 ## 5. 边界
 
 - kernel JSON v2 返回 normalized `profiles`；resolve/check 必须选择同一 profile（generic 是显式空集）。两者不需要 API key。
-- YAML v4 的 `reviewTriggers` 是审阅触发元数据，不是新增硬检查类型，也不能替代 checks 或人工审阅。
+- YAML v4 的 `reviewTriggers` 是审阅触发元数据，不是新增硬检查类型，也不能替代 checks 或人工审阅；它只让无 checks 的规则成为条件式 soft。
 - 来源 authority 不等于 policyLevel；official 来源最高，其余按 global/local/shared 裁决。candidate、队号/赛季/profile 不匹配不执法。
 
 - check 不执行任何代码/构建/测试；只做静态文本判定。
