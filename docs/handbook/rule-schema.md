@@ -1,5 +1,7 @@
 # 知识目录与规则字段
 
+当前发布为 V0.6.0：CLI 2.0.0、YAML v4、kernel JSON v2、项目接入协议 v2；知识总数为 47（41 已批准 + 6 候选）。
+
 CLI 会递归读取知识根目录中扩展名为小写 `.yaml` 或 `.yml` 的文件。当前约定布局如下：
 
 | 路径 | 含义 |
@@ -48,6 +50,10 @@ v1 使用旧式 Git 证据；v2 引入带 type 的 Git/网页证据；v3 在 v2 
 | `reviewTriggers` | 否 | 非空列表，仅 YAML v4 | 审阅触发元数据；每项含 paths/addedLinePatterns；无 checks 的规则据此成为条件式 soft |
 
 `applicability` 字段：
+
+## V0.6.0 TeamCode tests/utils 布局规则
+
+`global.test-utility-layout` 是跨赛季规则，并使当前带 hard checks 的 active 规则总数为 5。它用已有的 `path-forbidden` 和 `regex-forbidden` 可靠拦截错误 TeamCode 路径与 JUnit 新增（退出码 1）；机器人侧 OpMode 的规范路径是 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/`，可复用工具的规范路径是 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/`。完整 Agent instruction 仍负责不能从路径/新增行可靠判断的文件语义和 package；目标 TeamCode 的 JUnit/source-set 限制不禁止 Knowledge Bank 自身用于验证 Kotlin/CLI 的 JUnit 测试，也不证明部署或机器人运行。
 
 | 字段 | 必填 | 类型 | 说明 |
 | --- | --- | --- | --- |

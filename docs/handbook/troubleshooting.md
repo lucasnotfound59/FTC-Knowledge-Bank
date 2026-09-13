@@ -1,5 +1,7 @@
 # 常见问题与故障排查
 
+当前发布为 V0.6.0（CLI 2.0.0、YAML v4、kernel JSON v2、项目接入协议 v2），知识总数为 47（41 已批准 + 6 候选）。
+
 | 现象 | 常见原因 | 处理方法 |
 | --- | --- | --- |
 | Gradle 找不到 JDK 21 toolchain | 旧版仓库或网络受限 | 通常构建会自动下载 JDK 21 工具链（Foojay）；如仍失败，运行 `java -version` 确认使用 JDK 21+，或把 `JAVA_HOME` 指向 JDK 21 |
@@ -11,6 +13,7 @@
 | candidate 校验通过但没有 active 输出 | 这是预期行为，候选规则尚未获批 | 由授权负责人审查；获批后添加 approval、改为 approved，再 validate/resolve |
 | 输出 `conflict topic=... rules=...` | 同一 topic 的最高有效权威层级有多条适用规则 | 调整适用范围、合并/废弃冲突规则或保留一个获批规则，然后重新解析 |
 | CLI 退出 `64` | 缺少命令或 `<knowledge-root>`，或选项/参数格式错误 | 对照通用语法；resolve 必须各提供一次 `--team <digits>` 和 `--season <YYYY-YYYY>`。已提供但不存在的目录属于 load failure，退出 `2` |
+| `global.test-utility-layout`，退出 `1` | 目标 TeamCode 改动使用了错误 tests/utils 路径，或新增了 JUnit import/dependency | 机器人侧 OpMode 移到 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/`，可复用工具移到 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/`；不要用 JUnit、`src/test` 或 `src/androidTest`。这是当前第 5 条带硬检查的 active rule；完整 Agent instruction 仍负责语义分类，不影响 Knowledge Bank 自身 Kotlin/CLI JUnit 测试，也不证明部署/机器人运行。 |
 
 ## 提交问题
 

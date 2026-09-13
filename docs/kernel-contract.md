@@ -11,9 +11,9 @@ cd FTC-Knowledge-Bank
 # JDK 21+；产物 apps/knowledge-cli/build/install/ftckb/bin/ftckb
 ```
 
-消费方固定审阅过的完整 commit，不跟踪 main。仓库 V0.5.0、CLI 2.0.0、YAML v4、kernel JSON v2、项目接入协议 v2 是独立版本轴。YAML 解码兼容 v1-v3，不代表 kernel v1 消费方兼容 v2。旧机器模式见 [v1 schema](kernel-contract.v1.schema.json)；当前 [v2 schema](kernel-contract.schema.json)。
+消费方固定审阅过的完整 commit，不跟踪 main。仓库 V0.6.0、CLI 2.0.0、YAML v4、kernel JSON v2、项目接入协议 v2 是独立版本轴。YAML 解码兼容 v1-v3，不代表 kernel v1 消费方兼容 v2。旧机器模式见 [v1 schema](kernel-contract.v1.schema.json)；当前 [v2 schema](kernel-contract.schema.json)。
 
-知识总数 46（40 已批准 + 6 候选）；validate 包含候选计数，resolve 的 activeRules 不包含候选。
+知识总数 47（41 已批准 + 6 候选）；validate 包含候选计数，resolve 的 activeRules 不包含候选。
 
 ## 2. 命令与显式 profile
 
@@ -56,7 +56,7 @@ official 来源必须用 policyLevel=global，但有效层级是 official，永�
 validate 成功：
 
 ```json
-{"schemaVersion":2,"command":"validate","ok":true,"ruleCount":46,"violations":[]}
+{"schemaVersion":2,"command":"validate","ok":true,"ruleCount":47,"violations":[]}
 ```
 
 resolve（无冲突或有冲突）都有 team、season、normalized profiles、activeRules、excludedRules、overriddenRules、conflicts，不使用 error 字段。
@@ -79,7 +79,7 @@ resolve 冲突时 ok=false、退出 2；仍保留其他主题 activeRules 和排
 
 规则正文可以是中文或英文。evidence 用 type=git 或 web；git 含 repository/commit/file 及可选 symbol/line，web 含 url/title/publisher/accessedAt/section 及可选 version/product/sku。checks 的 kind 在 resolve JSON 使用下划线（path_forbidden 等），YAML 与 check 违规的 check 字段使用连字符（path-forbidden 等）。
 
-检查执行规则是确定的：无 checks、无 `reviewTriggers` 的生效规则始终输出 soft；无 checks、有 `reviewTriggers` 的规则是**条件式 soft**，仅当同一 trigger 的路径和新增行模式匹配时输出 soft；有 checks 的规则保持硬检查。空 `addedLinePatterns` 使 trigger 仅按路径触发；多个 trigger 之间为 OR；单个 trigger 内，路径约束和新增行模式约束必须同时满足。当前 **4 条生效规则带硬检查**。Limelight validity/freshness 的 trigger 命中不产生 violations，若没有其他硬违规则退出码 0；soft 只表示需人工/模型复核，不是机器证明的违规或真机验证，**Agent 必须向用户报告**它。
+检查执行规则是确定的：无 checks、无 `reviewTriggers` 的生效规则始终输出 soft；无 checks、有 `reviewTriggers` 的规则是**条件式 soft**，仅当同一 trigger 的路径和新增行模式匹配时输出 soft；有 checks 的规则保持硬检查。空 `addedLinePatterns` 使 trigger 仅按路径触发；多个 trigger 之间为 OR；单个 trigger 内，路径约束和新增行模式约束必须同时满足。当前 **5 条生效规则带硬检查**。跨赛季 `global.test-utility-layout` 对确定的错误 TeamCode 路径/JUnit 新增返回 violations 与退出码 1：机器人侧 OpMode 的规范路径是 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/`，复用工具的规范路径是 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/`。它不替代完整 Agent instruction 对文件语义及 package 的判断，也不禁止 Knowledge Bank 自身用于验证 Kotlin/CLI 的 JUnit 测试。Limelight validity/freshness 的 trigger 命中不产生 violations，若没有其他硬违规则退出码 0；soft 只表示需人工/模型复核，不是机器证明的违规或真机验证，**Agent 必须向用户报告**它。
 
 check 完成时含 team、season、profiles、ok、violations、soft：
 
@@ -116,7 +116,7 @@ violations 必有 ruleId/check/pattern/detail，可有 path/line；soft 为 rule
 
 ## 7. 变更、工件与验证边界
 
-删除/改名/改类型等破坏性变更必须提升 schemaVersion；兼容新增字段可忽略，未知错误不能视为成功。CLI 2.0.0 是 kernel v2 破坏性升级对应的 CLI 版本，不等于仓库 V0.5.0。
+删除/改名/改类型等破坏性变更必须提升 schemaVersion；兼容新增字段可忽略，未知错误不能视为成功。CLI 2.0.0 是 kernel v2 破坏性升级对应的 CLI 版本，不等于仓库 V0.6.0。
 
 [fixtures/kernel](../fixtures/kernel/) 的 10 份 JSON 从实际构建 CLI stdout 生成：validate-ok / resolve-ok / resolve-conflict / error-usage / error-invalid-knowledge / check-pass / check-hard / check-error-usage / check-error-load / check-error-conflict。KernelJsonAcceptanceTest 对每份执行当前 v2 JSON Schema 校验；错误与 check 样例使用隔离合成输入，resolve-ok 和 validate-ok 使用仓库知识。
 

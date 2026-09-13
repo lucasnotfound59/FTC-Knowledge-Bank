@@ -40,10 +40,10 @@ class CliDocumentationAcceptanceTest {
     fun `installation profile counts match both teams current resolution`() {
         val root=Path.of("..","..").normalize()
         val text=Files.readString(root.resolve("docs/handbook/installation.md"))
-        assertTrue(text.contains("46（40 已批准 + 6 候选）"))
-        assertTrue(text.contains("validation=ok rules=46"))
+        assertTrue(text.contains("47（41 已批准 + 6 候选）"))
+        assertTrue(text.contains("validation=ok rules=47"))
         val mapper=ObjectMapper()
-        for ((profile,count) in listOf("generic" to 24,"command-based" to 27,"rookiebot" to 36,"ftclib-command" to 28)) {
+        for ((profile,count) in listOf("generic" to 25,"command-based" to 28,"rookiebot" to 37,"ftclib-command" to 29)) {
             assertTrue(text.contains("| $profile | $count |"),profile)
             val selections=if (profile=="generic") listOf("--generic-profile") else listOf("--profile",profile)
             val activeByTeam=listOf("20827","16093").map { team ->
@@ -65,7 +65,7 @@ class CliDocumentationAcceptanceTest {
     fun `release documents publish all version axes and profile aware governance`() {
         val root=Path.of("..","..").normalize()
         val readme=Files.readString(root.resolve("README.md"))
-        listOf("**版本：V0.5.0**","46（40 已批准 + 6 候选）","CLI 2.0.0","YAML v4","kernel JSON v2","项目接入协议 v2").forEach {
+        listOf("**版本：V0.6.0**","47（41 已批准 + 6 候选）","CLI 2.0.0","YAML v4","kernel JSON v2","项目接入协议 v2").forEach {
             assertTrue(readme.contains(it),it)
         }
         listOf("AGENTS.md","docs/kernel-contract.md","docs/handbook/resolution.md").forEach { file ->
@@ -88,19 +88,28 @@ class CliDocumentationAcceptanceTest {
         val approval=Files.readString(root.resolve("docs/handbook/approval.md"))
         listOf("team→global","新的总软件负责人审批","旧审批","迁移台账").forEach { assertTrue(approval.contains(it),it) }
 
-        val conditionalSoftDocuments=listOf(
+        val currentReleaseDocuments=listOf(
             "README.md","AGENTS.md","todolist.md","docs/project-integration.md",
             "docs/kernel-contract.md","docs/standardizer-check.md","docs/cli-agent.md",
-            "docs/handbook/rule-schema.md","docs/handbook/troubleshooting.md",
+            "docs/handbook/installation.md","docs/handbook/resolution.md","docs/handbook/rule-schema.md","docs/handbook/troubleshooting.md",
             "docs/website/integration-and-checks.md"
         )
-        val conditionalSoftText=conditionalSoftDocuments.joinToString("\n") { file ->
+        currentReleaseDocuments.forEach { file ->
+            assertTrue(Files.readString(root.resolve(file)).contains("V0.6.0"),"$file: V0.6.0")
+        }
+        val conditionalSoftText=currentReleaseDocuments.joinToString("\n") { file ->
             Files.readString(root.resolve(file))
         }
-        listOf("条件式 soft","reviewTriggers","退出码 0","Agent 必须向用户报告","4 条生效规则带硬检查").forEach { phrase ->
+        listOf(
+            "条件式 soft","reviewTriggers","退出码 0","退出码 1","Agent 必须向用户报告","5 条生效规则带硬检查",
+            "global.test-utility-layout",
+            "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/",
+            "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/",
+            "Knowledge Bank 自身用于验证 Kotlin/CLI 的 JUnit 测试"
+        ).forEach { phrase ->
             assertTrue(conditionalSoftText.contains(phrase),phrase)
         }
-        conditionalSoftDocuments.forEach { file ->
+        currentReleaseDocuments.forEach { file ->
             val text=Files.readString(root.resolve(file))
             listOf(
                 "Limelight `regex-required` 的 `appliesTo` 当前是 `**/*.java`",
@@ -120,7 +129,7 @@ class CliDocumentationAcceptanceTest {
             staleClaims.forEach { stale -> assertFalse(text.contains(stale),"$file: $stale") }
         }
         val roadmap=Files.readString(root.resolve("todolist.md"))
-        listOf("V0.5.0 基线","YAML v4、kernel JSON v2 与项目接入协议 v2","schemaVersion=2").forEach { current ->
+        listOf("V0.6.0 基线","YAML v4、kernel JSON v2 与项目接入协议 v2","schemaVersion=2").forEach { current ->
             assertTrue(roadmap.contains(current),"todolist.md: $current")
         }
     }

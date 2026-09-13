@@ -25,7 +25,8 @@
 - [x] 发布 YAML v4、kernel JSON v2 与项目接入协议 v2。
 - [ ] 继续验证旧固定版本不自动升级，以及未来版本的真实端到端升级流程。
 - [ ] 在现有 Git 联网安装中添加阶段进度、每操作超时、子进程清理及失败恢复说明；这不是 Agent 联网检索功能。
-- [ ] 按 README 的 V0.5.0 基线和 feat／patch／大更新约定管理后续版本，Git tag／Release 发布另行确认。
+- [x] V0.6.0：发布 `global.test-utility-layout` 跨赛季硬规则；目标 TeamCode 的机器人侧 OpMode 使用 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/`，工具使用 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/`，并禁止确定的错误路径/JUnit 新增。
+- [ ] 按 README 的 V0.6.0 基线和 feat／patch／大更新约定管理后续版本，Git tag／Release 发布另行确认。
 
 ## MVP：队内代码 Agent 闭环
 
@@ -44,7 +45,7 @@
 - [x] 稳定机器接口：`ftckb validate/resolve --json`（schemaVersion=2、确定性排序、统一 JSON 错误形状），供外部 Agent 把知识库当确定性“策略裁决器”调用（契约文档 `docs/kernel-contract.md`）；
 - [x] 本地网页会话 `ftckb serve`：127.0.0.1 单会话中文界面，随机端口 + 一次性 token，页内改参数保留对话历史，API key 只进内存；
 - [x] 固定场景质量评估 `ftckb eval`（5 个场景、逐条 PASS/FAIL）；离线脚本化全绿，线上 deepseek-v4-pro 连续多轮 5/5（预算提升 + 检索兜底 + 提示词加固后稳定）；
-- [x] 规范器 `ftckb check`：对 diff 做确定性执法（path 看触及路径，regex 看新增行）；当前 4 条生效规则带硬检查；无 checks/无 trigger 为无条件 soft，Limelight validity/freshness 的 `reviewTriggers` 为条件式 soft，命中不阻塞（退出码 0）但 Agent 必须向用户报告；AS 插件 Edit 后自动检查；CI 门禁 `scripts/check-gate.sh`；
+- [x] 规范器 `ftckb check`：对 diff 做确定性执法（path 看触及路径，regex 看新增行）；当前 5 条生效规则带硬检查，含跨赛季 `global.test-utility-layout` 对错误 TeamCode 路径/JUnit 新增的 exit 1 拦截；完整 Agent instruction 仍负责 tests/utils 的语义分类。无 checks/无 trigger 为无条件 soft，Limelight validity/freshness 的 `reviewTriggers` 为条件式 soft，命中不阻塞（退出码 0）但 Agent 必须向用户报告；AS 插件 Edit 后自动检查；CI 门禁 `scripts/check-gate.sh`；
 - [x] 建立测试样例，验证 Agent 不会把遗留代码、重复依赖或单次写法误判为正式规范（`ExtractAcceptanceTest` 覆盖：提示词禁令契约、注释符号证据丢弃、话题重复跳过、单点证据降级）；
 - [ ] 制作 Android Studio 插件的最小交互界面；
 

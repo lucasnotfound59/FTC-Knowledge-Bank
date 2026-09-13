@@ -309,7 +309,7 @@ class KernelJsonAcceptanceTest {
     @Test
     fun `kernel contract fixtures parse and carry the expected shapes`() {
         val base=Path.of("..","..","fixtures","kernel")
-        assertEquals(2,mapper.readTree(KernelJson.validateJson(46))["schemaVersion"].asInt())
+        assertEquals(2,mapper.readTree(KernelJson.validateJson(47))["schemaVersion"].asInt())
         Files.list(base).use { paths ->
             val fixtures=paths.filter { it.toString().endsWith(".json") }.sorted().toList()
             assertEquals(10,fixtures.size)
@@ -320,14 +320,28 @@ class KernelJsonAcceptanceTest {
         assertEquals(2,validate["schemaVersion"].asInt())
         assertEquals("validate",validate["command"].asText())
         assertTrue(validate["ok"].booleanValue())
-        assertEquals(46,validate["ruleCount"].asInt())
+        assertEquals(47,validate["ruleCount"].asInt())
 
         val resolve=mapper.readTree(Files.readString(base.resolve("resolve-ok.json")))
         assertEquals("resolve",resolve["command"].asText())
         assertTrue(resolve["activeRules"].isArray)
-        assertTrue(resolve["activeRules"].size()>=1)
+        assertEquals(25,resolve["activeRules"].size())
         assertTrue(resolve["conflicts"].isArray)
         val resolveById=resolve["activeRules"].associateBy { it["id"].asText() }
+        val layout=resolveById.getValue("global.test-utility-layout")
+        assertEquals("approved",layout["status"].asText())
+        assertEquals("shared",layout["authority"].asText())
+        assertEquals("global",layout["policyLevel"].asText())
+        listOf("teams","seasons","profiles").forEach { field ->
+            assertEquals(0,layout["applicability"][field].size(),field)
+        }
+        assertTrue(layout["checks"].size()>0)
+        val evidence=layout["evidence"]
+        assertEquals(1,evidence.size())
+        assertEquals("lucasnotfound59/FTC-Knowledge-Bank",evidence[0]["repository"].asText())
+        assertEquals("6aa385d75484b22b3f73c3b493a695e753ccc76e",evidence[0]["commit"].asText())
+        assertEquals("docs/superpowers/specs/2026-09-13-ftc-test-utils-layout-design.md",evidence[0]["file"].asText())
+        assertEquals(8,evidence[0]["line"].asInt())
         setOf(
             "shared.limelight-check-result-validity",
             "shared.limelight-enforce-freshness-policy"

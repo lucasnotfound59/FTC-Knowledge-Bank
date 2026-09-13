@@ -1,6 +1,6 @@
 # FTC Knowledge Bank
 
-**版本：V0.5.0**
+**版本：V0.6.0**
 
 面向 FTC 队伍与编码 Agent 的工程知识库：把有来源、经审批的规范接入开发流程，在写码前取得规则，完成后检查改动。
 
@@ -36,11 +36,11 @@
 
 已实现规则裁决、diff 检查、项目级接入、候选提取与审批、Ask/Edit、本地网页及 Android Studio 插件。Run 模式、官方文档联网检索和 Control Hub 自动部署尚未实现。静态检查不替代真机验证。
 
-当前规则总数为 46（40 已批准 + 6 候选）。裁决器、CLI、运行时和固定版本接入均传递显式 profile；20827／16093 的 8 条规则已迁移到 global，保留 2025-2026 赛季与 2 条 candidate，并增加 3 条 command-based 规则。相同赛季和 profile 下两队当前 active IDs 相同；这不是忽略队号的理由。
+当前规则总数为 47（41 已批准 + 6 候选）。裁决器、CLI、运行时和固定版本接入均传递显式 profile；20827／16093 的 8 条规则已迁移到 global，保留 2025-2026 赛季与 2 条 candidate，并增加 3 条 command-based 规则。`global.test-utility-layout` 是独立的跨赛季 global 规则。相同赛季和 profile 下两队当前 active IDs 相同；这不是忽略队号的理由。
 
-版本轴分别是：仓库 V0.5.0、CLI 2.0.0、YAML v4、kernel JSON v2、项目接入协议 v2。来源 `authority` 与策略 `policyLevel` 分离，有效优先级为 `OFFICIAL > GLOBAL > LOCAL > SHARED`。候选不生效；同主题最高有效层级的多规则冲突必须先由维护者解决。
+版本轴分别是：仓库 V0.6.0、CLI 2.0.0、YAML v4、kernel JSON v2、项目接入协议 v2。来源 `authority` 与策略 `policyLevel` 分离，有效优先级为 `OFFICIAL > GLOBAL > LOCAL > SHARED`。候选不生效；同主题最高有效层级的多规则冲突必须先由维护者解决。
 
-规范器当前有 **4 条生效规则带硬检查**：官方 build-file 保护、FTC SDK release 钉扎、FTC build-tool 保留和 Dashboard 稳定版本钉扎。Limelight 的 validity/freshness 规则保持 approved，但改为由 `reviewTriggers` 驱动的**条件式 soft**：新增行匹配相机类型或结果读取时才进入 `soft`，不匹配不产生 Limelight soft；两种情况都保持退出码 0（只要没有其他硬违规）。soft 只要求人工/模型复核，不是机器已证明违规，也不是真机验证；**Agent 必须向用户报告**命中的 soft 项。
+规范器当前有 **5 条生效规则带硬检查**：官方 build-file 保护、FTC SDK release 钉扎、FTC build-tool 保留、Dashboard 稳定版本钉扎，以及 `global.test-utility-layout`。后者跨赛季阻止可确定的错误 TeamCode 路径和 JUnit 新增：机器人侧 OpMode 只能在 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/`，可复用工具只能在 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/`。它不取代完整 Agent 指令对语义分类的要求；目标 TeamCode 不使用 JUnit、`src/test` 或 `src/androidTest`，但 Knowledge Bank 自身用于验证 Kotlin/CLI 的 JUnit 测试不受禁止。硬违规退出码为 1。Limelight 的 validity/freshness 规则保持 approved，但改为由 `reviewTriggers` 驱动的**条件式 soft**：新增行匹配相机类型或结果读取时才进入 `soft`，不匹配不产生 Limelight soft；两种情况都保持退出码 0（只要没有其他硬违规）。soft 只要求人工/模型复核，不是机器已证明违规，也不是真机验证；**Agent 必须向用户报告**命中的 soft 项。
 
 ```bash
 ftckb validate knowledge --json
@@ -60,7 +60,7 @@ Pedro 2.1.2 教程：[参数字典](knowledge/guides/tools/pedro-pathing.md#safe
 
 | 更新类型 | 递增方式 | 示例 |
 | --- | --- | --- |
-| 新功能（feat） | 次版本加 1，补丁号归零 | V0.4.0 → V0.5.0 |
+| 新功能（feat） | 次版本加 1，补丁号归零 | V0.5.0 → V0.6.0 |
 | 修复或小补丁（patch） | 补丁版本加 1 | V0.3.1 → V0.3.2 |
 | 大更新 | 主版本加 1，次版本和补丁号归零 | V0.3.1 → V1.0.0 |
 

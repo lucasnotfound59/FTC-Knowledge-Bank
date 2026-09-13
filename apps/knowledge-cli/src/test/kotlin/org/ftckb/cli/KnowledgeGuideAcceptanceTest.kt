@@ -137,7 +137,8 @@ class KnowledgeGuideAcceptanceTest {
         assertEquals(expectedIds,loaded.rules.map { it.id }.filter { it in expectedIds }.toSet())
         val globalIds=setOf(
             "global.documentation-intent","global.constants-centralized","global.hardware-container",
-            "global.motor-configuration","global.naming-conventions","global.telemetry-organization"
+            "global.motor-configuration","global.naming-conventions","global.telemetry-organization",
+            "global.test-utility-layout"
         )
         val expectedActiveIds=(setOf("official.keep-customizations-in-teamcode")+
             (expectedIds-"shared.ftclib-command-candidate")+globalIds).sorted()
@@ -182,8 +183,8 @@ class KnowledgeGuideAcceptanceTest {
         assertTrue(loaded.violations.isEmpty(),loaded.violations.joinToString())
         val rookie=loaded.rules.filter { it.id.startsWith("shared.rookiebot-") }
         assertEquals(rookieIds,rookie.map { it.id }.toSet())
-        assertEquals(46,loaded.rules.size)
-        assertEquals(40,loaded.rules.count { it.status==RuleStatus.APPROVED })
+        assertEquals(47,loaded.rules.size)
+        assertEquals(41,loaded.rules.count { it.status==RuleStatus.APPROVED })
         assertEquals(6,loaded.rules.count { it.status==RuleStatus.CANDIDATE })
         rookie.forEach { rule ->
             assertEquals(RuleStatus.APPROVED,rule.status,rule.id)

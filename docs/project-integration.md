@@ -29,7 +29,7 @@ python3 -m venv /path/to/ftckb-venv
 
 下文 `python3` 替换为该虚拟环境 Python。Windows 使用环境内 `python.exe`，或 `py -3`。不要向共享配置提交个人 `JAVA_HOME`、`sdk.dir` 或 SDK 绝对路径。这个独立 CLI 构建不需要 Android SDK；机器人编译仍需要队员自己的 Android SDK。
 
-首次安装须指定包含本功能的 tag 或完整 40 位 commit SHA。仓库 V0.5.0、CLI 2.0.0、YAML v4、kernel JSON v2、项目接入协议 v2 是独立版本轴；README 的版本不代表同名 tag 已发布。正式 tag 发布前，请使用包含本 Skill 和脚本的已提交版本；审阅所选 checkout 后用 `git rev-parse HEAD` 获取完整 SHA，不要把旧版本 SHA 或 `main` 传给安装器。
+首次安装须指定包含本功能的 tag 或完整 40 位 commit SHA。仓库 V0.6.0、CLI 2.0.0、YAML v4、kernel JSON v2、项目接入协议 v2 是独立版本轴；当前知识总数为 47（41 已批准 + 6 候选）。README 的版本不代表同名 tag 已发布。正式 tag 发布前，请使用包含本 Skill 和脚本的已提交版本；审阅所选 checkout 后用 `git rev-parse HEAD` 获取完整 SHA，不要把旧版本 SHA 或 `main` 传给安装器。
 
 ## 安装与 dry-run
 
@@ -117,7 +117,7 @@ python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/verify.p
 
 硬规则与软建议应区分：接入参数、版本一致性、避免覆盖用户内容是工程保护；只有适用范围明确、可可靠判定的代码规范才适合硬检查。命名、架构、调参经验等当前多数是 soft。
 
-当前 **4 条生效规则带硬检查**。两条 approved Limelight validity/freshness 规则没有 hard checks，而是 `reviewTriggers` 驱动的**条件式 soft**：相机类型或结果读取的新增行命中触发条件才进入 `soft`；无关 Java 不产生 Limelight soft。触发 soft 时 check 仍是退出码 0（没有其他硬违规时），只要求人工/模型复核，不是机器已证明违规或硬件安全；**Agent 必须向用户报告**该 soft，且不得插入无意义的 `isValid()`/时间戳代码。check 仍是静态文本检查，不是完整 Java 语义分析，也不能证明硬件安全。
+当前 **5 条生效规则带硬检查**。跨赛季 `global.test-utility-layout` 硬拦截确定的错误 TeamCode 路径和 JUnit 新增（退出码 1）：机器人侧 OpMode 在 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/`，可复用工具在 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/`。完整 Agent instruction 仍负责无法由路径可靠判定的语义分类；此规则不禁止 Knowledge Bank 自身的 Kotlin/CLI JUnit 测试。两条 approved Limelight validity/freshness 规则没有 hard checks，而是 `reviewTriggers` 驱动的**条件式 soft**：相机类型或结果读取的新增行命中触发条件才进入 `soft`；无关 Java 不产生 Limelight soft。触发 soft 时 check 仍是退出码 0（没有其他硬违规时），只要求人工/模型复核，不是机器已证明违规或硬件安全；**Agent 必须向用户报告**该 soft，且不得插入无意义的 `isValid()`/时间戳代码。check 仍是静态文本检查，不是完整 Java 语义分析，也不能证明硬件安全。
 
 ## fresh clone、升级和失败恢复
 
