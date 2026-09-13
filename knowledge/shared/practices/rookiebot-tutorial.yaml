@@ -279,14 +279,14 @@ rules:
     negativeExample: "在提交的 local.properties 中写入某个开发者的用户目录。"
   - id: shared.rookiebot-java-imports
     topic: rookiebot-java-imports
-    title: "使用正确的项目类与测试断言导入"
-    instruction: "适用范围：采用 RookieBot 新手教程约定的项目；不要求其他项目更换架构。测试使用 org.junit.Assert，不要同时导入 FTC 内部 Assert 的同名静态方法。项目的 Constants 必须解析为本项目的类，不能误导入 com.sun.tools.javac.util.Constants。出现 Android Studio 红线时检查第一条具体报错、import 和 Gradle 配置，并编译生产及测试源集；不要仅靠反复自动补全 imports。"
-    rationale: "同名类型和方法可能被 IDE 错误导入，导致类不存在预期方法或断言调用歧义。"
+    title: "使用正确的项目类与 FTC API 导入"
+    instruction: "适用范围：采用 RookieBot 新手教程约定的项目；不要求其他项目更换架构。项目的 Constants 必须解析为本项目的类，不能误导入 com.sun.tools.javac.util.Constants。FTC SDK、Pedro 与队伍类必须从实际依赖和项目 package 导入；出现 Android Studio 红线时检查第一条具体报错、import 和 Gradle 配置，并编译生产源集，不要仅靠反复自动补全 imports。"
+    rationale: "同名项目类与工具链内部类可能被 IDE 错误导入，导致方法缺失或构建失败。"
     status: approved
     approval:
       approver: "lucasnotfound59"
       role: overall_software_lead
-      approvedAt: 2026-09-06T16:03:37Z
+      approvedAt: 2026-09-13T09:12:38Z
     authority: shared
     policyLevel: local
     applicability:
@@ -297,27 +297,26 @@ rules:
       - type: git
         repository: "OLeslieO/FTC2026-RookieBot"
         commit: "558141588e2a0eb766e195ab71df3c188e942891"
-        file: "TeamCode/src/test/java/org/firstinspires/ftc/teamcode/examples/autonomous/ServoPedroAutoExampleTest.java"
-        symbol: "ServoPedroAutoExampleTest"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/Hardwares.java"
+        symbol: "Constants"
+        line: 14
       - type: git
-        repository: "OLeslieO/FTC2026-RookieBot"
-        commit: "558141588e2a0eb766e195ab71df3c188e942891"
-        file: "TeamCode/src/test/java/org/firstinspires/ftc/teamcode/ServoAngleConversionTest.java"
-        symbol: "ServoAngleConversionTest"
-    positiveExample: |-
-      import org.junit.Assert;
-      Assert.assertEquals(0.5,Hardwares.servoAngleToPosition(180),1e-12);
-    negativeExample: "同时静态导入 org.junit.Assert.assertTrue 和 FTC 内部 Assert.assertTrue。"
+        repository: "lucasnotfound59/FTC-Knowledge-Bank"
+        commit: "6aa385d75484b22b3f73c3b493a695e753ccc76e"
+        file: "docs/superpowers/specs/2026-09-13-ftc-test-utils-layout-design.md"
+        line: 35
+    positiveExample: "import org.firstinspires.ftc.teamcode.pedroPathing.Constants;"
+    negativeExample: "import com.sun.tools.javac.util.Constants;"
   - id: shared.rookiebot-verification-evidence
     topic: rookiebot-verification-evidence
-    title: "分别报告编译、测试和真机验证"
-    instruction: "适用范围：采用 RookieBot 新手教程约定的项目；不要求其他项目更换架构。交付 RookieBot 变更时运行与变更相关的单元测试和 :TeamCode:assembleDebug，并报告所验证的提交或工作区、命令、结果与实际覆盖。区分 Android Studio 索引状态、Gradle 编译、单元测试、部署和真机运行；测试或构建通过不能表述为机器人已运行成功，也不能把已删除测试计入当前结果。"
-    rationale: "真实验证证据应与交付版本对应，软件门禁无法替代接线、定位、机械运动或场地测试。"
+    title: "分别报告构建、机器人测试和真机验证"
+    instruction: "适用范围：采用 RookieBot 新手教程约定的项目；不要求其他项目更换架构。交付 RookieBot 变更时运行 :TeamCode:assembleDebug，并报告所验证的提交或工作区、命令、结果与实际覆盖。机器人侧测试、诊断和校准 OpMode 放在 teamcode/tests，复用工具类放在 teamcode/utils；只有实际部署并运行的 OpMode 才能报告为机器人测试通过。区分 Android Studio 索引、静态检查、Gradle 构建、部署和真机运行，不能把其中一项表述成另一项。"
+    rationale: "软件构建、机器人侧测试与真机验证具有不同证据边界；目录清晰不能替代实际部署和运行。"
     status: approved
     approval:
       approver: "lucasnotfound59"
       role: overall_software_lead
-      approvedAt: 2026-09-06T16:03:37Z
+      approvedAt: 2026-09-13T09:12:38Z
     authority: shared
     policyLevel: local
     applicability:
@@ -325,20 +324,20 @@ rules:
       seasons: []
       profiles: [rookiebot]
     evidence:
-      - type: git
-        repository: "OLeslieO/FTC2026-RookieBot"
-        commit: "558141588e2a0eb766e195ab71df3c188e942891"
-        file: "TeamCode/src/test/java/org/firstinspires/ftc/teamcode/ServoAngleConversionTest.java"
-        symbol: "ServoAngleConversionTest"
       - type: git
         repository: "OLeslieO/FTC2026-RookieBot"
         commit: "558141588e2a0eb766e195ab71df3c188e942891"
         file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/examples/README.md"
         line: 1
+      - type: git
+        repository: "lucasnotfound59/FTC-Knowledge-Bank"
+        commit: "6aa385d75484b22b3f73c3b493a695e753ccc76e"
+        file: "docs/superpowers/specs/2026-09-13-ftc-test-utils-layout-design.md"
+        line: 96
     positiveExample: |-
-      ./gradlew :TeamCode:testDebugUnitTest :TeamCode:assembleDebug
-      报告：测试/构建结果，以及是否实际部署或运行机器人。
-    negativeExample: "仅看到 BUILD SUCCESSFUL 就声称任何机器人均可直接成功运行。"
+      ./gradlew :TeamCode:assembleDebug
+      报告：构建结果；tests OpMode 是否已部署并运行；是否完成真机机构验证。
+    negativeExample: "仅看到 BUILD SUCCESSFUL 就声称 tests OpMode 或机器人已经运行成功。"
   - id: shared.rookiebot-source-provenance
     topic: rookiebot-source-provenance
     title: "保留参考来源并排除已标记缺陷版本"

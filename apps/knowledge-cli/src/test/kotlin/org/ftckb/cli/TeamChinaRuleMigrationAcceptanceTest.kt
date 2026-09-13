@@ -98,11 +98,20 @@ class TeamChinaRuleMigrationAcceptanceTest {
         assertEquals(setOf("ftclib-command","command-based"),ftclib.profiles)
         assertEquals(commands+"shared.ftclib-command-candidate",ftclib.activeRules.map { it.id }.toSet()-generic)
         assertTrue(ftclib.activeRules.none { it.id in rookieIds })
+        val changedRookieRules=setOf(
+            "shared.rookiebot-java-imports",
+            "shared.rookiebot-verification-evidence"
+        )
         for (rule in rules().filter { it.id in rookieIds || it.id=="shared.ftclib-command-candidate" }) {
             val isRookie=rule.id in rookieIds
             assertEquals(if (isRookie) PolicyLevel.LOCAL else PolicyLevel.SHARED,rule.policyLevel,rule.id)
             assertEquals(setOf(if (isRookie) "rookiebot" else "ftclib-command"),rule.applicability.profiles,rule.id)
-            assertEquals(Instant.parse(if (isRookie) "2026-09-06T16:03:37Z" else "2026-09-06T03:06:57.152813Z"),rule.approval!!.approvedAt,rule.id)
+            val expectedApproval=when {
+                rule.id in changedRookieRules -> Instant.parse("2026-09-13T09:12:38Z")
+                isRookie -> Instant.parse("2026-09-06T16:03:37Z")
+                else -> Instant.parse("2026-09-06T03:06:57.152813Z")
+            }
+            assertEquals(expectedApproval,rule.approval!!.approvedAt,rule.id)
         }
     }
 

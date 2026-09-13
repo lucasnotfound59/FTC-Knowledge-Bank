@@ -136,21 +136,21 @@ return new FollowerBuilder(Constants.followerConstants(),hardwareMap)
 
 ## 10. AS 红线先查具体 import
 
-JUnit 测试使用 `org.junit.Assert`。不要再导入 FTC 内部 Assert 的同名断言；不要把项目 Constants 自动补全成 `com.sun.tools.javac.util.Constants`。
+机器人侧测试、诊断和校准 OpMode 放在
+`TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/`；可复用工具类放在
+`TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/`。两个目录都在 `teamcode/` 内，
+与 `subsystems/`、`commands/` 平级。不要建立 TeamCode JUnit、`src/test` 或 `src/androidTest` 测试。
 
-重命名后先核对字段、import 和首条错误，再检查同步与 Gradle 编译。生产源集和测试源集都要检查，不把重复点击自动导入当作修复。
+项目类和 FTC API 必须使用实际 package；例如项目 `Constants` 不得自动补全成
+`com.sun.tools.javac.util.Constants`。先阅读 Android Studio 的第一条具体报错，再检查 import 与 Gradle。
 
 ## 11. 验证结论对应交付版本
 
-RookieBot 的软件检查命令是：
-
 ```bash
-./gradlew :TeamCode:testDebugUnitTest :TeamCode:assembleDebug
+./gradlew :TeamCode:assembleDebug
 ```
 
-在本次来源项目会话中，提交 `5581415` 对应内容通过 5 个测试（包含角度边界、分数角和非法输入）及 Debug 构建。这个结果来自当时 RookieBot 工作区，不是本知识库的测试数量，也不是本次重新在机器人上运行的结果。
-
-后续报告分别写清：检查了哪个版本、命令、编译/测试结果、是否部署、是否真实运行。AS 索引、构建、单元测试与真机验证不是同一种证据。硬件未测试就明确未测试，不使用旧测试数包装当前版本。
+报告必须分别说明构建、部署、tests OpMode 运行和真机机构验证。未实际部署运行的 OpMode 不得写成已通过。
 
 ## 12. 版本标记与来源边界
 
