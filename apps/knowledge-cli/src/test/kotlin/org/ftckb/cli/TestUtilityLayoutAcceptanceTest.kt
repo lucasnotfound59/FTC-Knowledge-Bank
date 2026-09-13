@@ -43,6 +43,10 @@ class TestUtilityLayoutAcceptanceTest {
         }
         val guide=Files.readString(root.resolve("knowledge/guides/practices/rookiebot-tutorial.md"))
         forbidden.forEach { assertFalse(guide.contains(it,ignoreCase=true),"guide: $it") }
+        assertTrue(guide.contains("使用正确的项目类与 FTC API 导入"))
+        assertTrue(guide.contains("分别报告构建、机器人测试和真机验证"))
+        assertFalse(guide.contains("使用正确的项目类与测试断言导入"))
+        assertFalse(guide.contains("分别报告编译、测试和真机验证"))
         assertTrue(guide.contains("teamcode/tests/"))
         assertTrue(guide.contains("teamcode/utils/"))
         assertTrue(guide.contains(":TeamCode:assembleDebug"))

@@ -169,8 +169,8 @@ return new FollowerBuilder(Constants.followerConstants(),hardwareMap)
 - `shared.rookiebot-pedro-complete-builder`：Pedro 构造必须接入底盘和定位器
 - `shared.rookiebot-nonblocking-auto`：用非阻塞步骤组合舵机与路径
 - `shared.rookiebot-sdk-path-hygiene`：共享项目不提交个人 SDK 路径与构建产物
-- `shared.rookiebot-java-imports`：使用正确的项目类与测试断言导入
-- `shared.rookiebot-verification-evidence`：分别报告编译、测试和真机验证
+- `shared.rookiebot-java-imports`：使用正确的项目类与 FTC API 导入
+- `shared.rookiebot-verification-evidence`：分别报告构建、机器人测试和真机验证
 - `shared.rookiebot-source-provenance`：保留参考来源并排除已标记缺陷版本
 
 ## 与已有知识的关系
