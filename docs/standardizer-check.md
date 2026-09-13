@@ -67,8 +67,8 @@ YAML 示例：
     reviewTriggers:
       - paths: ["**/*.java"]
         addedLinePatterns:
-          - '\\b(?:Limelight3A|LLResult)\\b'
-          - '\\.(?:getLatestResult|getBotpose(?:_[A-Za-z0-9]+)?|getTargetTimestamp|getStaleness)\\s*\\('
+          - '\b(?:Limelight3A|LLResult)\b'
+          - '\.(?:getLatestResult|getBotpose(?:_[A-Za-z0-9]+)?|getTargetTimestamp|getStaleness)\s*\('
   - id: official.keep-customizations-in-teamcode
     checks:
       - kind: path-forbidden

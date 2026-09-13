@@ -99,6 +99,21 @@ class CliDocumentationAcceptanceTest {
                 "这些规则当前都是 `candidate`"
             ).forEach { stale -> assertFalse(text.contains(stale),"$file: $stale") }
         }
+        mapOf(
+            "todolist.md" to listOf(
+                "schemaVersion=1",
+                "升级 YAML v4、kernel／项目接入 v2",
+                "README 的 V0.3.1"
+            ),
+            "docs/website/integration-and-checks.md" to listOf("kernel schemaVersion 当前为 1")
+        ).forEach { (file,staleClaims) ->
+            val text=Files.readString(root.resolve(file))
+            staleClaims.forEach { stale -> assertFalse(text.contains(stale),"$file: $stale") }
+        }
+        val roadmap=Files.readString(root.resolve("todolist.md"))
+        listOf("V0.5.0 基线","YAML v4、kernel JSON v2 与项目接入协议 v2","schemaVersion=2").forEach { current ->
+            assertTrue(roadmap.contains(current),"todolist.md: $current")
+        }
     }
 
     @Test

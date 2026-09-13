@@ -22,9 +22,10 @@
 - [ ] 实现官方 > 明确全局 > 本地 > 普通共享的确定性优先级及排除／覆盖解释，保留审批职责。
 - [ ] 增加项目 profile，解决 RookieBot 与 FTCLib 架构适用冲突，所有消费入口使用同一上下文。
 - [x] 以带位置和检测边界的人工复核替代 Limelight 硬正则；V0.5.0 的条件式 soft 保留已审批规则并报告命中。
-- [ ] 升级 YAML v4、kernel／项目接入 v2，验证旧固定版本不自动升级及新版本真实端到端。
+- [x] 发布 YAML v4、kernel JSON v2 与项目接入协议 v2。
+- [ ] 继续验证旧固定版本不自动升级，以及未来版本的真实端到端升级流程。
 - [ ] 在现有 Git 联网安装中添加阶段进度、每操作超时、子进程清理及失败恢复说明；这不是 Agent 联网检索功能。
-- [ ] 按 README 的 V0.3.1 标记和 feat／patch／大更新约定管理后续版本，Git tag／Release 发布另行确认。
+- [ ] 按 README 的 V0.5.0 基线和 feat／patch／大更新约定管理后续版本，Git tag／Release 发布另行确认。
 
 ## MVP：队内代码 Agent 闭环
 
@@ -40,7 +41,7 @@
 - [x] 实现 Edit 模式：在用户当前 Git branch 内自动修改，引用采用的规范，展示 Agent 本轮 diff，并支持 `/undo` 与 `/discard`；
 - [ ] 实现 Run 模式：运行 Gradle 构建并诊断失败原因；
 - [x] 保护仓库外路径、凭据和 `.git`；允许当前 branch 有既有改动，但 Agent 不得自动 commit、push 或 merge；
-- [x] 稳定机器接口：`ftckb validate/resolve --json`（schemaVersion=1、确定性排序、统一 JSON 错误形状），供外部 Agent 把知识库当确定性“策略裁决器”调用（契约文档 `docs/kernel-contract.md`）；
+- [x] 稳定机器接口：`ftckb validate/resolve --json`（schemaVersion=2、确定性排序、统一 JSON 错误形状），供外部 Agent 把知识库当确定性“策略裁决器”调用（契约文档 `docs/kernel-contract.md`）；
 - [x] 本地网页会话 `ftckb serve`：127.0.0.1 单会话中文界面，随机端口 + 一次性 token，页内改参数保留对话历史，API key 只进内存；
 - [x] 固定场景质量评估 `ftckb eval`（5 个场景、逐条 PASS/FAIL）；离线脚本化全绿，线上 deepseek-v4-pro 连续多轮 5/5（预算提升 + 检索兜底 + 提示词加固后稳定）；
 - [x] 规范器 `ftckb check`：对 diff 做确定性执法（path 看触及路径，regex 看新增行）；当前 4 条生效规则带硬检查；无 checks/无 trigger 为无条件 soft，Limelight validity/freshness 的 `reviewTriggers` 为条件式 soft，命中不阻塞（退出码 0）但 Agent 必须向用户报告；AS 插件 Edit 后自动检查；CI 门禁 `scripts/check-gate.sh`；
