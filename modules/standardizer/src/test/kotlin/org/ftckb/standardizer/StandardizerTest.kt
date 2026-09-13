@@ -8,8 +8,26 @@ import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.ftckb.domain.KnowledgeRule
+import org.ftckb.domain.RuleApplicability
+import org.ftckb.domain.RuleAuthority
+import org.ftckb.domain.RuleReviewTrigger
+import org.ftckb.domain.RuleStatus
 
 class StandardizerTest {
+    private fun softRule(id:String,triggers:List<RuleReviewTrigger> =emptyList())=KnowledgeRule(
+        id=id,
+        topic=id.substringAfter('.').replace('.','-'),
+        title=id,
+        instruction="Review $id",
+        rationale="Test conditional soft review.",
+        status=RuleStatus.APPROVED,
+        authority=RuleAuthority.SHARED,
+        applicability=RuleApplicability(),
+        evidence=emptyList(),
+        reviewTriggers=triggers
+    )
+
     private fun repository(root:Path):Pair<Path,Git> {
         val repo=Files.createDirectory(root.resolve("repo"))
         Files.writeString(repo.resolve("tracked.txt"),"base\n")
@@ -70,5 +88,44 @@ class StandardizerTest {
         assertThrows(IllegalArgumentException::class.java) {
             Standardizer.parsePatch("diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ broken\n")
         }
+    }
+
+    @Test
+    fun `review triggers emit soft only for matching added lines`() {
+        val always=softRule("shared.always")
+        val triggered=softRule("shared.limelight",listOf(RuleReviewTrigger(
+            listOf("**/*.java"),
+            listOf("\\bLLResult\\b","\\.getLatestResult\\s*\\(")
+        )))
+        val unrelated=listOf(Standardizer.DiffChange(
+            "TeamCode/src/main/java/example/DriveSubsystem.java",listOf(10 to "motor.setPower(power);")
+        ))
+        val relevant=listOf(Standardizer.DiffChange(
+            "TeamCode/src/main/java/example/Vision.java",listOf(7 to "LLResult result=limelight.getLatestResult();")
+        ))
+
+        assertEquals(listOf("shared.always"),Standardizer.evaluate(listOf(triggered,always),unrelated).soft.map { it.first })
+        assertEquals(
+            listOf("shared.always","shared.limelight"),
+            Standardizer.evaluate(listOf(triggered,always),relevant).soft.map { it.first }
+        )
+    }
+
+    @Test
+    fun `path-only triggers and duplicate matches emit one sorted soft entry`() {
+        val pathOnly=softRule("shared.z-rule",listOf(RuleReviewTrigger(listOf("TeamCode/**"),emptyList())))
+        val repeated=softRule("shared.a-rule",listOf(
+            RuleReviewTrigger(listOf("**/*.java"),listOf("LLResult")),
+            RuleReviewTrigger(listOf("**/Vision.java"),listOf("getLatestResult"))
+        ))
+        val changes=listOf(Standardizer.DiffChange(
+            "TeamCode/src/main/java/example/Vision.java",
+            listOf(1 to "LLResult result=limelight.getLatestResult();")
+        ))
+
+        assertEquals(
+            listOf("shared.a-rule","shared.z-rule"),
+            Standardizer.evaluate(listOf(pathOnly,repeated),changes).soft.map { it.first }
+        )
     }
 }

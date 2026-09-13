@@ -37,12 +37,34 @@ object Standardizer {
         }
         rules.forEach { rule ->
             if (rule.checks.isEmpty()) {
-                soft+=rule.id to rule.instruction
+                if (rule.reviewTriggers.isEmpty() || reviewTriggered(rule,changes,matchers)) {
+                    soft+=rule.id to rule.instruction
+                }
             } else {
                 rule.checks.forEach { check -> evaluateCheck(rule.id,check,changes,matchers,violations) }
             }
         }
-        return Outcome(violations,soft)
+        return Outcome(violations,soft.distinctBy { it.first }.sortedBy { it.first })
+    }
+
+    private fun reviewTriggered(
+        rule:KnowledgeRule,
+        changes:List<DiffChange>,
+        matchers:(String)->java.nio.file.PathMatcher?
+    ):Boolean=rule.reviewTriggers.any { trigger ->
+        val regexes=trigger.addedLinePatterns.mapNotNull { pattern ->
+            runCatching { Regex(pattern) }.getOrNull()
+        }
+        trigger.paths.any { glob ->
+            val matcher=matchers(glob)
+            matcher!=null && changes.any { change ->
+                matcher.matches(Path.of(change.path)) && when {
+                    trigger.addedLinePatterns.isEmpty() -> true
+                    regexes.isEmpty() -> false
+                    else -> change.addedLines.any { (_,text) -> regexes.any { it.containsMatchIn(text) } }
+                }
+            }
+        }
     }
 
     /** Parses a unified diff/patch and returns the added lines per file. */
