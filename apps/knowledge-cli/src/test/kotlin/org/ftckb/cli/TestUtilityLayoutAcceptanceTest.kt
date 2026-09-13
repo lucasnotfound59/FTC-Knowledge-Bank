@@ -37,18 +37,17 @@ class TestUtilityLayoutAcceptanceTest {
         return loaded.rules
     }
 
-    private fun patch(path:String,line:String)="""
+    private fun patch(path:String,lines:List<String>)="""
         diff --git a/$path b/$path
         new file mode 100644
         --- /dev/null
         +++ b/$path
-        @@ -0,0 +1 @@
-        +$line
-    """.trimIndent()+"\n"
+        @@ -0,0 +1,${lines.size} @@
+    """.trimIndent()+"\n"+lines.joinToString(separator="\n",postfix="\n") { "+$it" }
 
-    private fun checkPatch(root:Path,path:String,line:String):Pair<Int,JsonNode> {
+    private fun checkPatch(root:Path,patch:String):Pair<Int,JsonNode> {
         val file=root.resolve("change.patch")
-        Files.writeString(file,patch(path,line))
+        Files.writeString(file,patch)
         val out=ByteArrayOutputStream()
         val code=runCli(listOf(
             "check",root.toString(),"--knowledge",this.root.resolve("knowledge").toString(),
@@ -57,6 +56,8 @@ class TestUtilityLayoutAcceptanceTest {
         ),PrintStream(out),StringReader("").buffered())
         return code to mapper.readTree(out.toString())
     }
+
+    private fun checkAddedLines(root:Path,path:String,vararg lines:String)=checkPatch(root,patch(path,lines.toList()))
 
     @Test
     fun `RookieBot guidance no longer recommends JUnit test source sets`() {
@@ -115,7 +116,7 @@ class TestUtilityLayoutAcceptanceTest {
                 RuleCheckKind.PATH_FORBIDDEN to "TeamCode/src/main/java/org/firstinspires/ftc/{tests,utils}/**",
                 RuleCheckKind.PATH_FORBIDDEN to "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/{test,util,tool,tools}/**",
                 RuleCheckKind.REGEX_FORBIDDEN to "(?i)^\\s*import\\s+(?:static\\s+)?(?:org\\.junit|junit\\.)",
-                RuleCheckKind.REGEX_FORBIDDEN to "(?i)\\b(?:testImplementation|androidTestImplementation|testCompile|androidTestCompile)\\b.*(?:org\\.junit|junit:)"
+                RuleCheckKind.REGEX_FORBIDDEN to "(?i)\\b(?:testImplementation|androidTestImplementation|testCompile|androidTestCompile)\\b(?:\\s*\\(\\s*|\\s+)[\"'](?:org\\.junit|junit:)[^\"']*[\"']"
             ),
             rule.checks.map { it.kind to it.pattern }
         )
@@ -125,27 +126,63 @@ class TestUtilityLayoutAcceptanceTest {
     @Test
     fun `global test utility layout blocks wrong TeamCode paths and JUnit additions`() {
         val forbidden=listOf(
-            "TeamCode/src/test/java/org/firstinspires/ftc/teamcode/DriveTest.java" to "class DriveTest {}",
-            "TeamCode/src/androidTest/java/org/firstinspires/ftc/teamcode/DriveTest.java" to "class DriveTest {}",
-            "TeamCode/src/main/java/tests/DriveTest.java" to "class DriveTest {}",
-            "TeamCode/src/main/java/org/firstinspires/ftc/utils/AngleUtils.java" to "class AngleUtils {}",
-            "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/DriveTest.java" to "import org.junit.Test;",
-            "TeamCode/build.gradle" to "testImplementation 'junit:junit:4.13.2'"
+            "TeamCode/src/test/java/org/firstinspires/ftc/teamcode/DriveTest.java" to listOf("class DriveTest {}"),
+            "TeamCode/src/androidTest/java/org/firstinspires/ftc/teamcode/DriveTest.java" to listOf("class DriveTest {}"),
+            "TeamCode/src/main/java/tests/DriveTest.java" to listOf("class DriveTest {}"),
+            "TeamCode/src/main/java/org/firstinspires/ftc/utils/AngleUtils.java" to listOf("class AngleUtils {}"),
+            "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/DriveTest.java" to listOf("import org.junit.Test;"),
+            "TeamCode/build.gradle" to listOf("testImplementation 'junit:junit:4.13.2'"),
+            "TeamCode/build.gradle.kts" to listOf("testImplementation(","    \"org.junit.jupiter:junit-jupiter:5.11.0\"","),"),
+            "TeamCode/build.gradle" to listOf("testImplementation(","    'junit:junit:4.13.2'",")")
         )
         val allowed=listOf(
-            "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/DriveTest.java" to "class DriveTest {}",
-            "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/AngleUtils.java" to "class AngleUtils {}",
-            "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/Drive.java" to "class Drive {}"
+            "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/DriveTest.java" to listOf("class DriveTest {}"),
+            "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/AngleUtils.java" to listOf("class AngleUtils {}"),
+            "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/Drive.java" to listOf("class Drive {}")
         )
-        forbidden.forEach { (path,line) ->
-            val (code,json)=checkPatch(Files.createTempDirectory("layout-forbidden"),path,line)
+        forbidden.forEach { (path,lines) ->
+            val (code,json)=checkAddedLines(Files.createTempDirectory("layout-forbidden"),path,*lines.toTypedArray())
             assertEquals(1,code,"$path: $json")
             assertTrue(json["violations"].any { it["ruleId"].asText()==layoutRuleId },"$path: $json")
         }
-        allowed.forEach { (path,line) ->
-            val (code,json)=checkPatch(Files.createTempDirectory("layout-allowed"),path,line)
+        allowed.forEach { (path,lines) ->
+            val (code,json)=checkAddedLines(Files.createTempDirectory("layout-allowed"),path,*lines.toTypedArray())
             assertEquals(0,code,"$path: $json")
             assertTrue(json["violations"].none { it["ruleId"].asText()==layoutRuleId },"$path: $json")
         }
+    }
+
+    @Test
+    fun `global test utility layout permits pure removal and rename away`() {
+        val forbidden="TeamCode/src/main/java/org/firstinspires/ftc/utils/AngleUtils.java"
+        val canonical="TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/AngleUtils.java"
+        val deletion="""
+            diff --git a/$forbidden b/$forbidden
+            deleted file mode 100644
+            --- a/$forbidden
+            +++ /dev/null
+            @@ -1 +0,0 @@
+            -class AngleUtils {}
+        """.trimIndent()+"\n"
+        val renameAway="""
+            diff --git a/$forbidden b/$canonical
+            similarity index 100%
+            rename from $forbidden
+            rename to $canonical
+        """.trimIndent()+"\n"
+        val renameInto="""
+            diff --git a/$canonical b/$forbidden
+            similarity index 100%
+            rename from $canonical
+            rename to $forbidden
+        """.trimIndent()+"\n"
+        for (patch in listOf(deletion,renameAway)) {
+            val (code,json)=checkPatch(Files.createTempDirectory("layout-correction"),patch)
+            assertEquals(0,code,json.toString())
+            assertTrue(json["violations"].none { it["ruleId"].asText()==layoutRuleId },json.toString())
+        }
+        val (code,json)=checkPatch(Files.createTempDirectory("layout-rename-into"),renameInto)
+        assertEquals(1,code,json.toString())
+        assertTrue(json["violations"].any { it["ruleId"].asText()==layoutRuleId },json.toString())
     }
 }

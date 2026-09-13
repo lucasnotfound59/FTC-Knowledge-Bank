@@ -11,6 +11,8 @@ import org.junit.jupiter.api.io.TempDir
 import org.ftckb.domain.KnowledgeRule
 import org.ftckb.domain.RuleApplicability
 import org.ftckb.domain.RuleAuthority
+import org.ftckb.domain.RuleCheck
+import org.ftckb.domain.RuleCheckKind
 import org.ftckb.domain.RuleReviewTrigger
 import org.ftckb.domain.RuleStatus
 
@@ -26,6 +28,10 @@ class StandardizerTest {
         applicability=RuleApplicability(),
         evidence=emptyList(),
         reviewTriggers=triggers
+    )
+
+    private fun forbiddenPathRule(pattern:String)=softRule("shared.forbidden-path").copy(
+        checks=listOf(RuleCheck(RuleCheckKind.PATH_FORBIDDEN,pattern,null,"Forbidden path"))
     )
 
     private fun repository(root:Path):Pair<Path,Git> {
@@ -88,6 +94,46 @@ class StandardizerTest {
         assertThrows(IllegalArgumentException::class.java) {
             Standardizer.parsePatch("diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ broken\n")
         }
+    }
+
+    @Test
+    fun `path forbidden permits deletion and rename away but blocks writes and rename into`() {
+        val forbidden="TeamCode/src/test/java/org/firstinspires/ftc/teamcode/DriveTest.java"
+        val canonical="TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/DriveTest.java"
+        val rule=forbiddenPathRule("TeamCode/src/test/**")
+        val deletion=Standardizer.parsePatch("""
+            diff --git a/$forbidden b/$forbidden
+            deleted file mode 100644
+            --- a/$forbidden
+            +++ /dev/null
+            @@ -1 +0,0 @@
+            -class DriveTest {}
+        """.trimIndent()+"\n")
+        val renameAway=Standardizer.parsePatch("""
+            diff --git a/$forbidden b/$canonical
+            similarity index 100%
+            rename from $forbidden
+            rename to $canonical
+        """.trimIndent()+"\n")
+        val renameInto=Standardizer.parsePatch("""
+            diff --git a/$canonical b/$forbidden
+            similarity index 100%
+            rename from $canonical
+            rename to $forbidden
+        """.trimIndent()+"\n")
+        val modification=Standardizer.parsePatch("""
+            diff --git a/$forbidden b/$forbidden
+            --- a/$forbidden
+            +++ b/$forbidden
+            @@ -1 +1 @@
+            -class DriveTest {}
+            +class DriveTest { void changed() {} }
+        """.trimIndent()+"\n")
+
+        assertTrue(Standardizer.evaluate(listOf(rule),deletion).violations.isEmpty())
+        assertTrue(Standardizer.evaluate(listOf(rule),renameAway).violations.isEmpty())
+        assertEquals(1,Standardizer.evaluate(listOf(rule),renameInto).violations.size)
+        assertEquals(1,Standardizer.evaluate(listOf(rule),modification).violations.size)
     }
 
     @Test

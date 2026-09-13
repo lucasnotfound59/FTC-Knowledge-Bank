@@ -39,7 +39,7 @@ JSON 契约（沿用 kernel 风格，退出码扩展）：
 
 - 退出码：`0` 无硬违规；`1` 存在硬违规（violations 非空）；`2` 知识/仓库加载、校验、上下文或规则冲突失败；`64` 参数错误。
 - 确定性：violations 按 ruleId+path+line 排序；soft 按 ruleId 排序；同输入同输出。
-- 判定范围：路径 checks 检查所有触及路径（含删除、只删行、空文件、重命名前后路径）；regex checks 只检查新增行（不报全库历史债）。`--diff` 使用同样的路径/新增行语义；非空坏补丁报错，不静默通过。
+- 判定范围：`path-forbidden` 检查新增、修改与重命名目标路径；纯删除或从命中路径改名离开不违规，便于纠正既有错误布局。`path-required` 和 review trigger 仍检查所有触及路径（含删除、只删行、空文件、重命名前后路径）。regex checks 只检查新增行，不报全库历史债；连续新增行组成的同一块可供正则跨行匹配。`--diff` 使用同样的路径/新增行语义；非空坏补丁报错，不静默通过。
 - 默认同时检查 HEAD→index 和 HEAD→工作区并去重，避免暂存违规仅在工作区撤销后漏检；仅存在于 index 的行号可能与当前文件不同，应结合 staged diff 阅读。
 - `check` 使用与 `resolve` 完全相同的生效规则集（含冲突检测），保证“告知什么就执法什么”。
 
@@ -49,10 +49,10 @@ JSON 契约（沿用 kernel 风格，退出码扩展）：
 
 | kind | 语义 | 判定 |
 | --- | --- | --- |
-| `path-forbidden` | 禁止改动命中路径 | diff 触及 `pattern` 匹配的路径 → violation |
+| `path-forbidden` | 禁止写入命中路径 | 新增、修改或重命名目标命中 `pattern` → violation；纯删除或从命中路径改名离开通过 |
 | `path-required` | 改动必须包含命中路径 | diff 未触及任何匹配路径 → violation（本身没有“改 X 才触发”的条件） |
 | `regex-required` | 新增行必须含模式 | 匹配 `appliesTo` 路径的已加行中没有任何一行命中 `pattern` → violation |
-| `regex-forbidden` | 新增行不得含模式 | 已加行命中 `pattern` → violation（行号=首次命中） |
+| `regex-forbidden` | 新增行不得含模式 | 已加行或连续新增行块命中 `pattern` → violation（行号=首次命中） |
 
 字段：`kind`、`pattern`（glob 或正则，见下）、`appliesTo`（可选 glob，限定路径）、`note`（人类可读说明）。
 `path-*` 的 pattern 是 glob；`regex-*` 的 pattern 是 Java 正则，`appliesTo` 是路径 glob。

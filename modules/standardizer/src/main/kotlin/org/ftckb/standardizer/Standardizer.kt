@@ -21,7 +21,11 @@ import org.ftckb.domain.RuleCheckKind
 /** The machine-enforceable standardizer: evaluates the checks attached to active
  * rules against added lines of a diff. Deterministic, no model involved. */
 object Standardizer {
-    data class DiffChange(val path:String,val addedLines:List<Pair<Int,String>>)
+    data class DiffChange(
+        val path:String,
+        val addedLines:List<Pair<Int,String>>,
+        val writesPath:Boolean=addedLines.isNotEmpty()
+    )
 
     data class Violation(
         val ruleId:String,val check:String,val path:String?,val line:Int?,val pattern:String,val detail:String
@@ -138,14 +142,18 @@ object Standardizer {
         if (header.oldPath!=DiffEntry.DEV_NULL) paths+=header.oldPath
         if (header.newPath!=DiffEntry.DEV_NULL) paths+=header.newPath
         return paths.map { path ->
-            DiffChange(path,if (path==header.newPath) added else emptyList())
+            DiffChange(path,if (path==header.newPath) added else emptyList(),path==header.newPath)
         }
     }
 
     private fun mergeChanges(changes:List<DiffChange>):List<DiffChange> =changes
         .groupBy { it.path }
         .map { (path,items) ->
-            DiffChange(path,items.flatMap { it.addedLines }.distinct().sortedWith(compareBy({ it.first },{ it.second })))
+            DiffChange(
+                path,
+                items.flatMap { it.addedLines }.distinct().sortedWith(compareBy({ it.first },{ it.second })),
+                items.any { it.writesPath }
+            )
         }
         .sortedBy { it.path }
 
@@ -162,7 +170,7 @@ object Standardizer {
         fun fileApplies(path:String):Boolean=appliesTo==null || appliesTo.matches(Path.of(path))
         when (check.kind) {
             RuleCheckKind.PATH_FORBIDDEN -> {
-                changes.filter { pathMatches(it.path) }.forEach { change ->
+                changes.filter { it.writesPath && pathMatches(it.path) }.forEach { change ->
                     violations+=Violation(
                         ruleId,"path-forbidden",change.path,change.addedLines.firstOrNull()?.first,
                         check.pattern,check.note
@@ -192,10 +200,26 @@ object Standardizer {
             RuleCheckKind.REGEX_FORBIDDEN -> {
                 val regex=runCatching { Regex(check.pattern) }.getOrNull() ?: return
                 changes.filter { fileApplies(it.path) }.forEach { change ->
-                    val hit=change.addedLines.firstOrNull { (_,text) -> regex.containsMatchIn(text) } ?: return@forEach
+                    val hit=regexHit(regex,change.addedLines) ?: return@forEach
                     violations+=Violation(ruleId,"regex-forbidden",change.path,hit.first,check.pattern,check.note)
                 }
             }
         }
+    }
+
+    private fun regexHit(regex:Regex,lines:List<Pair<Int,String>>):Pair<Int,String>? {
+        val blocks=mutableListOf<MutableList<Pair<Int,String>>>()
+        lines.forEach { line ->
+            val block=blocks.lastOrNull()
+            if (block==null || line.first!=block.last().first+1) blocks+=mutableListOf(line)
+            else block+=line
+        }
+        blocks.forEach { block ->
+            val text=block.joinToString("\n") { it.second }
+            val match=regex.find(text) ?: return@forEach
+            val lineIndex=text.substring(0,match.range.first).count { it=='\n' }
+            return block[lineIndex]
+        }
+        return null
     }
 }

@@ -158,7 +158,7 @@ ftckb check /path/to/FtcRobotController --knowledge knowledge --team 20827 --sea
 - 输出确定性：activeRules 按 id，excludedRules/overriddenRules 按 ruleId，conflicts 按 topic 排序，profiles 等集合规范化并排序，evidence/checks 保留声明顺序；同知识、上下文及 diff 得到相同输出。
 - 退出码：成功 0；check 硬违规 1；知识加载/校验、上下文或冲突失败 2；参数错误 64。JSON 错误的 error.code 为 usage / load-error / invalid-knowledge / context-required（缺 profile 选择）/ invalid-context（未知或互斥 profile）/ conflict（check 前置裁决冲突）。完整契约见 [docs/kernel-contract.md](kernel-contract.md)，契约的可执行定义在 `KernelJsonAcceptanceTest`。
 
-`ftckb check` 默认合并 HEAD→index 与 HEAD→工作区（含非忽略 untracked）：路径检查覆盖所有触及路径（含删除和重命名），regex 只检查新增行；可用 `--diff FILE` 替代。无 checks/无 trigger 的 active 规则为无条件 soft；有 `reviewTriggers` 的无-check 规则只在匹配时输出条件式 soft。Limelight validity/freshness 命中不阻塞，仍需如实报告。详见 [docs/standardizer-check.md](standardizer-check.md)。
+`ftckb check` 默认合并 HEAD→index 与 HEAD→工作区（含非忽略 untracked）：`path-forbidden` 检查新增、修改和重命名目标，允许纯删除或从命中路径改名离开；`path-required` 与 review trigger 仍覆盖所有触及路径（含删除和重命名）。regex 只检查新增行，但可匹配连续新增行块；可用 `--diff FILE` 替代。无 checks/无 trigger 的 active 规则为无条件 soft；有 `reviewTriggers` 的无-check 规则只在匹配时输出条件式 soft。Limelight validity/freshness 命中不阻塞，仍需如实报告。详见 [docs/standardizer-check.md](standardizer-check.md)。
 
 编译、静态检查与 JSON Schema 验证不等于 Robot Controller、Driver Station、部署或真机验证。
 
