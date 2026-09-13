@@ -48,6 +48,6 @@ rules:
         appliesTo: "TeamCode/**/*.java"
         note: "目标 TeamCode 项目不使用 JUnit；改为 teamcode/tests 中的机器人侧 OpMode"
       - kind: regex-forbidden
-        pattern: '(?i)\b(?:testImplementation|androidTestImplementation|testCompile|androidTestCompile)\b(?:\s*\(\s*|\s+)["''](?:org\.junit|junit:)[^"'']*["'']'
+        pattern: '(?i)\b(?:testImplementation|androidTestImplementation|testCompile|androidTestCompile)\b(?:\s*\(\s*|\s+)["''][^"'']*(?:org\.junit|junit:)[^"'']*["'']'
         appliesTo: "TeamCode/build.gradle*"
-        note: "目标 TeamCode 构建不添加 JUnit test dependency；括号调用中的连续新增行也会检查"
+        note: "目标 TeamCode 构建不添加 JUnit test dependency"

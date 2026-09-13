@@ -97,7 +97,7 @@ class StandardizerTest {
     }
 
     @Test
-    fun `path forbidden permits deletion and rename away but blocks writes and rename into`() {
+    fun `path forbidden blocks deletion and both sides of rename`() {
         val forbidden="TeamCode/src/test/java/org/firstinspires/ftc/teamcode/DriveTest.java"
         val canonical="TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/DriveTest.java"
         val rule=forbiddenPathRule("TeamCode/src/test/**")
@@ -130,10 +130,27 @@ class StandardizerTest {
             +class DriveTest { void changed() {} }
         """.trimIndent()+"\n")
 
-        assertTrue(Standardizer.evaluate(listOf(rule),deletion).violations.isEmpty())
-        assertTrue(Standardizer.evaluate(listOf(rule),renameAway).violations.isEmpty())
+        assertEquals(1,Standardizer.evaluate(listOf(rule),deletion).violations.size)
+        assertEquals(1,Standardizer.evaluate(listOf(rule),renameAway).violations.size)
         assertEquals(1,Standardizer.evaluate(listOf(rule),renameInto).violations.size)
         assertEquals(1,Standardizer.evaluate(listOf(rule),modification).violations.size)
+    }
+
+    @Test
+    fun `regex forbidden keeps legacy per line matching before joined blocks`() {
+        val rule=softRule("shared.forbidden-import").copy(checks=listOf(RuleCheck(
+            RuleCheckKind.REGEX_FORBIDDEN,
+            "^\\s*import\\s+org\\.junit\\.Test;",
+            "**/*.java",
+            "JUnit imports are forbidden"
+        )))
+        val outcome=Standardizer.evaluate(listOf(rule),listOf(Standardizer.DiffChange(
+            "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/Vision.java",
+            listOf(1 to "package org.firstinspires.ftc.teamcode;",2 to "import org.junit.Test;")
+        )))
+
+        assertEquals(1,outcome.violations.size)
+        assertEquals(2,outcome.violations.single().line)
     }
 
     @Test

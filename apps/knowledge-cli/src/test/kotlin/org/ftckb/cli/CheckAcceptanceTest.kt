@@ -159,6 +159,21 @@ class CheckAcceptanceTest {
     }
 
     @Test
+    fun `path forbidden deletion of a protected file fails with exit one`(@TempDir root:Path) {
+        val repo=writeRepo(root)
+        Files.delete(repo.resolve("build.common.gradle"))
+
+        val (code,out)=runCheck(repo,writeKnowledge(root),listOf("--json"))
+
+        assertEquals(1,code,out)
+        assertSchemaValid(out)
+        val node=mapper.readTree(out)
+        assertEquals("official.keep-customizations-in-teamcode",node["violations"][0]["ruleId"].asText())
+        assertEquals("path-forbidden",node["violations"][0]["check"].asText())
+        assertEquals("build.common.gradle",node["violations"][0]["path"].asText())
+    }
+
+    @Test
     fun `staged violation reverted only in worktree still fails`(@TempDir root:Path) {
         val repo=writeRepo(root)
         Files.writeString(repo.resolve("build.common.gradle"),"// sdk\n// staged violation\n")

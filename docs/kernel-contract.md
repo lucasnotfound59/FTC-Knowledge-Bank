@@ -111,7 +111,7 @@ violations 必有 ruleId/check/pattern/detail，可有 path/line；soft 为 rule
 - activeRules 按 id；excludedRules/overriddenRules 按 ruleId；conflicts 按 topic；嵌套 IDs、reasons、profiles、teams/seasons、authorities 键以及 trigger paths/patterns 排序。
 - check violations 按 ruleId/path/line，soft 按 ruleId。证据和 checks 保留规则声明顺序。
 - 同知识内容、team、season、normalized profiles 和相同 diff（对 check）产生逐字节相同 stdout；输出不注入运行时间戳，证据日期来自数据。
-- 默认 check 合并 HEAD→index 与 HEAD→工作区，包括非忽略 untracked；`path-forbidden` 检查新增、修改和重命名目标路径，允许纯删除或从命中路径改名离开以修复既有布局；`path-required` 与 review trigger 仍覆盖删除、只删行、空文件及重命名前后路径。regex 只看新增行，但可在连续新增行块中匹配跨行模式。
+- 默认 check 合并 HEAD→index 与 HEAD→工作区，包括非忽略 untracked；路径 checks 覆盖删除、只删行、空文件及重命名前后路径。`regex-required` 和 review trigger 只逐条查看新增行；`regex-forbidden` 先逐条查看新增行，再可在连续新增行块中匹配跨行模式。
 - --diff 替代默认集合；空补丁合法，无法解析的非空补丁失败。见 [规范器](standardizer-check.md)。
 
 ## 7. 变更、工件与验证边界

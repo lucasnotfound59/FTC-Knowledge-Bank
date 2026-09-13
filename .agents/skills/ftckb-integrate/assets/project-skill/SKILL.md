@@ -39,7 +39,7 @@ python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.
 - 退出 1：硬违规，修复后重跑。已有违规属于用户基线时明确说明，不将其冒充本次引入，也不声称最终检查通过。
 - 退出 2/64：加载、配置、规则冲突或调用错误，不等同于代码通过。
 
-默认 check 覆盖 staged、unstaged 和非忽略 untracked 变更。路径规则看触及路径（含删除/重命名），regex 仅看新增行。`--diff /path/to/change.patch` 只用于明确范围的检查，并披露排除的项目改动；交付仍运行默认全工作区 check，不靠缩小 diff 隐藏违规。
+默认 check 覆盖 staged、unstaged 和非忽略 untracked 变更。路径规则看触及路径（含删除/重命名）。regex 只看新增行：`regex-required` 和 review trigger 逐条匹配，`regex-forbidden` 先逐条匹配，再可匹配连续新增行块。`--diff /path/to/change.patch` 只用于明确范围的检查，并披露排除的项目改动；交付仍运行默认全工作区 check，不靠缩小 diff 隐藏违规。
 
 硬检查不等于完整语义验证。遇到看似误报的规则，展示 ruleId、适用代码与原因，请维护者调整规则；不要擅改知识库或插入无意义代码来过检查。
 

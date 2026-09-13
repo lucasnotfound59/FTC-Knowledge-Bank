@@ -105,14 +105,14 @@ SDK、Pedro Pathing、Dashboard 和故障排查等教程继续归入 FTC 教程�
 
 默认检查合并 HEAD→index 和 HEAD→工作区的变化，包含非忽略 untracked 文件并去重。暂存的违规不会因为只在工作区撤销而漏检。仅存在于 index 的行号需结合 staged diff 阅读。
 
-路径规则检查触及路径，包括删除、只删行、空文件和重命名前后路径；正则规则只检查新增行。显式 --diff 使用补丁作为检查输入；空补丁合法，无法解析的非空补丁报错。
+路径规则检查触及路径，包括删除、只删行、空文件和重命名前后路径。正则规则只检查新增行：`regex-required` 及 review trigger 逐条匹配，`regex-forbidden` 先逐条匹配，再可匹配连续新增行块。显式 --diff 使用补丁作为检查输入；空补丁合法，无法解析的非空补丁报错。
 
 | 检查类型 | 语义 |
 | --- | --- |
 | path-forbidden | 变化集合触及禁止路径即违规 |
 | path-required | 变化集合必须包含匹配路径；本身没有“改 X 才触发”的条件 |
 | regex-required | 适用文件的新增行集合必须包含匹配模式 |
-| regex-forbidden | 新增行出现禁止模式即违规 |
+| regex-forbidden | 先逐条检查新增行，再检查连续新增行块；出现禁止模式即违规 |
 
 无 checks/无 trigger 的生效规则返回无条件 soft；无 checks/有 `reviewTriggers` 的规则是**条件式 soft**，同一 trigger 的路径和新增行模式都匹配才返回 soft；有 checks 才产生硬违规。当前 **4 条生效规则带硬检查**。两条 approved Limelight validity/freshness 规则使用条件式 soft：无关 Java 不产生 Limelight soft，命中时若没有其他硬违规仍是退出码 0。soft 是人工/模型复核请求，不是机器已经证明违规或真机验证；**Agent 必须向用户报告**每个命中的 soft。
 

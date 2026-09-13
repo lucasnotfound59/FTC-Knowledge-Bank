@@ -116,7 +116,7 @@ class TestUtilityLayoutAcceptanceTest {
                 RuleCheckKind.PATH_FORBIDDEN to "TeamCode/src/main/java/org/firstinspires/ftc/{tests,utils}/**",
                 RuleCheckKind.PATH_FORBIDDEN to "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/{test,util,tool,tools}/**",
                 RuleCheckKind.REGEX_FORBIDDEN to "(?i)^\\s*import\\s+(?:static\\s+)?(?:org\\.junit|junit\\.)",
-                RuleCheckKind.REGEX_FORBIDDEN to "(?i)\\b(?:testImplementation|androidTestImplementation|testCompile|androidTestCompile)\\b(?:\\s*\\(\\s*|\\s+)[\"'](?:org\\.junit|junit:)[^\"']*[\"']"
+                RuleCheckKind.REGEX_FORBIDDEN to "(?i)\\b(?:testImplementation|androidTestImplementation|testCompile|androidTestCompile)\\b(?:\\s*\\(\\s*|\\s+)[\"'][^\"']*(?:org\\.junit|junit:)[^\"']*[\"']"
             ),
             rule.checks.map { it.kind to it.pattern }
         )
@@ -132,6 +132,7 @@ class TestUtilityLayoutAcceptanceTest {
             "TeamCode/src/main/java/org/firstinspires/ftc/utils/AngleUtils.java" to listOf("class AngleUtils {}"),
             "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/DriveTest.java" to listOf("import org.junit.Test;"),
             "TeamCode/build.gradle" to listOf("testImplementation 'junit:junit:4.13.2'"),
+            "TeamCode/build.gradle" to listOf("androidTestImplementation 'androidx.test.ext:junit:1.1.5'"),
             "TeamCode/build.gradle.kts" to listOf("testImplementation(","    \"org.junit.jupiter:junit-jupiter:5.11.0\"","),"),
             "TeamCode/build.gradle" to listOf("testImplementation(","    'junit:junit:4.13.2'",")")
         )
@@ -153,7 +154,7 @@ class TestUtilityLayoutAcceptanceTest {
     }
 
     @Test
-    fun `global test utility layout permits pure removal and rename away`() {
+    fun `global test utility layout blocks deletion and both sides of rename`() {
         val forbidden="TeamCode/src/main/java/org/firstinspires/ftc/utils/AngleUtils.java"
         val canonical="TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/AngleUtils.java"
         val deletion="""
@@ -176,13 +177,10 @@ class TestUtilityLayoutAcceptanceTest {
             rename from $canonical
             rename to $forbidden
         """.trimIndent()+"\n"
-        for (patch in listOf(deletion,renameAway)) {
-            val (code,json)=checkPatch(Files.createTempDirectory("layout-correction"),patch)
-            assertEquals(0,code,json.toString())
-            assertTrue(json["violations"].none { it["ruleId"].asText()==layoutRuleId },json.toString())
+        for (patch in listOf(deletion,renameAway,renameInto)) {
+            val (code,json)=checkPatch(Files.createTempDirectory("layout-forbidden-path"),patch)
+            assertEquals(1,code,json.toString())
+            assertTrue(json["violations"].any { it["ruleId"].asText()==layoutRuleId },json.toString())
         }
-        val (code,json)=checkPatch(Files.createTempDirectory("layout-rename-into"),renameInto)
-        assertEquals(1,code,json.toString())
-        assertTrue(json["violations"].any { it["ruleId"].asText()==layoutRuleId },json.toString())
     }
 }

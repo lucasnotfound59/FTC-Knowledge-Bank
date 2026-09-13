@@ -49,7 +49,7 @@ ftckb check <repo-root> --knowledge knowledge --team 20827 --season 2025-2026 --
 - 退出码：validate/resolve 为 `0` 成功；`2` 加载/校验失败或存在冲突；`64` 参数错误。
   `check` 为 `0` 通过；`1` 存在硬违规；`2` 加载失败/冲突；`64` 参数错误。
 - 带 `--json` 时**所有失败路径也是 JSON**（`error.code`: `usage` | `load-error` | `invalid-knowledge` | `conflict` | `context-required` | `invalid-context`）。
-- **规范器**：`check` 合并 HEAD→index 与 HEAD→工作区（含非忽略 untracked）的变化。`path-forbidden` 检查新增、修改与重命名目标路径，允许纯删除或从命中路径改名离开以纠正既有布局；`path-required` 与 review trigger 仍覆盖所有触及路径（含删除/重命名）。regex 规则只检查新增行，但可匹配连续新增行块。无 checks 且无 `reviewTriggers` 是无条件 soft；无 checks 且有 triggers 是**条件式 soft**，只有路径与新增行匹配才进入 `soft`；有 checks 才是硬检查。当前 **4 条生效规则带硬检查**。Limelight validity/freshness 的 `reviewTriggers` 命中仍保持退出码 0（没有其他硬违规时），只请求人工/模型复核，不能证明违规或真机安全；**Agent 必须向用户报告**每项 soft。详见 `docs/standardizer-check.md`。
+- **规范器**：`check` 合并 HEAD→index 与 HEAD→工作区（含非忽略 untracked）的变化，路径规则检查所有触及路径（含删除/重命名）。`regex-required` 和 review trigger 逐条新增行检查；`regex-forbidden` 先逐条检查，再可匹配连续新增行块。无 checks 且无 `reviewTriggers` 是无条件 soft；无 checks 且有 triggers 是**条件式 soft**，只有路径与新增行匹配才进入 `soft`；有 checks 才是硬检查。当前 **4 条生效规则带硬检查**。Limelight validity/freshness 的 `reviewTriggers` 命中仍保持退出码 0（没有其他硬违规时），只请求人工/模型复核，不能证明违规或真机安全；**Agent 必须向用户报告**每项 soft。详见 `docs/standardizer-check.md`。
 - 确定性：activeRules 按 id 排序、conflicts 按 topic 排序——同输入同输出，可以缓存。
 - 完整字段表、示例与变更策略见 `docs/kernel-contract.md`；摘要见 README「用法二」。
 
