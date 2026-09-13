@@ -1,4 +1,4 @@
-schemaVersion: 3
+schemaVersion: 4
 rules:
   - id: shared.limelight-check-result-validity
     topic: limelight-result-validity
@@ -7,6 +7,7 @@ rules:
     rationale: The FTC API can return no usable target result.
     status: approved
     authority: shared
+    policyLevel: shared
     approval:
       approver: overall-software-lead
       role: overall_software_lead
@@ -14,6 +15,7 @@ rules:
     applicability:
       teams: []
       seasons: []
+      profiles: []
     evidence:
       - type: web
         url: https://docs.limelightvision.io/docs/docs-limelight/apis/ftc-programming
@@ -22,11 +24,11 @@ rules:
         accessedAt: 2026-08-13
         section: Getting and Using Results
         product: Limelight 3A
-    checks:
-      - kind: regex-required
-        pattern: '\.isValid\(\)'
-        appliesTo: "**/*.java"
-        note: 新增的 Limelight 结果读取必须先做有效性检查（isValid）
+    reviewTriggers:
+      - paths: ["**/*.java"]
+        addedLinePatterns:
+          - '\b(?:Limelight3A|LLResult)\b'
+          - '\.(?:getLatestResult|getBotpose(?:_[A-Za-z0-9]+)?|getTargetTimestamp|getStaleness)\s*\('
   - id: shared.limelight-enforce-freshness-policy
     topic: limelight-result-freshness
     title: Enforce a Limelight freshness policy
@@ -34,6 +36,7 @@ rules:
     rationale: A valid result can still be too old for the current control decision.
     status: approved
     authority: shared
+    policyLevel: shared
     approval:
       approver: overall-software-lead
       role: overall_software_lead
@@ -41,6 +44,7 @@ rules:
     applicability:
       teams: []
       seasons: []
+      profiles: []
     evidence:
       - type: web
         url: https://docs.limelightvision.io/docs/docs-limelight/apis/ftc-programming
@@ -49,11 +53,11 @@ rules:
         accessedAt: 2026-08-13
         section: Is The Data Fresh?
         product: Limelight 3A
-    checks:
-      - kind: regex-required
-        pattern: "getTargetTimestamp"
-        appliesTo: "**/*.java"
-        note: 新增的 Limelight 闭环/定位读取必须先做新鲜度检查（时间戳）
+    reviewTriggers:
+      - paths: ["**/*.java"]
+        addedLinePatterns:
+          - '\b(?:Limelight3A|LLResult)\b'
+          - '\.(?:getLatestResult|getBotpose(?:_[A-Za-z0-9]+)?|getTargetTimestamp|getStaleness)\s*\('
   - id: shared.limelight-synchronize-pipeline-dependent-reads
     topic: limelight-pipeline-synchronization
     title: Synchronize pipeline-dependent reads
@@ -61,6 +65,7 @@ rules:
     rationale: The pipeline switch call is fire-and-forget.
     status: approved
     authority: shared
+    policyLevel: shared
     approval:
       approver: overall-software-lead
       role: overall_software_lead
@@ -68,6 +73,7 @@ rules:
     applicability:
       teams: []
       seasons: []
+      profiles: []
     evidence:
       - type: web
         url: https://docs.limelightvision.io/docs/docs-limelight/apis/ftc-programming
@@ -83,6 +89,7 @@ rules:
     rationale: Field pose depends on camera extrinsics and MegaTag 2 fuses external orientation.
     status: approved
     authority: shared
+    policyLevel: shared
     approval:
       approver: overall-software-lead
       role: overall_software_lead
@@ -90,6 +97,7 @@ rules:
     applicability:
       teams: []
       seasons: []
+      profiles: []
     evidence:
       - type: web
         url: https://docs.limelightvision.io/docs/docs-limelight/apis/ftc-programming
@@ -105,6 +113,7 @@ rules:
     rationale: The official quick start warns that an OS flash erases them.
     status: approved
     authority: shared
+    policyLevel: shared
     approval:
       approver: overall-software-lead
       role: overall_software_lead
@@ -112,6 +121,7 @@ rules:
     applicability:
       teams: []
       seasons: []
+      profiles: []
     evidence:
       - type: web
         url: https://docs.limelightvision.io/docs/docs-limelight/getting-started/limelight-3a
