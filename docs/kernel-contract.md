@@ -79,7 +79,7 @@ resolve 冲突时 ok=false、退出 2；仍保留其他主题 activeRules 和排
 
 规则正文可以是中文或英文。evidence 用 type=git 或 web；git 含 repository/commit/file 及可选 symbol/line，web 含 url/title/publisher/accessedAt/section 及可选 version/product/sku。checks 的 kind 在 resolve JSON 使用下划线（path_forbidden 等），YAML 与 check 违规的 check 字段使用连字符（path-forbidden 等）。
 
-检查执行规则是确定的：无 checks、无 `reviewTriggers` 的生效规则始终输出 soft；无 checks、有 `reviewTriggers` 的规则是**条件式 soft**，仅当同一 trigger 的路径和新增行模式匹配时输出 soft；有 checks 的规则保持硬检查。当前 **4 条生效规则带硬检查**。Limelight validity/freshness 的 trigger 命中不产生 violations，若没有其他硬违规则退出码 0；soft 只表示需人工/模型复核，不是机器证明的违规或真机验证，**Agent 必须向用户报告**它。
+检查执行规则是确定的：无 checks、无 `reviewTriggers` 的生效规则始终输出 soft；无 checks、有 `reviewTriggers` 的规则是**条件式 soft**，仅当同一 trigger 的路径和新增行模式匹配时输出 soft；有 checks 的规则保持硬检查。空 `addedLinePatterns` 使 trigger 仅按路径触发；多个 trigger 之间为 OR；单个 trigger 内，路径约束和新增行模式约束必须同时满足。当前 **4 条生效规则带硬检查**。Limelight validity/freshness 的 trigger 命中不产生 violations，若没有其他硬违规则退出码 0；soft 只表示需人工/模型复核，不是机器证明的违规或真机验证，**Agent 必须向用户报告**它。
 
 check 完成时含 team、season、profiles、ok、violations、soft：
 

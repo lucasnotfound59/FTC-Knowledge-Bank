@@ -55,7 +55,7 @@ v1 使用旧式 Git 证据；v2 引入带 type 的 Git/网页证据；v3 在 v2 
 | `seasons` | v4 是 | 字符串列表 | 适用赛季；空列表表示不限制赛季 |
 | `profiles` | v4 是 | 字符串列表 | 空集无架构限制；否则 normalized context 必须包含全部 profiles |
 
-v4 可选 `reviewTriggers`：出现时必须是非空列表，每项必含 `paths`（非空 glob 列表）和 `addedLinePatterns`（可为空的 Java 正则列表）。执行时，无 checks/无 trigger 是无条件 soft；无 checks/有 trigger 是**条件式 soft**，只有同一 trigger 的路径和新增行模式都匹配才输出 soft；有 checks 才是硬检查。未知字段/重复键/错误类型/null 均拒绝；v1-v3 不允许声明 v4 字段。
+v4 可选 `reviewTriggers`：出现时必须是非空列表，每项必含 `paths`（非空 glob 列表）和 `addedLinePatterns`（可为空的 Java 正则列表）。执行时，无 checks/无 trigger 是无条件 soft；无 checks/有 trigger 是**条件式 soft**，只有同一 trigger 的路径和新增行模式都匹配才输出 soft；有 checks 才是硬检查。空 `addedLinePatterns` 使 trigger 仅按路径触发；多个 trigger 之间为 OR；单个 trigger 内，路径约束和新增行模式约束必须同时满足。未知字段/重复键/错误类型/null 均拒绝；v1-v3 不允许声明 v4 字段。
 
 支持 profiles：rookiebot、simple-opmode、command-based、ftclib-command。rookiebot 隐含 simple-opmode，ftclib-command 隐含 command-based；simple-opmode 与 command-based 互斥。规则空 profiles 不是仅限 generic，表示无架构要求。
 

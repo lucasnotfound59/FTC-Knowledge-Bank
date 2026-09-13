@@ -76,6 +76,15 @@ class CliDocumentationAcceptanceTest {
         }
         val schema=Files.readString(root.resolve("docs/handbook/rule-schema.md"))
         listOf("YAML v4","policyLevel","profiles","reviewTriggers").forEach { assertTrue(schema.contains(it),it) }
+        val triggerSemantics=listOf(
+            "空 `addedLinePatterns` 使 trigger 仅按路径触发",
+            "多个 trigger 之间为 OR",
+            "单个 trigger 内，路径约束和新增行模式约束必须同时满足"
+        )
+        listOf("docs/kernel-contract.md" to Files.readString(root.resolve("docs/kernel-contract.md")),
+            "docs/handbook/rule-schema.md" to schema).forEach { (file,text) ->
+            triggerSemantics.forEach { phrase -> assertTrue(text.contains(phrase),"$file: $phrase") }
+        }
         val approval=Files.readString(root.resolve("docs/handbook/approval.md"))
         listOf("team→global","新的总软件负责人审批","旧审批","迁移台账").forEach { assertTrue(approval.contains(it),it) }
 
