@@ -29,6 +29,32 @@
 
 FTC 11.2 + Pedro 2.1.2 是**本项目编译验证**的组合，不是上游 Pedro 的兼容保证。fixture 使用 FIRST v11.2 默认的 compile SDK 30，只覆盖本仓库核心示例；compile verification is not hardware verification，也不覆盖 Panels、复制来的 tuner 或所有 Quickstart OpMode。
 
+## Pedro Pathing 3 安装证据与 v2.1.2 验证范围
+
+`Pedro requirement`（证据核验日期 2026-09-17）：Pedro Pathing 官方 [Installation](https://pedropathing.com/docs/pathing/installation) 页的 **Manual Installation** 要求打开根目录 `build.dependencies.gradle`，向 `repositories` 添加官方 repository，并向 `dependencies` 添加 Pedro artifact。官方 v3.0.0 Release 与官方 Quickstart 固定 commit `b4312385b7d0cc5e8dd263ec3927c9ef0cb48f36` 给出的精确坐标是：
+
+```groovy
+repositories {
+    maven { url 'https://repo.dairy.foundation/releases/' }
+}
+
+dependencies {
+    implementation 'com.pedropathing:revhub:3.0.0'
+    implementation 'com.pedropathing:tuning:1.0.0'
+}
+```
+
+这组坐标属于 `global.vendor-documented-build-dependencies` 覆盖的根依赖证据：改动 `build.dependencies.gradle` 会触发条件式 soft，由 Agent 打开第一方来源核对证据，soft 不是自动放行。滚动网页只说明安装流程，精确版本必须同时以版本化 Release 或固定 Quickstart commit 为准；博客、论坛、其他队伍代码、搜索摘要和模型回答不能替代第一方来源。规则引擎不联网鉴别域名，也不验证证据真伪。
+
+| 范围 | 当前状态 |
+| --- | --- |
+| Pedro 3 依赖安装证据（repository、精确坐标、固定 commit） | 已记录；只证明官方安装要求与版本对应 |
+| 本页 v2.1.2 教程、Route A/B、Pinpoint 参数与四阶段实车清单 | 仍按 Pedro 2.1.2 与 `SafePedroAuto.java` 的编译验证范围使用 |
+| [完整的 `SafePedroAuto.java`](../../examples/pedro/SafePedroAuto.java) 与 `fixtures/pedro-compile` | 仍是 FTC 11.2 + Pedro 2.1.2 编译 fixture，**未迁移到 Pedro 3 API** |
+| Pedro 3 Java API、AutoTune、Foresight 与示例迁移 | 未实现，属于独立设计与验证 |
+
+本页不把现有 v2.1.2 Java API 示例描述成 Pedro 3 已验证代码。Gradle sync/build 通过不代表部署、Robot Controller、Driver Station 或真机验证通过。
+
 ### Route A — official Quickstart snapshot
 
 适合第一次学习 Pedro、希望 tuner 与 `Constants.java` 来自同一份上游快照的队员。

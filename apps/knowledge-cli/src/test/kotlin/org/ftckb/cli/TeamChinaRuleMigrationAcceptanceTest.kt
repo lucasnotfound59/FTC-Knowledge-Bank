@@ -15,6 +15,7 @@ class TeamChinaRuleMigrationAcceptanceTest {
     private val candidates=setOf("global.hardware-access-candidate","global.mechanism-state-machine-candidate")
     private val commands=setOf("global.command-responsibilities","global.command-live-input","global.command-requirements-cleanup")
     private val layoutRule="global.test-utility-layout"
+    private val vendorRule="global.vendor-documented-build-dependencies"
     private val migrated=mapOf(
         "global.hardware-access-candidate" to "team-20827.hardware-layer-candidate",
         "global.hardware-container" to "team-20827.hardware-container",
@@ -49,19 +50,20 @@ class TeamChinaRuleMigrationAcceptanceTest {
     @Test
     fun `migration preserves exact counts statuses approvals and season boundaries`() {
         val all=rules()
-        assertEquals(47,all.size)
-        assertEquals(41,all.count { it.status==RuleStatus.APPROVED })
+        assertEquals(48,all.size)
+        assertEquals(42,all.count { it.status==RuleStatus.APPROVED })
         assertEquals(6,all.count { it.status==RuleStatus.CANDIDATE })
         val global=all.filter { it.id.startsWith("global.") }
-        assertEquals(migrated.keys+commands+layoutRule,global.map { it.id }.toSet())
+        assertEquals(migrated.keys+commands+layoutRule+vendorRule,global.map { it.id }.toSet())
         for (rule in global) {
             val isLayout=rule.id==layoutRule
+            val isCrossSeason=isLayout || rule.id==vendorRule
             assertEquals(RuleAuthority.SHARED,rule.authority,rule.id)
             assertEquals(PolicyLevel.GLOBAL,rule.policyLevel,rule.id)
             assertEquals(emptySet<String>(),rule.applicability.teams,rule.id)
-            assertEquals(if (isLayout) emptySet() else setOf("2025-2026"),rule.applicability.seasons,rule.id)
+            assertEquals(if (isCrossSeason) emptySet() else setOf("2025-2026"),rule.applicability.seasons,rule.id)
             assertEquals(if (rule.id in commands) setOf("command-based") else emptySet(),rule.applicability.profiles,rule.id)
-            assertEquals(if (isLayout) null else migrated[rule.id],rule.supersedes,rule.id)
+            assertEquals(if (isCrossSeason) null else migrated[rule.id],rule.supersedes,rule.id)
             assertEquals(isLayout,rule.checks.isNotEmpty(),rule.id)
             if (rule.id in candidates) {
                 assertEquals(RuleStatus.CANDIDATE,rule.status,rule.id)
@@ -75,16 +77,16 @@ class TeamChinaRuleMigrationAcceptanceTest {
                 assertTrue(approval.approvedAt>=Instant.parse("2026-09-11T00:00:00Z"),rule.id)
             }
         }
-        assertEquals(setOf(layoutRule),resolve(season="2026-2027").activeRules.filter { it.id.startsWith("global.") }.map { it.id }.toSet())
+        assertEquals(setOf(layoutRule,vendorRule),resolve(season="2026-2027").activeRules.filter { it.id.startsWith("global.") }.map { it.id }.toSet())
     }
 
     @Test
     fun `both teams receive the exact approved profile counts and deltas`() {
         val profiles=listOf(
-            emptySet<String>() to 25,
-            setOf("command-based") to 28,
-            setOf("rookiebot") to 37,
-            setOf("ftclib-command") to 29
+            emptySet<String>() to 26,
+            setOf("command-based") to 29,
+            setOf("rookiebot") to 38,
+            setOf("ftclib-command") to 30
         )
         for ((profile,expectedCount) in profiles) {
             val first=resolve(profile,"20827").activeRules.map { it.id }.toSet()
@@ -150,7 +152,7 @@ class TeamChinaRuleMigrationAcceptanceTest {
     @Test
     fun `global evidence retains old pins and exact TeamChina symbols`() {
         val global=rules().filter { it.id.startsWith("global.") }
-        assertEquals(12,global.size)
+        assertEquals(13,global.size)
         val expectedChina=mapOf(
             "global.hardware-container" to setOf("Hardwares.java:Hardwares"),
             "global.motor-configuration" to setOf("subsystems/Shooter.java:init"),
@@ -164,6 +166,11 @@ class TeamChinaRuleMigrationAcceptanceTest {
         )
         for (rule in global) {
             assertTrue(rule.evidence.isNotEmpty(),rule.id)
+            if (rule.id==vendorRule) {
+                assertTrue(rule.evidence.any { it is WebRuleEvidence },rule.id)
+                assertTrue(rule.evidence.any { it is GitRuleEvidence && it.repository=="Pedro-Pathing/Quickstart" },rule.id)
+                continue
+            }
             assertTrue(rule.evidence.all { it is GitRuleEvidence },rule.id)
             val git=rule.evidence.filterIsInstance<GitRuleEvidence>()
             assertTrue(git.all { it.commit.matches(Regex("[0-9a-f]{40}")) },rule.id)

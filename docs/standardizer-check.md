@@ -74,8 +74,11 @@ YAML 示例：
       - kind: path-forbidden
         pattern: "build.common.gradle"
         note: "SDK 保留 build.common.gradle，定制放 TeamCode/build.gradle"
-      - kind: path-forbidden
-        pattern: "build.dependencies.gradle"
+  - id: global.vendor-documented-build-dependencies
+    checks: []
+    reviewTriggers:
+      - paths: ["build.dependencies.gradle"]
+        addedLinePatterns: []
 ```
 
 规则校验器同步扩展：`checks` 字段的 kind 必须合法、pattern 必须可编译、note 非空；
@@ -87,7 +90,7 @@ YAML 示例：
 
 | 规则 | 检查 |
 | --- | --- |
-| official.keep-customizations-in-teamcode | path-forbidden build.common.gradle / build.dependencies.gradle |
+| official.keep-customizations-in-teamcode | path-forbidden build.common.gradle |
 | shared.ftc-sdk-pin-release | regex-forbidden 依赖行含 `+`/`SNAPSHOT`（RobotCore/Hardware/Inspection） |
 | shared.ftc-sdk-preserve-build-tooling | path-forbidden gradle/wrapper/*、gradlew、gradlew.bat |
 | shared.dashboard-pin-stable-dependency | regex-forbidden dashboard 依赖行含 `+`/`SNAPSHOT` |
@@ -97,16 +100,16 @@ YAML 示例：
 
 dependency-verify-sync-build-run、ftc-sdk-separate-toolchain-versions、
 gobilda 四条（SKU/档位/伺服/PID）、limelight-back-up-before-os-update、limelight-configure-camera-pose、
-limelight-synchronize-pipeline-dependent-reads、pedro 三条（坐标转换/定位先行/实机调参），以及由 `reviewTriggers` 命中时才输出的 Limelight validity/freshness 条件式 soft。
+limelight-synchronize-pipeline-dependent-reads、pedro 三条（坐标转换/定位先行/实机调参），以及由 `reviewTriggers` 命中时才输出的 Limelight validity/freshness 与 `global.vendor-documented-build-dependencies` 条件式 soft。
 
 诚实声明：机器只对“能从 diff 文本确定性判定”的事项执法；行为类规则一律走 soft + 人工确认，不假装全能。
 
-无 checks/无 trigger 的生效规则始终输出 soft；无 checks/有 `reviewTriggers` 的规则为**条件式 soft**，同一 trigger 的路径和新增行模式都匹配才输出一项 soft；有 checks 才产生硬 violations。两条 Limelight validity/freshness 规则保留 approved，使用第二种模式：无关 Java 不产生 Limelight soft，命中后若没有其他硬违规仍为退出码 0。仓库 V0.6.0 当前 **5 条生效规则带硬检查**；新增的跨赛季 `global.test-utility-layout` 对可确定的错误路径/JUnit 新增以退出码 1 阻止，机器人侧 OpMode 的规范路径为 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/`，复用工具的规范路径为 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/`。完整 Agent instruction 仍负责不能可靠机判的语义分类；目标 TeamCode 禁用 JUnit/source set 不影响 Knowledge Bank 自身的 Kotlin/CLI JUnit 测试。soft 只请求人工/模型审阅，不是机器已证明违规或真机验证，**Agent 必须向用户报告**每个 soft。
+无 checks/无 trigger 的生效规则始终输出 soft；无 checks/有 `reviewTriggers` 的规则为**条件式 soft**，同一 trigger 的路径和新增行模式都匹配才输出一项 soft；有 checks 才产生硬 violations。两条 Limelight validity/freshness 规则保留 approved，使用第二种模式：无关 Java 不产生 Limelight soft，命中后若没有其他硬违规仍为退出码 0。仓库 V0.7.0 当前 **5 条生效规则带硬检查**；跨赛季 `global.test-utility-layout` 对可确定的错误路径/JUnit 新增以退出码 1 阻止，机器人侧 OpMode 的规范路径为 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/`，复用工具的规范路径为 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/`。完整 Agent instruction 仍负责不能可靠机判的语义分类；目标 TeamCode 禁用 JUnit/source set 不影响 Knowledge Bank 自身的 Kotlin/CLI JUnit 测试。`global.vendor-documented-build-dependencies` 是第三条路径触发的条件式 soft：任何对根目录 `build.dependencies.gradle` 的新增、修改、删除或重命名都只输出一项 soft 并要求 Agent 提供第一方厂商文档/固定 commit、精确依赖版本和 diff 逐项对应，但规则引擎不联网、不鉴别域名、不验证证据真伪，soft 不代表机器已证明合规或违规，也不会把该文件改动变成静默通过。soft 只请求人工/模型审阅，不是机器已证明违规或真机验证，**Agent 必须向用户报告**每个 soft。
 
 ## 4. 分阶段计划（M1–M4 已交付，M5 即文档合并）
 
 > 状态：M1 schema v3 + checks 模型 ✅；M2 检查引擎 + `ftckb check` + 离线测试 ✅；
-> M3 硬检查规则落地（历史 V0.5.0 为 4 条生效规则含 checks，Limelight 改为条件式 soft）+ 正反例冒烟 ✅；V0.6.0 已加入第 5 条 `global.test-utility-layout`；M4 standardizer 模块（CLI 与 AS 插件共用）+
+> M3 硬检查规则落地（历史 V0.5.0 为 4 条生效规则含 checks，Limelight 改为条件式 soft）+ 正反例冒烟 ✅；V0.6.0 已加入第 5 条 `global.test-utility-layout`；V0.7.0 收窄 official build-file 硬保护到 `build.common.gradle`，并为 `build.dependencies.gradle` 加入 `global.vendor-documented-build-dependencies` 条件式 soft；M4 standardizer 模块（CLI 与 AS 插件共用）+
 > 插件 Edit 后自动检查 + `scripts/check-gate.sh` CI 门禁 ✅；已合并 main。
 
 - M1 schema v3 + 领域模型：`Checks` 模型、RuleYamlCodec/RuleValidator 扩展、resolve --json 增量输出

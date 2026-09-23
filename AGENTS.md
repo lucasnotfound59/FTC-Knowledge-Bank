@@ -5,7 +5,7 @@
 面向 Codex / Claude Code / Qoder / DSH 等任何能执行 shell、读文件的 Agent。
 本文件是入口；完整契约见 `docs/kernel-contract.md`。
 
-版本轴：仓库 V0.6.0、CLI 2.0.0、YAML v4、kernel JSON v2、项目接入协议 v2。
+版本轴：仓库 V0.7.0、CLI 2.0.0、YAML v4、kernel JSON v2、项目接入协议 v2。
 `authority` 表示来源，`policyLevel` 表示 global/local/shared 策略；official 来源始终最高。
 resolve/check 不需要 API key。必须显式选择 generic 或命名 profile，不从依赖猜测：
 `--profile command-based`、`--profile ftclib-command`、`--profile rookiebot`、`--profile simple-opmode`。
@@ -49,7 +49,7 @@ ftckb check <repo-root> --knowledge knowledge --team 20827 --season 2025-2026 --
 - 退出码：validate/resolve 为 `0` 成功；`2` 加载/校验失败或存在冲突；`64` 参数错误。
   `check` 为 `0` 通过；`1` 存在硬违规；`2` 加载失败/冲突；`64` 参数错误。
 - 带 `--json` 时**所有失败路径也是 JSON**（`error.code`: `usage` | `load-error` | `invalid-knowledge` | `conflict` | `context-required` | `invalid-context`）。
-- **规范器**：`check` 合并 HEAD→index 与 HEAD→工作区（含非忽略 untracked）的变化，路径规则检查所有触及路径（含删除/重命名）。`regex-required` 和 review trigger 逐条新增行检查；`regex-forbidden` 先逐条检查，再可匹配连续新增行块。无 checks 且无 `reviewTriggers` 是无条件 soft；无 checks 且有 triggers 是**条件式 soft**，只有路径与新增行匹配才进入 `soft`；有 checks 才是硬检查。当前 **5 条生效规则带硬检查**。`global.test-utility-layout` 跨赛季硬拦截确定的错误路径/JUnit 新增：机器人侧 OpMode 只能放在 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/`，可复用工具只能放在 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/`；完整 Agent instruction 仍负责不能由路径判定的语义分类。目标 TeamCode 不使用 JUnit、`src/test` 或 `src/androidTest`，但 Knowledge Bank 自身的 Kotlin/CLI JUnit 测试不受此规则约束。硬违规退出码 1。Limelight validity/freshness 的 `reviewTriggers` 命中仍保持退出码 0（没有其他硬违规时），只请求人工/模型复核，不能证明违规或真机安全；**Agent 必须向用户报告**每项 soft。详见 `docs/standardizer-check.md`。
+- **规范器**：`check` 合并 HEAD→index 与 HEAD→工作区（含非忽略 untracked）的变化，路径规则检查所有触及路径（含删除/重命名）。`regex-required` 和 review trigger 逐条新增行检查；`regex-forbidden` 先逐条检查，再可匹配连续新增行块。无 checks 且无 `reviewTriggers` 是无条件 soft；无 checks 且有 triggers 是**条件式 soft**，只有路径与新增行匹配才进入 `soft`；有 checks 才是硬检查。当前 **5 条生效规则带硬检查**。`global.test-utility-layout` 跨赛季硬拦截确定的错误路径/JUnit 新增：机器人侧 OpMode 只能放在 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/`，可复用工具只能放在 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/`；完整 Agent instruction 仍负责不能由路径判定的语义分类。目标 TeamCode 不使用 JUnit、`src/test` 或 `src/androidTest`，但 Knowledge Bank 自身的 Kotlin/CLI JUnit 测试不受此规则约束。硬违规退出码 1。`official.keep-customizations-in-teamcode` 只对 `build.common.gradle` 保持 hard 保护；`global.vendor-documented-build-dependencies` 让 `build.dependencies.gradle` 的任何触及都进入跨赛季条件式 soft，要求第一方厂商文档/固定 commit、精确依赖版本和 diff 逐项对应；规则引擎不联网、不鉴别域名、不验证证据真伪，soft 不代表机器已证明合规，Agent 必须实际核对来源并报告结论。Limelight validity/freshness 的 `reviewTriggers` 命中仍保持退出码 0（没有其他硬违规时），只请求人工/模型复核，不能证明违规或真机安全；**Agent 必须向用户报告**每项 soft。详见 `docs/standardizer-check.md`。
 - 确定性：activeRules 按 id 排序、conflicts 按 topic 排序——同输入同输出，可以缓存。
 - 完整字段表、示例与变更策略见 `docs/kernel-contract.md`；摘要见 README「用法二」。
 
@@ -60,7 +60,7 @@ ftckb check <repo-root> --knowledge knowledge --team 20827 --season 2025-2026 --
 - 修改任何规则/知识文件后，必须 `ftckb validate knowledge --json` 通过（`ok:true`）才算数。
 - `chat` / `eval` / `serve` / `extract` / `candidates` / `approve` 是给人用的交互模式；机器契约只用 validate/resolve/check。
 - 契约破坏性变更必须提升 `schemaVersion`；消费方看到 `schemaVersion!=2` 应停止并报错。
-- 文档中的规则数/测试数快照随改动同步更新：当前 47 条规则（41 已批准 + 6 候选）；测试数字必须随实际验收更新，历史测试不视为当前通过；平台范围见 README。
+- 文档中的规则数/测试数快照随改动同步更新：当前 48 条规则（42 已批准 + 6 候选）；测试数字必须随实际验收更新，历史测试不视为当前通过；平台范围见 README。
 - 当前相同赛季/profile 下 20827 与 16093 active IDs 相同；8 条原队伍规则已移到 global，保留 2025-2026 赛季，2 条 candidate 不转正。仍必须传真实队号。
 - 机器可消费工件：`docs/kernel-contract.schema.json`（JSON Schema）与 `fixtures/kernel/*.json`（真实输出示例：validate-ok / resolve-ok / resolve-conflict / error-usage / error-invalid-knowledge）可直接用来对拍你的解析器。
 

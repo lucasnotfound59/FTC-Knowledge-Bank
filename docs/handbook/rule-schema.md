@@ -1,6 +1,6 @@
 # 知识目录与规则字段
 
-当前发布为 V0.6.0：CLI 2.0.0、YAML v4、kernel JSON v2、项目接入协议 v2；知识总数为 47（41 已批准 + 6 候选）。
+当前发布为 V0.7.0：CLI 2.0.0、YAML v4、kernel JSON v2、项目接入协议 v2；知识总数为 48（42 已批准 + 6 候选）。
 
 CLI 会递归读取知识根目录中扩展名为小写 `.yaml` 或 `.yml` 的文件。当前约定布局如下：
 
@@ -54,6 +54,10 @@ v1 使用旧式 Git 证据；v2 引入带 type 的 Git/网页证据；v3 在 v2 
 ## V0.6.0 TeamCode tests/utils 布局规则
 
 `global.test-utility-layout` 是跨赛季规则，并使当前带 hard checks 的 active 规则总数为 5。它用已有的 `path-forbidden` 和 `regex-forbidden` 可靠拦截错误 TeamCode 路径与 JUnit 新增（退出码 1）；机器人侧 OpMode 的规范路径是 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/`，可复用工具的规范路径是 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/`。完整 Agent instruction 仍负责不能从路径/新增行可靠判断的文件语义和 package；目标 TeamCode 的 JUnit/source-set 限制不禁止 Knowledge Bank 自身用于验证 Kotlin/CLI 的 JUnit 测试，也不证明部署或机器人运行。
+
+## V0.7.0 Vendor-documented dependency 规则
+
+`global.vendor-documented-build-dependencies` 是 V0.7.0 新增的 approved/shared/global 规则：`official.keep-customizations-in-teamcode` 的 hard 保护收窄到 `build.common.gradle`，不再无条件禁止 `build.dependencies.gradle`。新规则 teams/seasons/profiles 全空，`checks: []`，只有一个 path-only `reviewTriggers`：`paths: ["build.dependencies.gradle"]`、`addedLinePatterns: []`。任何触及该文件的 diff 都会产生一条条件式 soft，要求第一方厂商官方文档或官方仓库固定 commit、精确依赖版本、官方要求新增/修改的 repository 或 dependency，以及实际 diff 的逐项对应；第三方教程、博客、论坛、其他队伍代码、搜索摘要和模型回答不能单独满足要求。规则引擎不会联网鉴别域名或验证证据真伪，soft 只请求 Agent/人工打开第一方来源复核，不是机器已证明合规，也不是自动放行。Pedro Pathing 3 的当前证据是官方安装页 Manual Installation、官方 v3.0.0 Release 与官方 Quickstart 固定 commit `b4312385b7d0cc5e8dd263ec3927c9ef0cb48f36`；这属于厂商要求，不是 FIRST 撤销了 SDK 文件保护。
 
 | 字段 | 必填 | 类型 | 说明 |
 | --- | --- | --- | --- |

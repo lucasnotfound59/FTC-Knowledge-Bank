@@ -1,6 +1,6 @@
 # 从零安装与第一次运行
 
-当前发布版本为 V0.6.0：CLI 2.0.0、YAML v4、kernel JSON v2 与项目接入协议 v2 保持不变；知识为 47（41 已批准 + 6 候选）。
+当前发布版本为 V0.7.0：CLI 2.0.0、YAML v4、kernel JSON v2 与项目接入协议 v2 保持不变；知识为 48（42 已批准 + 6 候选）。
 
 ### 1. 获取仓库
 
@@ -62,25 +62,27 @@ Windows PowerShell 使用 wrapper 的 `.bat` 文件：
 关键输出会包括：
 
 ```text
-validation=ok rules=47
+validation=ok rules=48
 active official.keep-customizations-in-teamcode
 active shared.dashboard-pin-stable-dependency
 ...
 active shared.pedro-tune-current-robot
 ```
 
-知识总数为 47（41 已批准 + 6 候选）；validate 包含候选计数，6 条 `candidate` 不进入 activeRules。2025-2026 赛季下，20827 与 16093 选择相同 profile 时，active IDs 与数量相同：
+知识总数为 48（42 已批准 + 6 候选）；validate 包含候选计数，6 条 `candidate` 不进入 activeRules。2025-2026 赛季下，20827 与 16093 选择相同 profile 时，active IDs 与数量相同：
 
 | profile 选择 | 两队各自的 active 数量 |
 | --- | --- |
-| generic | 25 |
-| command-based | 28 |
-| rookiebot | 37 |
-| ftclib-command | 29 |
+| generic | 26 |
+| command-based | 29 |
+| rookiebot | 38 |
+| ftclib-command | 30 |
 
 `--generic-profile` 显式选择空 profile 集，只纳入无架构要求且队号/赛季匹配的已批准规则，不表示启用全部规则。命名选择使用 `--profile command-based` 等，可重复 `--profile NAME`；两种选择不能混用，不从依赖猜测架构。
 
 `global.test-utility-layout` 是跨赛季第 5 条带硬检查的 active rule：机器人侧 OpMode 使用 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/`，可复用工具使用 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/`。它对确定的错误路径/JUnit 新增返回退出码 1；完整 Agent instruction 仍负责语义分类。目标 TeamCode 不使用 JUnit/source sets，这不影响 Knowledge Bank 自身用于验证 Kotlin/CLI 的 JUnit 测试，也不证明部署或机器人运行。
+
+`global.vendor-documented-build-dependencies` 是跨赛季条件式 soft：`official.keep-customizations-in-teamcode` 只对 `build.common.gradle` 保持 hard 保护，任何对 `build.dependencies.gradle` 的触及（含删除/重命名）都只触发一条 soft，要求 Agent 用第一方厂商文档或固定 commit、精确依赖版本和 diff 逐项对应证明改动；规则引擎不联网鉴别来源，也不验证证据真伪，soft 不是自动放行。
 
 rookiebot（RookieBot）隐含 simple-opmode，ftclib-command（FTCLib command）隐含 command-based；simple-opmode 与 command-based 互斥。RookieBot 规则受 profile 范围限制，不要求其他项目更换架构。规则的 profiles 非空时必须全部匹配；候选或队号/赛季/profile 不匹配进入 excludedRules，适用但低层级规则进入 overriddenRules。同主题最高有效层级并列进入 conflicts，不由 Agent 猜胜者。
 

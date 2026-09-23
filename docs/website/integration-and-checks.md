@@ -1,6 +1,6 @@
 # 项目接入与确定性检查
 
-本文是文档站新增功能的技术正文，按网站七个栏目组织。安装细节以 [项目接入指南](../project-integration.md) 为准，机器输出以 [Kernel 契约](../kernel-contract.md) 为准。当前仓库版本为 V0.6.0（CLI 2.0.0、YAML v4、kernel JSON v2、项目接入协议 v2；47 条规则 = 41 已批准 + 6 候选）；接入功能的公开可用版本需在发布前确认，不能将 README 中的 V0.1.1 当作包含新功能的已发布 tag。
+本文是文档站新增功能的技术正文，按网站七个栏目组织。安装细节以 [项目接入指南](../project-integration.md) 为准，机器输出以 [Kernel 契约](../kernel-contract.md) 为准。当前仓库版本为 V0.7.0（CLI 2.0.0、YAML v4、kernel JSON v2、项目接入协议 v2；48 条规则 = 42 已批准 + 6 候选）；接入功能的公开可用版本需在发布前确认，不能将 README 中的 V0.1.1 当作包含新功能的已发布 tag。
 
 ## 一、项目介绍：将规范接入日常编码
 
@@ -114,7 +114,7 @@ SDK、Pedro Pathing、Dashboard 和故障排查等教程继续归入 FTC 教程�
 | regex-required | 适用文件的新增行集合必须包含匹配模式 |
 | regex-forbidden | 先逐条检查新增行，再检查连续新增行块；出现禁止模式即违规 |
 
-无 checks/无 trigger 的生效规则返回无条件 soft；无 checks/有 `reviewTriggers` 的规则是**条件式 soft**，同一 trigger 的路径和新增行模式都匹配才返回 soft；有 checks 才产生硬违规。当前 **5 条生效规则带硬检查**。跨赛季 `global.test-utility-layout` 对确定的错误 TeamCode 路径/JUnit 新增返回退出码 1：机器人侧 OpMode 的规范路径是 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/`，可复用工具的规范路径是 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/`。完整 Agent instruction 仍处理语义分类；它不限制 Knowledge Bank 自身 Kotlin/CLI JUnit 测试，也不能证明部署或机器人运行。两条 approved Limelight validity/freshness 规则使用条件式 soft：无关 Java 不产生 Limelight soft，命中时若没有其他硬违规仍是退出码 0。soft 是人工/模型复核请求，不是机器已经证明违规或真机验证；**Agent 必须向用户报告**每个命中的 soft。
+无 checks/无 trigger 的生效规则返回无条件 soft；无 checks/有 `reviewTriggers` 的规则是**条件式 soft**，同一 trigger 的路径和新增行模式都匹配才返回 soft；有 checks 才产生硬违规。当前 **5 条生效规则带硬检查**。跨赛季 `global.test-utility-layout` 对确定的错误 TeamCode 路径/JUnit 新增返回退出码 1：机器人侧 OpMode 的规范路径是 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/`，可复用工具的规范路径是 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/`。完整 Agent instruction 仍处理语义分类；它不限制 Knowledge Bank 自身 Kotlin/CLI JUnit 测试，也不能证明部署或机器人运行。`official.keep-customizations-in-teamcode` 的 hard 保护只剩 `build.common.gradle`；`global.vendor-documented-build-dependencies` 对 `build.dependencies.gradle` 的任何触及（含删除/重命名）返回条件式 soft，要求第一方厂商文档或固定 commit、精确依赖版本和 diff 逐项对应，但规则引擎不联网鉴别来源，也不验证证据真伪，soft 不是机器已证明合规。两条 approved Limelight validity/freshness 规则使用条件式 soft：无关 Java 不产生 Limelight soft，命中时若没有其他硬违规仍是退出码 0。soft 是人工/模型复核请求，不是机器已经证明违规或真机验证；**Agent 必须向用户报告**每个命中的 soft。
 
 ### JSON 与退出码
 

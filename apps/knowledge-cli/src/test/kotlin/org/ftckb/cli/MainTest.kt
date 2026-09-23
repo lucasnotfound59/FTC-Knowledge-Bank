@@ -353,6 +353,7 @@ class MainTest {
             active global.naming-conventions
             active global.telemetry-organization
             active global.test-utility-layout
+            active global.vendor-documented-build-dependencies
             active official.keep-customizations-in-teamcode
             active shared.dashboard-pin-stable-dependency
             active shared.dependency-verify-sync-build-run

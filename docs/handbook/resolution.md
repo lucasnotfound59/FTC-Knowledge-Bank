@@ -1,6 +1,6 @@
 # 校验、适用范围与确定性裁决
 
-当前发布为 V0.6.0（CLI 2.0.0、YAML v4、kernel JSON v2、项目接入协议 v2）。
+当前发布为 V0.7.0（CLI 2.0.0、YAML v4、kernel JSON v2、项目接入协议 v2）。
 
 ```bash
 ftckb validate knowledge --json
@@ -23,4 +23,4 @@ kernel JSON v2 冲突含 topic/effectiveLevel/ruleIds/authorities。resolve 冲�
 
 activeRules 按 id、conflicts 按 topic、excludedRules/overriddenRules 按 ruleId，嵌套 IDs/reasons/profiles 排序；同数据和上下文结果逐字节一致。不能用“最后一个规则”覆盖冲突。
 
-当前 47（41 已批准 + 6 候选）；20827 与 16093 同赛季/profile 的 active IDs 相同，数量为 generic 25、command-based 28、rookiebot 37、ftclib-command 29。generic 不接收三条 global.command-*，command-based 才接收；RookieBot 12 条实践仅 rookiebot 接收。`global.test-utility-layout` 是唯一明确跨赛季的 global rule，也是第 5 条带硬检查的 active rule：机器人侧 OpMode 进入 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/`，工具进入 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/`；确定的错误路径/JUnit 新增退出码 1，而完整 Agent instruction 仍裁决语义分类。Knowledge Bank 自身 Kotlin/CLI JUnit 测试不在目标 TeamCode 禁止范围内。此规则裁决和编译均不代表真机通过。完整字段见 [机器契约](../kernel-contract.md)。
+当前 48（42 已批准 + 6 候选）；20827 与 16093 同赛季/profile 的 active IDs 相同，数量为 generic 26、command-based 29、rookiebot 38、ftclib-command 30。generic 不接收三条 global.command-*，command-based 才接收；RookieBot 12 条实践仅 rookiebot 接收。`global.test-utility-layout` 与 `global.vendor-documented-build-dependencies` 是跨赛季的 global rule：前者是第 5 条带硬检查的 active rule，机器人侧 OpMode 进入 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/`，工具进入 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/`，确定的错误路径/JUnit 新增退出码 1；后者对根目录 `build.dependencies.gradle` 的任何触及输出条件式 soft，要求第一方厂商文档/固定 commit、精确版本和 diff 逐项对应，但规则引擎不联网鉴别来源、不验证证据真伪。两条都仍由完整 Agent instruction 裁决语义分类；Knowledge Bank 自身 Kotlin/CLI JUnit 测试不在目标 TeamCode 禁止范围内。此规则裁决和编译均不代表真机通过。完整字段见 [机器契约](../kernel-contract.md)。

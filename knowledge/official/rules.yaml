@@ -24,6 +24,3 @@ rules:
       - kind: path-forbidden
         pattern: build.common.gradle
         note: SDK 保留 build.common.gradle；定制放进 TeamCode/build.gradle
-      - kind: path-forbidden
-        pattern: build.dependencies.gradle
-        note: SDK 保留 build.dependencies.gradle；依赖定制放进 TeamCode/build.gradle

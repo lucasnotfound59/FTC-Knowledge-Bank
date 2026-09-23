@@ -309,7 +309,7 @@ class KernelJsonAcceptanceTest {
     @Test
     fun `kernel contract fixtures parse and carry the expected shapes`() {
         val base=Path.of("..","..","fixtures","kernel")
-        assertEquals(2,mapper.readTree(KernelJson.validateJson(47))["schemaVersion"].asInt())
+        assertEquals(2,mapper.readTree(KernelJson.validateJson(48))["schemaVersion"].asInt())
         Files.list(base).use { paths ->
             val fixtures=paths.filter { it.toString().endsWith(".json") }.sorted().toList()
             assertEquals(10,fixtures.size)
@@ -320,12 +320,12 @@ class KernelJsonAcceptanceTest {
         assertEquals(2,validate["schemaVersion"].asInt())
         assertEquals("validate",validate["command"].asText())
         assertTrue(validate["ok"].booleanValue())
-        assertEquals(47,validate["ruleCount"].asInt())
+        assertEquals(48,validate["ruleCount"].asInt())
 
         val resolve=mapper.readTree(Files.readString(base.resolve("resolve-ok.json")))
         assertEquals("resolve",resolve["command"].asText())
         assertTrue(resolve["activeRules"].isArray)
-        assertEquals(25,resolve["activeRules"].size())
+        assertEquals(26,resolve["activeRules"].size())
         assertTrue(resolve["conflicts"].isArray)
         val resolveById=resolve["activeRules"].associateBy { it["id"].asText() }
         val layout=resolveById.getValue("global.test-utility-layout")
@@ -349,6 +349,18 @@ class KernelJsonAcceptanceTest {
             assertEquals(0,resolveById.getValue(id)["checks"].size(),id)
             assertEquals(1,resolveById.getValue(id)["reviewTriggers"].size(),id)
         }
+        val vendor=resolveById.getValue("global.vendor-documented-build-dependencies")
+        assertEquals("approved",vendor["status"].asText())
+        assertEquals("shared",vendor["authority"].asText())
+        assertEquals("global",vendor["policyLevel"].asText())
+        listOf("teams","seasons","profiles").forEach { field ->
+            assertEquals(0,vendor["applicability"][field].size(),field)
+        }
+        assertEquals(0,vendor["checks"].size())
+        assertEquals(1,vendor["reviewTriggers"].size())
+        assertEquals(listOf("build.dependencies.gradle"),vendor["reviewTriggers"][0]["paths"].map { it.asText() })
+        assertEquals(0,vendor["reviewTriggers"][0]["addedLinePatterns"].size())
+        assertEquals(4,vendor["evidence"].size())
 
         val error=mapper.readTree(Files.readString(base.resolve("error-usage.json")))
         assertFalse(error["ok"].booleanValue())

@@ -1,6 +1,6 @@
 # FTC Agent 命令行客户端（ftckb）
 
-本文档描述 ftckb 命令行的安装、配置、命令与安全边界。它是 apps/knowledge-cli 的正式使用文档；只记录当前已验证的能力。当前版本轴为仓库 V0.6.0、CLI 2.0.0、YAML v4、kernel JSON v2、项目接入协议 v2；知识总数为 47（41 已批准 + 6 候选）。
+本文档描述 ftckb 命令行的安装、配置、命令与安全边界。它是 apps/knowledge-cli 的正式使用文档；只记录当前已验证的能力。当前版本轴为仓库 V0.7.0、CLI 2.0.0、YAML v4、kernel JSON v2、项目接入协议 v2；知识总数为 48（42 已批准 + 6 候选）。
 
 ## 安装
 
@@ -154,11 +154,11 @@ ftckb check /path/to/FtcRobotController --knowledge knowledge --team 20827 --sea
 - resolve 返回 team、season、规范化后的 `profiles`、activeRules、excludedRules、overriddenRules、conflicts。active 规则含 id/topic/title/instruction/rationale/status/authority/policyLevel/applicability/evidence/checks/reviewTriggers；applicability 含 teams/seasons/profiles。
 - `excludedRules` 元素为 ruleId/reasons，完整记录 profile/season/status/team 不匹配；`overriddenRules` 元素为 ruleId/topic/winnerIds/effectiveLevel，解释适用但被更高层级覆盖的规则。
 - v2 冲突元素为 topic/effectiveLevel/ruleIds/authorities，authorities 是规则 ID 到来源的映射。同主题最高有效层级并列即冲突，该主题没有 active 胜者；resolve 此时 ok=false、退出 2，仍返回其他主题的 activeRules 和排除/覆盖解释，不使用 error 字段。
-- check 完成时返回 team/season/profiles/ok/violations/soft；硬违规退出 1，soft 不导致失败。无 checks/无 `reviewTriggers` 是无条件 soft；无 checks/有 trigger 是**条件式 soft**，仅在路径和新增行模式匹配时进入 soft；有 checks 才是硬检查。当前 **5 条生效规则带硬检查**，其中跨赛季 `global.test-utility-layout` 阻止确定的错误 TeamCode 路径和 JUnit 新增：机器人侧 OpMode 在 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/`，可复用工具在 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/`。完整 Agent instruction 仍负责无法仅靠路径确定的 tests/utils 分类。目标 TeamCode 的 JUnit、`src/test`、`src/androidTest` 违规退出 1；Knowledge Bank 自身 Kotlin/CLI JUnit 测试不受此限制。Limelight validity/freshness 的条件式 soft 命中后，若无其他硬违规仍为退出码 0；它只请求人工/模型复核，不证明违规或真机验证，**Agent 必须向用户报告**。不要把 resolve 的排除/覆盖字段误认为 check 输出字段。
+- check 完成时返回 team/season/profiles/ok/violations/soft；硬违规退出 1，soft 不导致失败。无 checks/无 `reviewTriggers` 是无条件 soft；无 checks/有 trigger 是**条件式 soft**，仅在路径和新增行模式匹配时进入 soft；有 checks 才是硬检查。当前 **5 条生效规则带硬检查**，其中跨赛季 `global.test-utility-layout` 阻止确定的错误 TeamCode 路径和 JUnit 新增：机器人侧 OpMode 在 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/`，可复用工具在 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/`。完整 Agent instruction 仍负责无法仅靠路径确定的 tests/utils 分类。目标 TeamCode 的 JUnit、`src/test`、`src/androidTest` 违规退出 1；Knowledge Bank 自身 Kotlin/CLI JUnit 测试不受此限制。`official.keep-customizations-in-teamcode` 的 hard 保护只剩 `build.common.gradle`；`global.vendor-documented-build-dependencies` 对任何触及 `build.dependencies.gradle` 的 diff 输出一条条件式 soft，要求 Agent 用第一方厂商文档/固定 commit、精确依赖版本和 diff 逐项对应核对证据，但规则引擎不联网鉴别来源，也不验证证据真伪，soft 不是自动放行。Limelight validity/freshness 的条件式 soft 命中后，若无其他硬违规仍为退出码 0；这些 soft 都只请求人工/模型复核，不证明违规或真机验证，**Agent 必须向用户报告**。不要把 resolve 的排除/覆盖字段误认为 check 输出字段。
 - 输出确定性：activeRules 按 id，excludedRules/overriddenRules 按 ruleId，conflicts 按 topic 排序，profiles 等集合规范化并排序，evidence/checks 保留声明顺序；同知识、上下文及 diff 得到相同输出。
 - 退出码：成功 0；check 硬违规 1；知识加载/校验、上下文或冲突失败 2；参数错误 64。JSON 错误的 error.code 为 usage / load-error / invalid-knowledge / context-required（缺 profile 选择）/ invalid-context（未知或互斥 profile）/ conflict（check 前置裁决冲突）。完整契约见 [docs/kernel-contract.md](kernel-contract.md)，契约的可执行定义在 `KernelJsonAcceptanceTest`。
 
-`ftckb check` 默认合并 HEAD→index 与 HEAD→工作区（含非忽略 untracked）：路径规则覆盖所有触及路径（含删除和重命名）。`regex-required` 与 review trigger 只检查逐条新增行；`regex-forbidden` 先逐条检查，再可匹配连续新增行块；可用 `--diff FILE` 替代。无 checks/无 trigger 的 active 规则为无条件 soft；有 `reviewTriggers` 的无-check 规则只在匹配时输出条件式 soft。Limelight validity/freshness 命中不阻塞，仍需如实报告。详见 [docs/standardizer-check.md](standardizer-check.md)。
+`ftckb check` 默认合并 HEAD→index 与 HEAD→工作区（含非忽略 untracked）：路径规则覆盖所有触及路径（含删除和重命名）。`regex-required` 与 review trigger 只检查逐条新增行；`regex-forbidden` 先逐条检查，再可匹配连续新增行块；可用 `--diff FILE` 替代。无 checks/无 trigger 的 active 规则为无条件 soft；有 `reviewTriggers` 的无-check 规则只在匹配时输出条件式 soft。Limelight validity/freshness 与 `build.dependencies.gradle` 的 vendor 证据复核命中不阻塞（无其他硬违规时退出码 0），仍需如实报告。详见 [docs/standardizer-check.md](standardizer-check.md)。
 
 编译、静态检查与 JSON Schema 验证不等于 Robot Controller、Driver Station、部署或真机验证。
 

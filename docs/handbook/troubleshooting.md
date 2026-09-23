@@ -1,6 +1,6 @@
 # 常见问题与故障排查
 
-当前发布为 V0.6.0（CLI 2.0.0、YAML v4、kernel JSON v2、项目接入协议 v2），知识总数为 47（41 已批准 + 6 候选）。
+当前发布为 V0.7.0（CLI 2.0.0、YAML v4、kernel JSON v2、项目接入协议 v2），知识总数为 48（42 已批准 + 6 候选）。
 
 | 现象 | 常见原因 | 处理方法 |
 | --- | --- | --- |
@@ -14,9 +14,10 @@
 | 输出 `conflict topic=... rules=...` | 同一 topic 的最高有效权威层级有多条适用规则 | 调整适用范围、合并/废弃冲突规则或保留一个获批规则，然后重新解析 |
 | CLI 退出 `64` | 缺少命令或 `<knowledge-root>`，或选项/参数格式错误 | 对照通用语法；resolve 必须各提供一次 `--team <digits>` 和 `--season <YYYY-YYYY>`。已提供但不存在的目录属于 load failure，退出 `2` |
 | `global.test-utility-layout`，退出 `1` | 目标 TeamCode 改动使用了错误 tests/utils 路径，或新增了 JUnit import/dependency | 机器人侧 OpMode 移到 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/`，可复用工具移到 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/`；不要用 JUnit、`src/test` 或 `src/androidTest`。这是当前第 5 条带硬检查的 active rule；完整 Agent instruction 仍负责语义分类，不影响 Knowledge Bank 自身 Kotlin/CLI JUnit 测试，也不证明部署/机器人运行。 |
+| 改动 `build.dependencies.gradle` 后出现 `global.vendor-documented-build-dependencies` soft、退出 `0` | 新增、修改、删除或重命名根依赖文件都会触发跨赛季条件式 soft | 打开依赖厂商的第一方官方文档或官方仓库固定 commit，核对 repository/dependency、精确版本和 diff 逐项对应，并把 Gradle sync/build 结果与部署/真机验证分开报告。规则引擎不联网鉴别来源，也不验证证据真伪；soft 不是自动放行，缺少第一方证据时应撤回或修正改动。 |
 
 ## 提交问题
 
 请在 [GitHub Issues](https://github.com/lucasnotfound59/FTC-Knowledge-Bank/issues) 提供命令、退出码、版本和脱敏后的错误信息。不要包含 API key、敏感队伍数据或个人路径。
 
-Limelight validity/freshness 是 approved 的**条件式 soft**：只有 `reviewTriggers` 匹配相机类型或结果读取的新增行才出现；无关 Java 不产生 Limelight soft，命中后若无其他硬违规仍是退出码 0。soft 只要求人工/模型复核，不是机器证明的违规或真机验证；**Agent 必须向用户报告**命中的 soft，不要插入无意义调用改变结果。
+Limelight validity/freshness 是 approved 的**条件式 soft**：只有 `reviewTriggers` 匹配相机类型或结果读取的新增行才出现；无关 Java 不产生 Limelight soft，命中后若无其他硬违规仍是退出码 0。`global.vendor-documented-build-dependencies` 同样是条件式 soft：任何触及根目录 `build.dependencies.gradle` 的 diff 都进入 soft，要求第一方厂商证据，但机器不验证来源真伪。soft 只要求人工/模型复核，不是机器证明的违规或真机验证；**Agent 必须向用户报告**命中的 soft，不要插入无意义调用改变结果。

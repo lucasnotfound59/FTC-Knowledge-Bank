@@ -1,0 +1,48 @@
+# 2026-09-17 maintainer-approved cross-season conditional soft rule.
+# Decision evidence: docs/superpowers/specs/2026-09-17-vendor-documented-build-dependencies-design.md.
+# Migration ledger: docs/rule-migrations/2026-09-17-vendor-documented-build-dependencies.md.
+schemaVersion: 4
+rules:
+  - id: global.vendor-documented-build-dependencies
+    topic: root-dependency-evidence
+    title: Require first-party vendor evidence for build.dependencies.gradle changes
+    instruction: "修改根目录 build.dependencies.gradle 前，必须能在交付说明中记录并核对：第一方官方文档 URL 或官方仓库的固定 commit；产品／依赖名称与精确版本；官方要求新增或修改的 repository 或 dependency；实际 diff 与官方步骤的逐项对应关系；以及 Gradle sync/build 的实际结果。滚动网页只用于说明安装流程，精确版本应同时以版本化 Release 或固定 Quickstart commit 为准。博客、论坛、其他队伍代码、搜索摘要和模型回答不能单独满足要求。规则引擎不联网鉴别域名或来源，也不能验证证据真伪：soft 只说明该文件被触及、需要复核，不代表机器已证明合规或违规，Agent 必须打开第一方来源完成语义审阅并向用户报告结论；缺少第一方证据、版本不对应或 diff 超出官方步骤时，撤回或修正改动。Gradle sync/build 通过不代表部署、Robot Controller、Driver Station 或真机验证通过。"
+    rationale: "FIRST 保护 build.common.gradle，但依赖厂商的第一方安装文档可以合法要求修改 build.dependencies.gradle；把允许范围限定在有第一方证据、固定精确版本和可核对 diff 的依赖修改，避免所有根构建文件改动都被 hard 拦截，也避免无证据的依赖漂移被静默放行。"
+    status: approved
+    approval:
+      approver: "lucasnotfound59"
+      role: overall_software_lead
+      approvedAt: 2026-09-17T13:07:17Z
+    authority: shared
+    policyLevel: global
+    applicability:
+      teams: []
+      seasons: []
+      profiles: []
+    evidence:
+      - type: web
+        url: "https://pedropathing.com/docs/pathing/installation"
+        title: "Pedro Pathing Installation"
+        publisher: "Pedro Pathing"
+        accessedAt: 2026-09-17
+        section: "Manual Installation"
+      - type: web
+        url: "https://github.com/Pedro-Pathing/PedroPathing/releases/tag/v3.0.0"
+        title: "Pedro Pathing v3.0.0 Release"
+        publisher: "Pedro Pathing"
+        accessedAt: 2026-09-17
+        section: "Release"
+        version: "v3.0.0"
+      - type: git
+        repository: "Pedro-Pathing/Quickstart"
+        commit: "b4312385b7d0cc5e8dd263ec3927c9ef0cb48f36"
+        file: "build.dependencies.gradle"
+        symbol: "com.pedropathing:revhub:3.0.0"
+      - type: git
+        repository: "lucasnotfound59/FTC-Knowledge-Bank"
+        commit: "46108502eb6c963b06b255da0f8a2dd152615128"
+        file: "docs/superpowers/specs/2026-09-17-vendor-documented-build-dependencies-design.md"
+        line: 1
+    reviewTriggers:
+      - paths: ["build.dependencies.gradle"]
+        addedLinePatterns: []

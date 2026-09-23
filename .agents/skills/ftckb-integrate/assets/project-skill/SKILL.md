@@ -41,6 +41,8 @@ python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.
 
 默认 check 覆盖 staged、unstaged 和非忽略 untracked 变更。路径规则看触及路径（含删除/重命名）。regex 只看新增行：`regex-required` 和 review trigger 逐条匹配，`regex-forbidden` 先逐条匹配，再可匹配连续新增行块。`--diff /path/to/change.patch` 只用于明确范围的检查，并披露排除的项目改动；交付仍运行默认全工作区 check，不靠缩小 diff 隐藏违规。
 
+`build.dependencies.gradle` 的任何触及（含删除/重命名）会命中 `global.vendor-documented-build-dependencies` 条件式 soft：必须打开依赖厂商的第一方官方文档或官方仓库固定 commit，核对 repository/dependency、精确版本，并逐项解释实际 diff；Gradle sync/build 结果与部署/真机验证分开报告。规则引擎不联网鉴别来源、不验证证据真伪，soft 不是自动放行；缺少第一方证据时撤回或修正改动并告知用户。
+
 硬检查不等于完整语义验证。遇到看似误报的规则，展示 ruleId、适用代码与原因，请维护者调整规则；不要擅改知识库或插入无意义代码来过检查。
 
 报告本次改动、resolve/check 结果、重要 soft/未验证项以及实际执行的构建/测试命令。编译、部署、真机运行分别说明；没有硬件测试就写未验证。

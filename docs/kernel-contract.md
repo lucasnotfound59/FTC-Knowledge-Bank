@@ -11,9 +11,9 @@ cd FTC-Knowledge-Bank
 # JDK 21+；产物 apps/knowledge-cli/build/install/ftckb/bin/ftckb
 ```
 
-消费方固定审阅过的完整 commit，不跟踪 main。仓库 V0.6.0、CLI 2.0.0、YAML v4、kernel JSON v2、项目接入协议 v2 是独立版本轴。YAML 解码兼容 v1-v3，不代表 kernel v1 消费方兼容 v2。旧机器模式见 [v1 schema](kernel-contract.v1.schema.json)；当前 [v2 schema](kernel-contract.schema.json)。
+消费方固定审阅过的完整 commit，不跟踪 main。仓库 V0.7.0、CLI 2.0.0、YAML v4、kernel JSON v2、项目接入协议 v2 是独立版本轴。YAML 解码兼容 v1-v3，不代表 kernel v1 消费方兼容 v2。旧机器模式见 [v1 schema](kernel-contract.v1.schema.json)；当前 [v2 schema](kernel-contract.schema.json)。
 
-知识总数 47（41 已批准 + 6 候选）；validate 包含候选计数，resolve 的 activeRules 不包含候选。
+知识总数 48（42 已批准 + 6 候选）；validate 包含候选计数，resolve 的 activeRules 不包含候选。
 
 ## 2. 命令与显式 profile
 
@@ -56,7 +56,7 @@ official 来源必须用 policyLevel=global，但有效层级是 official，永�
 validate 成功：
 
 ```json
-{"schemaVersion":2,"command":"validate","ok":true,"ruleCount":47,"violations":[]}
+{"schemaVersion":2,"command":"validate","ok":true,"ruleCount":48,"violations":[]}
 ```
 
 resolve（无冲突或有冲突）都有 team、season、normalized profiles、activeRules、excludedRules、overriddenRules、conflicts，不使用 error 字段。
@@ -116,7 +116,7 @@ violations 必有 ruleId/check/pattern/detail，可有 path/line；soft 为 rule
 
 ## 7. 变更、工件与验证边界
 
-删除/改名/改类型等破坏性变更必须提升 schemaVersion；兼容新增字段可忽略，未知错误不能视为成功。CLI 2.0.0 是 kernel v2 破坏性升级对应的 CLI 版本，不等于仓库 V0.6.0。
+删除/改名/改类型等破坏性变更必须提升 schemaVersion；兼容新增字段可忽略，未知错误不能视为成功。CLI 2.0.0 是 kernel v2 破坏性升级对应的 CLI 版本，不等于仓库 V0.7.0。
 
 [fixtures/kernel](../fixtures/kernel/) 的 10 份 JSON 从实际构建 CLI stdout 生成：validate-ok / resolve-ok / resolve-conflict / error-usage / error-invalid-knowledge / check-pass / check-hard / check-error-usage / check-error-load / check-error-conflict。KernelJsonAcceptanceTest 对每份执行当前 v2 JSON Schema 校验；错误与 check 样例使用隔离合成输入，resolve-ok 和 validate-ok 使用仓库知识。
 
