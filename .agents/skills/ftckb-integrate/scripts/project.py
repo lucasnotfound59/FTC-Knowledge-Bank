@@ -210,7 +210,7 @@ def build_cli(source,commit):
     stamp.write_text(commit+"\n",encoding="utf-8")
 
 
-def kernel(source,config,command,root,diff=None):
+def kernel(source,config,command,root,diff=None,work_mode="normal"):
     protocol=versions(config)
     args=launcher(source)+[command]
     if command=="validate":
@@ -225,6 +225,10 @@ def kernel(source,config,command,root,diff=None):
         raise IntegrationError(f"Unsupported kernel command: {command}")
     if command in ("resolve","check") and protocol["kernelSchemaVersion"]==2:
         args+=profile_args(config)
+    # The work mode is per invocation only: it is forwarded but never written to the
+    # stored project configuration, and normal calls omit the flag for compatibility.
+    if work_mode!="normal":
+        args+=["--work-mode",work_mode]
     result=run(args+["--json"],cwd=root,check=False)
     try:
         payload=json.loads(result.stdout)
@@ -239,6 +243,8 @@ def kernel(source,config,command,root,diff=None):
         expected=64 if payload["error"]["code"]=="usage" else 2
     else:
         if command in ("resolve","check"):
+            if work_mode!="normal" and payload.get("workMode")!=work_mode:
+                raise IntegrationError("Kernel response does not report the requested work mode")
             if (payload.get("team"),payload.get("season"))!=(config["team"],config["season"]):
                 raise IntegrationError("Kernel response does not match the configured team and season")
             if protocol["kernelSchemaVersion"]==2 and payload.get("profiles")!=normalize_profiles(config.get("profiles")):
@@ -257,17 +263,22 @@ def main(argv=None):
     parser.add_argument("command",choices=["validate","resolve","check"])
     parser.add_argument("--project",required=True)
     parser.add_argument("--diff")
+    parser.add_argument("--work-mode",choices=["normal","test","dev"])
     args=parser.parse_args(argv)
     try:
         if args.diff and args.command!="check":
             raise IntegrationError("--diff is only supported for check")
+        if args.work_mode and args.command=="validate":
+            raise IntegrationError("--work-mode is only supported for resolve and check")
+        if args.work_mode=="dev" and not args.diff:
+            raise IntegrationError("--work-mode dev requires --diff FILE")
         root=project_root(args.project)
         config=load_config(root)
         source=check_pin(root,config)
         check_managed(root,config)
         validator(source)
         build_cli(source,config["source"]["commit"])
-        code,payload=kernel(source,config,args.command,root,args.diff)
+        code,payload=kernel(source,config,args.command,root,args.diff,args.work_mode or "normal")
         print(json.dumps(payload,ensure_ascii=False))
         return code
     except (IntegrationError,OSError,ValueError) as error:

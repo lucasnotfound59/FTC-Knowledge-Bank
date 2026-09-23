@@ -7,6 +7,7 @@ import org.ftckb.domain.RuleContext
 import org.ftckb.domain.RuleContextException
 import org.ftckb.domain.RuleResolver
 import org.ftckb.domain.RuleIdentity
+import org.ftckb.domain.WorkMode
 import org.ftckb.knowledge.FileKnowledgeRepository
 import org.ftckb.standardizer.Standardizer
 
@@ -18,7 +19,7 @@ internal fun runCheckCommand(args:List<String>,out:PrintStream):Int {
         return exit
     }
     if (args==listOf("--help")) {
-        out.println("usage: knowledge-cli check <repo-root> [--knowledge PATH] --team N --season YYYY-YYYY (--profile NAME [--profile NAME ...] | --generic-profile) [--diff FILE] [--json]")
+        out.println("usage: knowledge-cli check <repo-root> [--knowledge PATH] --team N --season YYYY-YYYY (--profile NAME [--profile NAME ...] | --generic-profile) [--diff FILE] [--work-mode normal|test|dev] [--json]")
         return 0
     }
     if (args.isEmpty()) return fail("missing <repo-root>","usage",64)
@@ -30,7 +31,7 @@ internal fun runCheckCommand(args:List<String>,out:PrintStream):Int {
     val optionArgs=profileSelection.remaining
     if (optionArgs.size%2!=0) return fail("check options must be flag-value pairs","usage",64)
     val optionPairs=optionArgs.chunked(2)
-    val allowed=setOf("--knowledge","--team","--season","--diff")
+    val allowed=setOf("--knowledge","--team","--season","--diff","--work-mode")
     val unknown=optionPairs.firstOrNull { it[0] !in allowed }
     if (unknown!=null) return fail("unknown check option: ${unknown[0]}","usage",64)
     val duplicate=optionPairs.groupBy { it[0] }.entries.firstOrNull { it.value.size>1 }
@@ -44,6 +45,13 @@ internal fun runCheckCommand(args:List<String>,out:PrintStream):Int {
     }
     if (!RuleIdentity.isCanonicalSeason(values.getValue("--season"))) {
         return fail("invalid value for --season: expected YYYY-YYYY","usage",64)
+    }
+    val workMode=values["--work-mode"]?.let { selected ->
+        WorkMode.parse(selected) ?: return fail("invalid value for --work-mode: expected normal|test|dev","usage",64)
+    } ?: WorkMode.NORMAL
+    // DEV never relaxes a full dirty checkout: the caller must name the scoped patch first.
+    if (workMode==WorkMode.DEV && "--diff" !in values) {
+        return fail("check --work-mode dev requires --diff FILE","usage",64)
     }
     val profiles=try {
         profileSelection.requiredProfiles()
@@ -69,7 +77,7 @@ internal fun runCheckCommand(args:List<String>,out:PrintStream):Int {
         return 2
     }
     val resolved=RuleResolver.resolve(
-        loaded.rules,RuleContext(values.getValue("--team"),values.getValue("--season"),profiles)
+        loaded.rules,RuleContext(values.getValue("--team"),values.getValue("--season"),profiles,workMode)
     )
     if (resolved.conflicts.isNotEmpty()) {
         val detail=resolved.conflicts.joinToString("; ") { conflict ->
@@ -83,11 +91,22 @@ internal fun runCheckCommand(args:List<String>,out:PrintStream):Int {
         val detail=exception.message?.lineSequence()?.firstOrNull()?.trim().orEmpty()
         return fail("error reading diff: ${detail.ifEmpty { exception.javaClass.simpleName }}","load-error",2)
     }
-    val outcome=Standardizer.evaluate(resolved.activeRules,changes)
+    val evaluated=Standardizer.evaluate(resolved.activeRules,changes)
+    // DEV is a per-task downgrade: hard findings stay visible as location-rich soft notices,
+    // pre-existing soft notices are retained, and only usage/load/validation/conflict errors
+    // still fail. It never claims production-rule compliance.
+    val outcome=if (workMode==WorkMode.DEV) {
+        Standardizer.Outcome(
+            emptyList(),
+            (evaluated.soft+Standardizer.downgradeToSoft(evaluated.violations))
+                .sortedWith(compareBy({ it.first },{ it.second }))
+        )
+    } else evaluated
     if (jsonMode) {
-        out.println(KernelJson.checkJson(values.getValue("--team"),values.getValue("--season"),profiles,outcome))
+        out.println(KernelJson.checkJson(values.getValue("--team"),values.getValue("--season"),profiles,outcome,workMode))
         return if (outcome.violations.isEmpty()) 0 else 1
     }
+    if (workMode!=WorkMode.NORMAL) out.println("work-mode=${workMode.id}")
     outcome.violations.sortedWith(compareBy({ it.ruleId },{ it.path.orEmpty() },{ it.line ?: 0 })).forEach { violation ->
         val location=buildString {
             violation.path?.let { append(" path=").append(it) }

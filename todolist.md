@@ -27,7 +27,8 @@
 - [ ] 在现有 Git 联网安装中添加阶段进度、每操作超时、子进程清理及失败恢复说明；这不是 Agent 联网检索功能。
 - [x] V0.6.0：发布 `global.test-utility-layout` 跨赛季硬规则；目标 TeamCode 的机器人侧 OpMode 使用 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/`，工具使用 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/`，并禁止确定的错误路径/JUnit 新增。
 - [x] V0.7.0：`official.keep-customizations-in-teamcode` 的 hard 保护收窄到 `build.common.gradle`；新增跨赛季 `global.vendor-documented-build-dependencies` 条件式 soft，要求第一方厂商文档/固定 commit、精确依赖版本与 diff 逐项对应，规则引擎不联网验证证据真伪。Pedro Pathing 3 安装证据已入库，完整 Pedro 3 API 教程迁移仍未实现。
-- [ ] 按 README 的 V0.7.0 基线和 feat／patch／大更新约定管理后续版本，Git tag／Release 发布另行确认。
+- [x] V0.8.0：`resolve`/`check` 增加逐任务临时 `--work-mode normal|test|dev`（省略即 normal，默认 JSON/退出码字节兼容）。test 仅把 `global.command-responsibilities` 与 `shared.ftclib-command-candidate` 移入 excludedRules（原因 `work-mode-test`），命令安全与测试目录/JUnit 硬检查继续生效，用户指定的测试代码不需要先提交编码 plan；dev 的 check 必须给 `--diff FILE`，把每个 hard 命中连同位置转为 soft 并退 0，原有 soft 保留且必须逐项报告。显式 test/dev JSON 增加 `workMode`，kernel JSON v2、YAML v4 与项目接入协议 v2 不变；项目适配器透传模式且不写回配置。
+- [ ] 按 README 的 V0.8.0 基线和 feat／patch／大更新约定管理后续版本，Git tag／Release 发布另行确认。
 
 ## MVP：队内代码 Agent 闭环
 

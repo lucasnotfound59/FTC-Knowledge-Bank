@@ -1,5 +1,6 @@
 """Offline integration tests: real Git repositories, isolated build/kernel fixtures."""
 import contextlib
+import io
 import json
 import os
 from pathlib import Path
@@ -100,6 +101,8 @@ args=sys.argv[1:]
 command=args[0]
 version=2 if (Path(__file__).resolve().parent.parent/".agents/skills/ftckb-integrate/assets/integration.json").exists() else 1
 payload={"schemaVersion":version,"command":command,"ok":True}
+if "--work-mode" in args:
+    payload["workMode"]=args[args.index("--work-mode")+1]
 code=0
 if command=="validate":
     payload.update(ruleCount=1,violations=[])
@@ -582,6 +585,81 @@ class IntegrationTest(unittest.TestCase):
         payload=json.loads(result.stdout)
         self.assertEqual("resolve",payload["command"])
         self.assertEqual("16093",payload["team"])
+
+    def test_project_adapter_forwards_explicit_work_modes_without_touching_config(self):
+        self.install()
+        before=(self.target/project.CONFIG).read_bytes()
+        patch_file=self.base/"change.patch"
+        patch_file.write_text("diff --git a/TeamCode/New.java b/TeamCode/New.java\n"
+                              "new file mode 100644\n"
+                              "--- /dev/null\n"
+                              "+++ b/TeamCode/New.java\n"
+                              "@@ -0,0 +1,1 @@\n"
+                              "+class New {}\n",encoding="utf-8")
+        for name,mode,extra in (("resolve","test",[]),("check","test",[]),
+                                ("check","dev",["--diff",str(patch_file)])):
+            with self.subTest(command=name,mode=mode):
+                result=command(sys.executable,ROOT/BUNDLE/"scripts/project.py",name,
+                               "--project",self.target,"--work-mode",mode,*extra)
+                payload=json.loads(result.stdout)
+                self.assertEqual(mode,payload["workMode"])
+                self.assertNotIn("workMode",json.loads(command(
+                    sys.executable,ROOT/BUNDLE/"scripts/project.py",name,"--project",self.target,*extra).stdout))
+        self.assertEqual(before,(self.target/project.CONFIG).read_bytes())
+
+    def test_kernel_omits_work_mode_by_default_and_requires_the_echoed_mode(self):
+        self.install()
+        config=project.load_config(self.target)
+        source=self.target/project.SOURCE
+        patch_file=self.base/"change.patch"
+        patch_file.write_text("diff --git a/TeamCode/New.java b/TeamCode/New.java\n"
+                              "new file mode 100644\n"
+                              "--- /dev/null\n"
+                              "+++ b/TeamCode/New.java\n"
+                              "@@ -0,0 +1,1 @@\n"
+                              "+class New {}\n",encoding="utf-8")
+        captured=[]
+        valid={"schemaVersion":2,"command":"check","team":"16093","season":"2025-2026",
+               "profiles":[],"ok":True,"violations":[],"soft":[]}
+
+        def fake_run(args,cwd=None,check=True):
+            captured.append([str(value) for value in args])
+            payload=dict(valid)
+            if "--work-mode" in captured[-1]:
+                payload["workMode"]=captured[-1][captured[-1].index("--work-mode")+1]
+            return subprocess.CompletedProcess([],0,json.dumps(payload),"")
+
+        with patch.object(project,"run",side_effect=fake_run):
+            self.assertEqual(0,project.kernel(source,config,"check",self.target)[0])
+            self.assertNotIn("--work-mode",captured[-1])
+            self.assertEqual(0,project.kernel(source,config,"check",self.target,
+                                              diff=str(patch_file),work_mode="dev")[0])
+            self.assertEqual("dev",captured[-1][captured[-1].index("--work-mode")+1])
+
+        with patch.object(project,"run",return_value=subprocess.CompletedProcess([],0,json.dumps(valid),"")):
+            with self.assertRaisesRegex(project.IntegrationError,"work mode"):
+                project.kernel(source,config,"check",self.target,
+                               diff=str(patch_file),work_mode="dev")
+
+    def test_project_adapter_refuses_dev_without_diff_and_validate_with_work_mode(self):
+        self.install()
+        before=snapshot(self.target)
+        for argv,expected in (
+            (["check","--project",str(self.target),"--work-mode","dev"],"--diff"),
+            (["validate","--project",str(self.target),"--work-mode","test"],"resolve and check"),
+        ):
+            with self.subTest(argv=argv):
+                output=io.StringIO()
+                with contextlib.redirect_stdout(output):
+                    code=project.main(argv)
+                self.assertEqual(2,code)
+                payload=json.loads(output.getvalue())
+                self.assertFalse(payload["integrationOk"])
+                self.assertIn(expected,payload["error"])
+        self.assertEqual(before,snapshot(self.target))
+        with self.assertRaises(SystemExit):
+            with contextlib.redirect_stderr(io.StringIO()):
+                project.main(["check","--project",str(self.target),"--work-mode","fast"])
 
     def test_windows_launcher_uses_batch_file(self):
         result=project.launcher(Path("C:/Team Project/tools/FTC-Knowledge-Bank"),windows=True)

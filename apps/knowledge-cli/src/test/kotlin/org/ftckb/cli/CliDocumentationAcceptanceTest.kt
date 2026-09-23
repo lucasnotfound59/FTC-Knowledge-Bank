@@ -65,7 +65,7 @@ class CliDocumentationAcceptanceTest {
     fun `release documents publish all version axes and profile aware governance`() {
         val root=Path.of("..","..").normalize()
         val readme=Files.readString(root.resolve("README.md"))
-        listOf("**版本：V0.7.0**","48（42 已批准 + 6 候选）","CLI 2.0.0","YAML v4","kernel JSON v2","项目接入协议 v2").forEach {
+        listOf("**版本：V0.8.0**","48（42 已批准 + 6 候选）","CLI 2.1.0","YAML v4","kernel JSON v2","项目接入协议 v2").forEach {
             assertTrue(readme.contains(it),it)
         }
         listOf("AGENTS.md","docs/kernel-contract.md","docs/handbook/resolution.md").forEach { file ->
@@ -95,7 +95,7 @@ class CliDocumentationAcceptanceTest {
             "docs/website/integration-and-checks.md"
         )
         currentReleaseDocuments.forEach { file ->
-            assertTrue(Files.readString(root.resolve(file)).contains("V0.7.0"),"$file: V0.7.0")
+            assertTrue(Files.readString(root.resolve(file)).contains("V0.8.0"),"$file: V0.8.0")
         }
         val conditionalSoftText=currentReleaseDocuments.joinToString("\n") { file ->
             Files.readString(root.resolve(file))
@@ -134,9 +134,35 @@ class CliDocumentationAcceptanceTest {
             staleClaims.forEach { stale -> assertFalse(text.contains(stale),"$file: $stale") }
         }
         val roadmap=Files.readString(root.resolve("todolist.md"))
-        listOf("V0.7.0 基线","YAML v4、kernel JSON v2 与项目接入协议 v2","schemaVersion=2").forEach { current ->
+        listOf("V0.8.0 基线","YAML v4、kernel JSON v2 与项目接入协议 v2","schemaVersion=2").forEach { current ->
             assertTrue(roadmap.contains(current),"todolist.md: $current")
         }
+    }
+
+    @Test
+    fun `work mode documentation and runtime skill require explicit user designation`() {
+        val root=Path.of("..","..").normalize()
+        val contract=Files.readString(root.resolve("docs/kernel-contract.md"))
+        listOf("--work-mode normal|test|dev","workMode","work-mode-test","--diff FILE","ephemeral").forEach {
+            assertTrue(contract.contains(it),"docs/kernel-contract.md: $it")
+        }
+        val readme=Files.readString(root.resolve("README.md"))
+        listOf("--work-mode","测试代码","dev").forEach { assertTrue(readme.contains(it),"README.md: $it") }
+        val skill=Files.readString(root.resolve(".agents/skills/ftckb-integrate/assets/project-skill/SKILL.md"))
+        listOf(
+            "--work-mode normal|test|dev",
+            "只有用户明确说明当前任务是测试代码或 dev 代码时才选择 test/dev",
+            "不得根据文件名、路径、分支、依赖或代码外观推断",
+            "测试代码优先实现用户的测试目的",
+            "不需要先提交编码 plan",
+            "work-mode-test",
+            "global.test-utility-layout",
+            "--diff FILE",
+            "原有的 soft 保留",
+            "逐项向用户报告降级提醒"
+        ).forEach { phrase -> assertTrue(skill.contains(phrase),"project skill: $phrase") }
+        val integration=Files.readString(root.resolve("docs/project-integration.md"))
+        listOf("--work-mode","--diff").forEach { assertTrue(integration.contains(it),"docs/project-integration.md: $it") }
     }
 
     @Test
@@ -218,6 +244,6 @@ class CliDocumentationAcceptanceTest {
         val version=ProcessBuilder(script.toString(),"--version").redirectErrorStream(true).start()
         assertTrue(version.waitFor(60,TimeUnit.SECONDS),"version command did not finish in time")
         assertEquals(0,version.exitValue())
-        assertEquals("ftckb 2.0.0 (kernel contract schemaVersion 2)\n",version.inputStream.bufferedReader().readText())
+        assertEquals("ftckb 2.1.0 (kernel contract schemaVersion 2)\n",version.inputStream.bufferedReader().readText())
     }
 }

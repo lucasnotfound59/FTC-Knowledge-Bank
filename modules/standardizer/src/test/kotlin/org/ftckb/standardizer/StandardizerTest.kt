@@ -175,6 +175,31 @@ class StandardizerTest {
     }
 
     @Test
+    fun `dev downgrade keeps rule check path line pattern and detail deterministically`() {
+        val violations=listOf(
+            Standardizer.Violation("shared.b","regex-forbidden","TeamCode/B.java",7,"pat-b","detail b"),
+            Standardizer.Violation("shared.a","path-forbidden","build.common.gradle",1,"build.common.gradle","detail a"),
+            Standardizer.Violation("shared.a","regex-required","TeamCode/A.java",3,"pat-a","detail a2"),
+            Standardizer.Violation("shared.c","path-required",null,null,"TeamCode/required/**","detail c")
+        )
+
+        assertEquals(
+            listOf(
+                "shared.a" to "work-mode=dev; downgraded hard check=regex-required path=TeamCode/A.java line=3 pattern=pat-a detail=detail a2",
+                "shared.a" to "work-mode=dev; downgraded hard check=path-forbidden path=build.common.gradle line=1 pattern=build.common.gradle detail=detail a",
+                "shared.b" to "work-mode=dev; downgraded hard check=regex-forbidden path=TeamCode/B.java line=7 pattern=pat-b detail=detail b",
+                "shared.c" to "work-mode=dev; downgraded hard check=path-required pattern=TeamCode/required/** detail=detail c"
+            ),
+            Standardizer.downgradeToSoft(violations)
+        )
+        assertEquals(
+            Standardizer.downgradeToSoft(violations),
+            Standardizer.downgradeToSoft(violations.reversed())
+        )
+        assertTrue(Standardizer.downgradeToSoft(emptyList()).isEmpty())
+    }
+
+    @Test
     fun `path-only triggers and duplicate matches emit one sorted soft entry`() {
         val pathOnly=softRule("shared.z-rule",listOf(RuleReviewTrigger(listOf("TeamCode/**"),emptyList())))
         val repeated=softRule("shared.a-rule",listOf(

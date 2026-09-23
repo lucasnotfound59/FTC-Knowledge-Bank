@@ -47,6 +47,23 @@ object Standardizer {
         return Outcome(violations,soft.distinctBy { it.first }.sortedBy { it.first })
     }
 
+    /** DEV work mode: hard findings never disappear. Each one becomes a deterministic soft
+     * notice whose note keeps the original check kind and location so an Agent can report
+     * every downgraded item instead of presenting the patch as production-compliant. */
+    fun downgradeToSoft(violations:List<Violation>):List<Pair<String,String>> {
+        return violations
+            .sortedWith(compareBy({ it.ruleId },{ it.path.orEmpty() },{ it.line ?: 0 },{ it.check },{ it.pattern },{ it.detail }))
+            .map { violation ->
+                violation.ruleId to buildString {
+                    append("work-mode=dev; downgraded hard check=").append(violation.check)
+                    violation.path?.let { append(" path=").append(it) }
+                    violation.line?.let { append(" line=").append(it) }
+                    append(" pattern=").append(violation.pattern)
+                    append(" detail=").append(violation.detail)
+                }
+            }
+    }
+
     private fun reviewTriggered(
         rule:KnowledgeRule,
         changes:List<DiffChange>,

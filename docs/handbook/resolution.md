@@ -1,6 +1,6 @@
 # 校验、适用范围与确定性裁决
 
-当前发布为 V0.7.0（CLI 2.0.0、YAML v4、kernel JSON v2、项目接入协议 v2）。
+当前发布为 V0.8.0（CLI 2.1.0、YAML v4、kernel JSON v2、项目接入协议 v2）。
 
 ```bash
 ftckb validate knowledge --json

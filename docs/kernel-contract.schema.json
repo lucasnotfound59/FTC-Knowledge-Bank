@@ -23,6 +23,7 @@
       "properties": {
         "schemaVersion": { "const": 2 },
         "command": { "const": "resolve" },
+        "workMode": { "$ref": "#/definitions/workMode" },
         "team": { "type": "string", "pattern": "^[0-9]+$" },
         "season": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{4}$" },
         "profiles": { "$ref": "#/definitions/profiles" },
@@ -40,6 +41,7 @@
       "properties": {
         "schemaVersion": { "const": 2 },
         "command": { "const": "check" },
+        "workMode": { "$ref": "#/definitions/workMode" },
         "team": { "type": "string", "pattern": "^[0-9]+$" },
         "season": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{4}$" },
         "profiles": { "$ref": "#/definitions/profiles" },
@@ -69,6 +71,10 @@
     }
   ],
   "definitions": {
+    "workMode": {
+      "description": "Additive field present only for explicit --work-mode test|dev; NORMAL output omits it. Ephemeral per invocation and never stored in project configuration.",
+      "enum": ["normal", "test", "dev"]
+    },
     "profiles": {
       "type": "array",
       "items": { "enum": ["rookiebot", "simple-opmode", "command-based", "ftclib-command"] },
@@ -171,7 +177,7 @@
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "items": { "enum": ["status", "team", "season", "profile"] }
+          "items": { "enum": ["status", "team", "season", "profile", "work-mode-test"] }
         }
       }
     },

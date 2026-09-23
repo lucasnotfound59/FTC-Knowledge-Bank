@@ -8,6 +8,7 @@ import org.ftckb.domain.RuleContext
 import org.ftckb.domain.RuleContextException
 import org.ftckb.domain.RuleIdentity
 import org.ftckb.domain.RuleResolver
+import org.ftckb.domain.WorkMode
 import org.ftckb.knowledge.FileKnowledgeRepository
 
 fun runCli(
@@ -39,7 +40,7 @@ fun runCli(
         if (args.first()=="validate") {
             out.println("usage: knowledge-cli validate <knowledge-root> [--json]")
         } else {
-            out.println("usage: knowledge-cli resolve <knowledge-root> --team N --season S (--profile NAME [--profile NAME ...] | --generic-profile) [--json]")
+            out.println("usage: knowledge-cli resolve <knowledge-root> --team N --season S (--profile NAME [--profile NAME ...] | --generic-profile) [--work-mode normal|test|dev] [--json]")
             out.println("required: choose exactly one profile mode; --profile NAME may be repeated")
         }
         return 0
@@ -83,9 +84,10 @@ fun runCli(
     if (args[0]=="resolve" && optionArgs.size%2!=0) {
         return fail("resolve options must be flag-value pairs","usage",64)
     }
+    var workMode=WorkMode.NORMAL
     if (args[0]=="resolve") {
         val optionPairs=optionArgs.chunked(2)
-        val unknown=optionPairs.firstOrNull { it[0] !in setOf("--team","--season") }
+        val unknown=optionPairs.firstOrNull { it[0] !in setOf("--team","--season","--work-mode") }
         if (unknown!=null) return fail("unknown resolve option: ${unknown[0]}","usage",64)
         val duplicate=optionPairs.groupBy { it[0] }.entries.firstOrNull { it.value.size>1 }
         if (duplicate!=null) return fail("duplicate resolve option: ${duplicate.key}","usage",64)
@@ -99,6 +101,10 @@ fun runCli(
         }
         if (!RuleIdentity.isCanonicalSeason(options.getValue("--season"))) {
             return fail("invalid value for --season: expected YYYY-YYYY","usage",64)
+        }
+        options["--work-mode"]?.let { selected ->
+            workMode=WorkMode.parse(selected)
+                ?: return fail("invalid value for --work-mode: expected normal|test|dev","usage",64)
         }
     }
     val profiles=if (args[0]=="resolve") {
@@ -134,14 +140,16 @@ fun runCli(
             val options=optionArgs.chunked(2).associate { pair -> pair[0] to pair.getOrElse(1) { "" } }
             val team=options["--team"] ?: return 64.also { out.println("missing --team") }
             val season=options["--season"] ?: return 64.also { out.println("missing --season") }
-            val result=RuleResolver.resolve(loaded.rules,RuleContext(team,season,profiles))
+            val result=RuleResolver.resolve(loaded.rules,RuleContext(team,season,profiles,workMode))
             if (jsonMode) {
-                out.println(KernelJson.resolveJson(team,season,result))
+                out.println(KernelJson.resolveJson(team,season,result,workMode))
                 if (result.conflicts.isNotEmpty()) 2 else 0
             } else if (result.conflicts.isNotEmpty()) {
+                if (workMode!=WorkMode.NORMAL) out.println("work-mode=${workMode.id}")
                 result.conflicts.forEach { out.println("conflict topic=${it.topic} rules=${it.ruleIds.sorted().joinToString(",")}") }
                 2
             } else {
+                if (workMode!=WorkMode.NORMAL) out.println("work-mode=${workMode.id}")
                 result.activeRules.forEach { out.println("active ${it.id}") }
                 0
             }
@@ -150,7 +158,7 @@ fun runCli(
     }
 }
 
-const val FTCKB_VERSION="2.0.0"
+const val FTCKB_VERSION="2.1.0"
 
 private fun printTopLevelHelp(out:PrintStream) {
     out.println("ftckb - FTC Knowledge Bank command line agent (v$FTCKB_VERSION)")
@@ -158,9 +166,9 @@ private fun printTopLevelHelp(out:PrintStream) {
     out.println("commands:")
     out.println("  validate <knowledge-root> [--json]")
     out.println("      load and validate knowledge rules")
-    out.println("  resolve <knowledge-root> --team N --season YYYY-YYYY (--profile NAME [--profile NAME ...] | --generic-profile) [--json]")
+    out.println("  resolve <knowledge-root> --team N --season YYYY-YYYY (--profile NAME [--profile NAME ...] | --generic-profile) [--work-mode normal|test|dev] [--json]")
     out.println("      resolve active rules deterministically (OFFICIAL > GLOBAL > LOCAL > SHARED)")
-    out.println("  check <repo-root> --knowledge PATH --team N --season YYYY-YYYY (--profile NAME [--profile NAME ...] | --generic-profile) [--diff FILE] [--json]")
+    out.println("  check <repo-root> --knowledge PATH --team N --season YYYY-YYYY (--profile NAME [--profile NAME ...] | --generic-profile) [--diff FILE] [--work-mode normal|test|dev] [--json]")
     out.println("      check the diff using the same explicit profile as resolve; no API key required")
     out.println("  candidates <knowledge-root> [--json]")
     out.println("      list candidate rules awaiting approval")
@@ -178,6 +186,7 @@ private fun printTopLevelHelp(out:PrintStream) {
     out.println("exit codes: 0 ok | 1 check hard violation | 2 knowledge/context/conflict failure | 64 usage error")
     out.println("machine contract for external agents: docs/kernel-contract.md")
     out.println("resolve/check require exactly one profile mode; --profile NAME may be repeated")
+    out.println("work modes: normal (default) | test (user-designated test code; exempts the two architecture rules) | dev (scoped --diff; hard findings become soft, exit 0)")
     out.println("example: ftckb resolve knowledge --team 20827 --season 2025-2026 --generic-profile --json")
     out.println("example: ftckb check <repo-root> --knowledge knowledge --team 20827 --season 2025-2026 --profile command-based --json")
     out.println("note: the CLI version ($FTCKB_VERSION) is independent of the kernel contract schemaVersion (${KernelJson.SCHEMA_VERSION})")

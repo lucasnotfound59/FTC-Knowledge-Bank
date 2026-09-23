@@ -3,7 +3,12 @@ package org.ftckb.domain
 import java.util.Collections
 import java.util.LinkedHashSet
 
-class RuleContext(val team:String?,val season:String?,profiles:Set<String>?=null) {
+class RuleContext(
+    val team:String?,
+    val season:String?,
+    profiles:Set<String>?=null,
+    val workMode:WorkMode=WorkMode.NORMAL
+) {
     val profiles:Set<String>?=profiles?.let { Collections.unmodifiableSet(LinkedHashSet(it)) }
 }
 
@@ -41,6 +46,12 @@ object RuleResolver {
                 if (rule.applicability.teams.isNotEmpty() && context.team !in rule.applicability.teams) add("team")
                 if (rule.applicability.seasons.isNotEmpty() && context.season !in rule.applicability.seasons) add("season")
                 if (!profiles.containsAll(rule.applicability.profiles)) add("profile")
+                // TEST is an explicit, ephemeral user designation: only the two rules that
+                // mandate formal command architecture are exempted, and every other
+                // exclusion reason is still reported alongside the work-mode reason.
+                if (context.workMode==WorkMode.TEST && rule.id in WorkMode.ARCHITECTURE_MANDATE_RULE_IDS) {
+                    add(WorkMode.TEST_EXCLUSION_REASON)
+                }
             }.sorted()
             if (reasons.isNotEmpty()) excluded+=ExcludedRule(rule.id,reasons)
             reasons.isEmpty()

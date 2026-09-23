@@ -312,7 +312,7 @@ class KernelJsonAcceptanceTest {
         assertEquals(2,mapper.readTree(KernelJson.validateJson(48))["schemaVersion"].asInt())
         Files.list(base).use { paths ->
             val fixtures=paths.filter { it.toString().endsWith(".json") }.sorted().toList()
-            assertEquals(10,fixtures.size)
+            assertEquals(12,fixtures.size)
             fixtures.forEach { fixture -> assertSchemaValid(Files.readString(fixture)) }
         }
 
@@ -365,6 +365,30 @@ class KernelJsonAcceptanceTest {
         val error=mapper.readTree(Files.readString(base.resolve("error-usage.json")))
         assertFalse(error["ok"].booleanValue())
         assertEquals("usage",error["error"]["code"].asText())
+
+        val testMode=mapper.readTree(Files.readString(base.resolve("resolve-test.json")))
+        assertEquals("test",testMode["workMode"].asText())
+        assertEquals(2,testMode["schemaVersion"].asInt())
+        assertEquals(
+            listOf("global.command-responsibilities","shared.ftclib-command-candidate"),
+            testMode["excludedRules"].filter {
+                it["reasons"].any { reason -> reason.asText()=="work-mode-test" }
+            }.map { it["ruleId"].asText() }
+        )
+
+        val devMode=mapper.readTree(Files.readString(base.resolve("check-dev.json")))
+        assertEquals("dev",devMode["workMode"].asText())
+        assertEquals(2,devMode["schemaVersion"].asInt())
+        assertTrue(devMode["ok"].booleanValue())
+        assertEquals(0,devMode["violations"].size())
+        assertEquals(4,devMode["soft"].size())
+        devMode["soft"].forEach { note ->
+            assertTrue(note["note"].asText().isNotEmpty(),note.toString())
+        }
+        assertEquals(
+            3,
+            devMode["soft"].count { it["note"].asText().startsWith("work-mode=dev; downgraded hard check=") }
+        )
 
         val conflict=mapper.readTree(Files.readString(base.resolve("resolve-conflict.json")))
         assertEquals("resolve",conflict["command"].asText())

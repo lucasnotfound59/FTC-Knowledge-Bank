@@ -29,7 +29,7 @@ python3 -m venv /path/to/ftckb-venv
 
 下文 `python3` 替换为该虚拟环境 Python。Windows 使用环境内 `python.exe`，或 `py -3`。不要向共享配置提交个人 `JAVA_HOME`、`sdk.dir` 或 SDK 绝对路径。这个独立 CLI 构建不需要 Android SDK；机器人编译仍需要队员自己的 Android SDK。
 
-首次安装须指定包含本功能的 tag 或完整 40 位 commit SHA。仓库 V0.7.0、CLI 2.0.0、YAML v4、kernel JSON v2、项目接入协议 v2 是独立版本轴；当前知识总数为 48（42 已批准 + 6 候选）。README 的版本不代表同名 tag 已发布。正式 tag 发布前，请使用包含本 Skill 和脚本的已提交版本；审阅所选 checkout 后用 `git rev-parse HEAD` 获取完整 SHA，不要把旧版本 SHA 或 `main` 传给安装器。
+首次安装须指定包含本功能的 tag 或完整 40 位 commit SHA。仓库 V0.8.0、CLI 2.1.0、YAML v4、kernel JSON v2、项目接入协议 v2 是独立版本轴；当前知识总数为 48（42 已批准 + 6 候选）。README 的版本不代表同名 tag 已发布。正式 tag 发布前，请使用包含本 Skill 和脚本的已提交版本；审阅所选 checkout 后用 `git rev-parse HEAD` 获取完整 SHA，不要把旧版本 SHA 或 `main` 传给安装器。
 
 ## 安装与 dry-run
 
@@ -98,6 +98,8 @@ python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.
 ```
 
 包装器验证固定版本、知识路径、托管内容、schema 和退出码，并验证返回的 normalized profiles 与配置相符；resolve/check 自动附加配置的显式 profile 参数。CLI 尚未构建或版本改变时才重新构建；构建日志走 stderr，kernel JSON 保持 stdout 可解析。
+
+`resolve|check` 还可用 `--work-mode normal|test|dev` 透传逐任务工作模式，例如用户明确指定测试代码时 `project.py resolve --project . --work-mode test`，或用户明确指定 dev 代码时 `project.py check --project . --diff /tmp/change.patch --work-mode dev`。该参数不写入 `.ftckb/project.yaml`，不改变固定版本、team、season、profiles 或托管文件；省略时保持原命令与输出。`--work-mode dev` 缺少 `--diff` 时包装器拒绝执行。模式不能按文件名、路径或依赖推断，只有用户明确指定才使用；包装器会核对内核响应确实回报了请求的 `workMode`，避免旧内核静默忽略。
 
 完整验收：
 

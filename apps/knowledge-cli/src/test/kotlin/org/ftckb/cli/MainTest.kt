@@ -298,7 +298,7 @@ class MainTest {
 
     @Test
     fun `top level help and version are first class commands`() {
-        assertEquals("2.0.0",FTCKB_VERSION)
+        assertEquals("2.1.0",FTCKB_VERSION)
         val help=ByteArrayOutputStream()
         assertEquals(0,runCli(listOf("--help"),PrintStream(help)))
         assertTrue(help.toString().contains("commands:"))

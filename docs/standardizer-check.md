@@ -19,6 +19,9 @@
 ftckb check <repo-root> --team 20827 --season 2025-2026 --generic-profile [--json]
 # 或检查一个补丁/任意 diff（外部 Agent 常用：提交前自检）
 ftckb check <repo-root> --team 20827 --season 2025-2026 --generic-profile --diff <file.patch> [--json]
+# 显式 test/dev 工作模式（逐任务临时参数；用户明确指定时才使用）
+ftckb resolve knowledge --team 20827 --season 2025-2026 --profile ftclib-command --work-mode test --json
+ftckb check <repo-root> --team 20827 --season 2025-2026 --profile command-based --diff <file.patch> --work-mode dev --json
 ```
 
 JSON 契约（沿用 kernel 风格，退出码扩展）：
@@ -42,6 +45,7 @@ JSON 契约（沿用 kernel 风格，退出码扩展）：
 - 判定范围：路径 checks 检查所有触及路径（含删除、只删行、空文件、重命名前后路径）。regex checks 只检查新增行，不报全库历史债；`regex-required` 按单条新增行匹配，`regex-forbidden` 先按单条新增行匹配，再可在连续新增行组成的同一块中跨行匹配。`--diff` 使用同样的路径/新增行语义；非空坏补丁报错，不静默通过。
 - 默认同时检查 HEAD→index 和 HEAD→工作区并去重，避免暂存违规仅在工作区撤销后漏检；仅存在于 index 的行号可能与当前文件不同，应结合 staged diff 阅读。
 - `check` 使用与 `resolve` 完全相同的生效规则集（含冲突检测），保证“告知什么就执法什么”。
+- `--work-mode normal|test|dev` 是逐任务临时参数，省略等同 `normal`，不写入项目配置、不改变 team/season/profile，也不能按文件名、路径或依赖推断；只有用户明确指定测试代码或 dev 代码时才选择。`test` 只把 `global.command-responsibilities` 与 `shared.ftclib-command-candidate` 移入 excludedRules（原因 `work-mode-test`），其余规则和硬检查（含 tests/utils 路径与 JUnit）继续执法。`check --work-mode dev` 必须提供本次改动的 `--diff FILE`（否则 usage/64），把每个 hard 命中连 ruleId/check/path/line/detail 转成 soft、`violations` 为空并退出 0，原有 soft 保留；加载/校验/冲突/坏补丁错误仍为 2/64。不能把 dev 输出描述为符合正式规则。
 
 ## 2. 检查类型库（v1，数据驱动）
 
@@ -104,7 +108,7 @@ limelight-synchronize-pipeline-dependent-reads、pedro 三条（坐标转换/定
 
 诚实声明：机器只对“能从 diff 文本确定性判定”的事项执法；行为类规则一律走 soft + 人工确认，不假装全能。
 
-无 checks/无 trigger 的生效规则始终输出 soft；无 checks/有 `reviewTriggers` 的规则为**条件式 soft**，同一 trigger 的路径和新增行模式都匹配才输出一项 soft；有 checks 才产生硬 violations。两条 Limelight validity/freshness 规则保留 approved，使用第二种模式：无关 Java 不产生 Limelight soft，命中后若没有其他硬违规仍为退出码 0。仓库 V0.7.0 当前 **5 条生效规则带硬检查**；跨赛季 `global.test-utility-layout` 对可确定的错误路径/JUnit 新增以退出码 1 阻止，机器人侧 OpMode 的规范路径为 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/`，复用工具的规范路径为 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/`。完整 Agent instruction 仍负责不能可靠机判的语义分类；目标 TeamCode 禁用 JUnit/source set 不影响 Knowledge Bank 自身的 Kotlin/CLI JUnit 测试。`global.vendor-documented-build-dependencies` 是第三条路径触发的条件式 soft：任何对根目录 `build.dependencies.gradle` 的新增、修改、删除或重命名都只输出一项 soft 并要求 Agent 提供第一方厂商文档/固定 commit、精确依赖版本和 diff 逐项对应，但规则引擎不联网、不鉴别域名、不验证证据真伪，soft 不代表机器已证明合规或违规，也不会把该文件改动变成静默通过。soft 只请求人工/模型审阅，不是机器已证明违规或真机验证，**Agent 必须向用户报告**每个 soft。
+无 checks/无 trigger 的生效规则始终输出 soft；无 checks/有 `reviewTriggers` 的规则为**条件式 soft**，同一 trigger 的路径和新增行模式都匹配才输出一项 soft；有 checks 才产生硬 violations。两条 Limelight validity/freshness 规则保留 approved，使用第二种模式：无关 Java 不产生 Limelight soft，命中后若没有其他硬违规仍为退出码 0。仓库 V0.8.0 当前 **5 条生效规则带硬检查**；跨赛季 `global.test-utility-layout` 对可确定的错误路径/JUnit 新增以退出码 1 阻止，机器人侧 OpMode 的规范路径为 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/`，复用工具的规范路径为 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/`。完整 Agent instruction 仍负责不能可靠机判的语义分类；目标 TeamCode 禁用 JUnit/source set 不影响 Knowledge Bank 自身的 Kotlin/CLI JUnit 测试。`global.vendor-documented-build-dependencies` 是第三条路径触发的条件式 soft：任何对根目录 `build.dependencies.gradle` 的新增、修改、删除或重命名都只输出一项 soft 并要求 Agent 提供第一方厂商文档/固定 commit、精确依赖版本和 diff 逐项对应，但规则引擎不联网、不鉴别域名、不验证证据真伪，soft 不代表机器已证明合规或违规，也不会把该文件改动变成静默通过。soft 只请求人工/模型审阅，不是机器已证明违规或真机验证，**Agent 必须向用户报告**每个 soft。
 
 ## 4. 分阶段计划（M1–M4 已交付，M5 即文档合并）
 

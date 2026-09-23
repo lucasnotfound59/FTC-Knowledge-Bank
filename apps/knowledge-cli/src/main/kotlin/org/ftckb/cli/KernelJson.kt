@@ -6,6 +6,7 @@ import org.ftckb.domain.KnowledgeRule
 import org.ftckb.domain.ResolutionResult
 import org.ftckb.domain.RuleViolation
 import org.ftckb.domain.WebRuleEvidence
+import org.ftckb.domain.WorkMode
 import org.ftckb.standardizer.Standardizer
 
 /**
@@ -62,11 +63,14 @@ object KernelJson {
     fun resolveJson(
         team:String,
         season:String,
-        result:ResolutionResult
+        result:ResolutionResult,
+        workMode:WorkMode=WorkMode.NORMAL
     ):String {
         val root=mapper.createObjectNode()
         root.put("schemaVersion",SCHEMA_VERSION)
         root.put("command","resolve")
+        // Explicit test/dev responses add an additive field; NORMAL output stays byte-identical.
+        if (workMode!=WorkMode.NORMAL) root.put("workMode",workMode.id)
         root.put("team",team)
         root.put("season",season)
         putSortedStrings(root.putArray("profiles"),result.profiles)
@@ -103,10 +107,18 @@ object KernelJson {
         return mapper.writeValueAsString(root)
     }
 
-    fun checkJson(team:String,season:String,profiles:Set<String>,outcome:Standardizer.Outcome):String {
+    fun checkJson(
+        team:String,
+        season:String,
+        profiles:Set<String>,
+        outcome:Standardizer.Outcome,
+        workMode:WorkMode=WorkMode.NORMAL
+    ):String {
         val root=mapper.createObjectNode()
         root.put("schemaVersion",SCHEMA_VERSION)
         root.put("command","check")
+        // Explicit test/dev responses add an additive field; NORMAL output stays byte-identical.
+        if (workMode!=WorkMode.NORMAL) root.put("workMode",workMode.id)
         root.put("team",team)
         root.put("season",season)
         putSortedStrings(root.putArray("profiles"),profiles)
