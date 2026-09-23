@@ -6,11 +6,11 @@
 
 - 已确认的项目实践：集中 Hardwares、公开分组字段、简洁 OpMode、逐步中文注释、0~360 度舵机变量。
 - 本知识库的机器规则：[rookiebot-tutorial.yaml](../../shared/practices/rookiebot-tutorial.yaml)，12 条已于 2026-09-07 经用户明确确认改为 `approved`，审批人为 `lucasnotfound59`（沿用库中 `overall_software_lead` 角色）；`resolve` 会返回这些 active 条目。审批仅覆盖这 12 条，其他来源的 6 条候选规则保持不变。
-- 参考实现：[RookieBot 5581415](https://github.com/OLeslieO/FTC2026-RookieBot/tree/558141588e2a0eb766e195ab71df3c188e942891)，FTC SDK 11.2.1、Pedro 2.1.2；这是来源项目版本，不改动本知识库已有编译 fixture 的版本。
+- 历史结构参考：[RookieBot 5581415](https://github.com/OLeslieO/FTC2026-RookieBot/tree/558141588e2a0eb766e195ab71df3c188e942891)，其 Pedro 2.1.2 调用不可直接复制到本教程的 Pedro 3 项目。本知识库的编译 fixture 单独固定 FTC SDK 11.2.1 / Pedro 3.0.0。
 - 结构参考：[FTC16093 Premier 888b0c7](https://github.com/lucasnotfound59/FTC16093-2026DECODE-Premier/tree/888b0c7894c8badfc6a7bdb4fa558db67446eaed/TeamCode/src/main/java/org/firstinspires/ftc/teamcode)。学习硬件分组和 Pedro 调用，不沿用 `XKCommandOpmode` 命名或复制参考车参数。
 - 已标记的旧版：[flaw 对应 ee45dd0](https://github.com/OLeslieO/FTC2026-RookieBot/commit/ee45dd043aa542e50f7f27f60fae3af0d18e62e3)。它是此前已发布的有缺陷版本，不能继续推荐其无条件抛错的 Follower 工厂。标签只标记该提交，未重写历史。
 
-本约定面向采用 RookieBot 风格的新手教程。当前 `shared.ftclib-command-candidate` 虽然名称带 candidate，状态已是 approved，要求适用项目使用 subsystem + CommandOpMode；20827 也有已批准的硬件分组规范。本次批准的简洁写法是采用 RookieBot 新手教程约定时的限定做法，不废止其他项目的命令框架和队伍规范。实际项目先按队号和赛季调用 `ftckb resolve --json`，再遵守 instruction 中的项目范围。当前解析器只按队号/赛季筛选，不能自动识别 RookieBot 项目；返回 active 不等于所有项目都要采用该风格。需要更改其他项目架构时，仍须另走审批流程。已有 [Pedro 安全教程](../tools/pedro-pathing.md) 是独立 API/安全教学资料；本文是应用项目的代码组织约定，不替换其唯一编译 fixture。
+本约定面向采用 RookieBot 风格的新手教程。当前 `shared.ftclib-command-candidate` 虽然名称带 candidate，状态已是 approved，要求适用项目使用 subsystem + CommandOpMode；20827 也有已批准的硬件分组规范。本次批准的简洁写法是采用 RookieBot 新手教程约定时的限定做法，不废止其他项目的命令框架和队伍规范。实际项目先按真实队号、赛季和显式 `--profile rookiebot` 调用 `ftckb resolve --json`，不能从依赖或目录结构猜测 profile；未选择 RookieBot profile 时，本教程的专属规则不会自动生效。需要更改其他项目架构时，仍须另走审批流程。已有 [Pedro 安全教程](../tools/pedro-pathing.md) 是独立 API/安全教学资料；本文是应用项目的代码组织约定，不替换其唯一编译 fixture。
 
 ## 1. 所有硬件声明和初始化集中在 Hardwares
 
@@ -27,7 +27,7 @@ public final class Hardwares {
 
 `Motors` 内声明电机，`Servos` 内声明舵机，`Sensors` 内声明 Pinpoint、IMU、距离传感器等。所有设备查找、初始方向和硬件配置都放在对应分组或 Hardwares 的硬件构造方法中。Auto/TeleOp 只持有一个 Hardwares 引用，不再分散初始化设备。
 
-Pedro 自身会查找和配置设备，所以构造入口也在 `Hardwares.createFollower()`，`Constants` 仅存质量、速度、PID 等调参数据。不要在 Auto 中再次初始化或重置同一个定位器。
+Pedro 3 官方的 `Constants.create(HardwareMap)` 用当前机器人配置好的 Localizer、Drivetrain 和 Foresight 构造 Follower；它不只是调参数的容器。若保留 RookieBot 风格的 `Hardwares.createFollower()`，让这个方法委托 `Constants.create(hardwareMap)`，并明确避免 Auto/Hardwares 与 Follower 同时重复初始化或重置同一个定位器、争用驱动电机。
 
 ## 2. 使用公开分组字段，新增设备只改清单
 
@@ -108,25 +108,27 @@ hardwares.servos.servo1.setPosition(Hardwares.servoAngleToPosition(angleDegrees)
 
 移除注解之前，先填写硬件名称、方向、PID、定位参数、路线和机构参数，完成相应验证后开启配置锁。用户要求的是安全占位教程，不是填一套其他机器人的值直接部署。
 
-## 7. Pedro 使用匹配版本的完整构造链
+## 7. Pedro 3 使用完整的 Follower 构造
 
-2.1.2 需要实际接入 drivetrain 和 localizer。下面只示意位于 Hardwares 内的核心调用：
+Pedro 3 的[官方 Constants 教程](https://pedropathing.com/docs/pathing/tuning/constants)要求真正提供 Localizer、Drivetrain 和 Foresight。下面是构造形状，不是可以直接部署的当前机器人配置；硬件名、pod offset、方向、控制器 gain 等全部要实测：
 
 ```java
-return new FollowerBuilder(Constants.followerConstants(),hardwareMap)
-        .pathConstraints(PathConstraints.defaultConstraints.copy())
-        .mecanumDrivetrain(driveConstants)
-        .pinpointLocalizer(localizerConstants)
-        .build();
+public static Follower create(HardwareMap hardwareMap) {
+    return new Follower(
+        new PinpointLocalizer(hardwareMap,localizerConfig),
+        new Mecanum(hardwareMap,drivetrainConfig),
+        new Foresight(foresightConfig)
+    );
+}
 ```
 
-空 builder 的 `build()` 和永远抛错的工厂都不是完整的可配置实现。保留未配置时的条件拒绝，但条件后面必须有完整构造代码。更换 localizer 时同时改设备声明、查找、配置与 builder 调用。先验证定位再调 follower，不复制来源机器人的名字、PID、方向、offset 或路径值。
+官方固定 Quickstart 的 Constants.java 仍有返回 null 的占位方法，不能视作可运行构造；旧 FollowerBuilder 链也不是 Pedro 3 API。保留未配置时的条件拒绝，但锁后须有完整实现。更换 localizer 时同步改设备声明、配置与构造。先验证定位再调 Foresight，不复制来源机器人的名字、gain、方向、offset 或路径值。
 
 ## 8. 非阻塞 Auto 保持持续更新
 
-`init` 里创建硬件和路径，`start` 发起首段，`loop` 每轮执行 `follower.update()`。只在进入步骤时 `followPath`，通过 `isBusy` 与计时器决定何时跳转。
+`init` 里用 `Constants.create(hardwareMap)` 创建 Follower、设置起点并构造 `Path`；`start` 发起首段，`loop` 每轮执行 `follower.update()`。只在进入步骤时 `follower.follow(path)`，通过 `isBusy()` 与计时器决定何时跳转。
 
-进入舵机等待步骤时才 `timer.reset()`，不要每帧清零，也不要 `sleep` 或忙等。路径结束可能涉及超时条件，`isBusy=false` 不证明实物零误差到点。STOP/异常要取消跟随，异常后不能在保护范围外再读取故障 follower 的 telemetry。
+进入舵机等待步骤时才 `timer.reset()`，不要每帧清零，也不要 `sleep` 或忙等。路径结束可能进入保持位姿模式；`isBusy()==false` 既不证明实物零误差到点，也不证明电机零输出。完成每段路径时显式调用 `follower.stop()` 并更新一次，失败进入安全停止；STOP/异常也应尽力执行同样步骤。软件停止不证明实物已停稳；异常后不能在保护范围外再读取故障 follower 的 telemetry。Pedro 3 的 `maxPathSpeed` 是目标路径速度比例，**不是电机功率硬上限**；详见 [Pedro 3 安全教程](../tools/pedro-pathing.md)。
 
 ## 9. 共享 SDK 配置与 Git 卫生
 
@@ -166,7 +168,7 @@ return new FollowerBuilder(Constants.followerConstants(),hardwareMap)
 - `shared.rookiebot-step-comments`：逐步解释用途、单位和修改方法
 - `shared.rookiebot-servo-degrees`：舵机业务变量用度数并统一换算
 - `shared.rookiebot-template-activation`：区分安全占位模板和要运行的队伍 Auto
-- `shared.rookiebot-pedro-complete-builder`：Pedro 构造必须接入底盘和定位器
+- `shared.rookiebot-pedro-complete-builder`：Pedro 3 构造必须接入定位、底盘和算法
 - `shared.rookiebot-nonblocking-auto`：用非阻塞步骤组合舵机与路径
 - `shared.rookiebot-sdk-path-hygiene`：共享项目不提交个人 SDK 路径与构建产物
 - `shared.rookiebot-java-imports`：使用正确的项目类与 FTC API 导入

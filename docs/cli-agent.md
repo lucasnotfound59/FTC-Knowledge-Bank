@@ -1,6 +1,6 @@
 # FTC Agent 命令行客户端（ftckb）
 
-本文档描述 ftckb 命令行的安装、配置、命令与安全边界。它是 apps/knowledge-cli 的正式使用文档；只记录当前已验证的能力。当前版本轴为仓库 V0.8.0、CLI 2.1.0、YAML v4、kernel JSON v2、项目接入协议 v2；知识总数为 48（42 已批准 + 6 候选）。
+本文档描述 ftckb 命令行的安装、配置、命令与安全边界。它是 apps/knowledge-cli 的正式使用文档；只记录当前已验证的能力。当前版本轴为仓库 V0.9.0、CLI 2.1.0、YAML v4、kernel JSON v2、项目接入协议 v2；知识总数为 48（42 已批准 + 6 候选）。
 
 ## 安装
 

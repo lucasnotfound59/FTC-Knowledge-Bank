@@ -18,7 +18,7 @@ Pedro 新人 Auto 工作流从完整的 [参数字典](../../knowledge/guides/to
 ./gradlew :apps:knowledge-cli:test --tests 'org.ftckb.cli.PedroTutorialAcceptanceTest'
 ```
 
-完整发布门还会在隔离 fixture 中使用固定的 FTC SDK 11.2.0 与 Pedro 2.1.2 编译规范示例。它需要 JDK 21，并要求 `ANDROID_HOME` 或 `ANDROID_SDK_ROOT` 指向已安装的 Android SDK；macOS 使用 Android Studio 默认位置时可运行：
+完整发布门还会在隔离 fixture 中使用固定的 FTC SDK 11.2.1、Pedro revhub 3.0.0 与 tuning 1.0.0 编译规范示例。fixture 的 Constants.java 接入真实 Localizer、Drivetrain 和 Foresight，但其中官方样例硬件名与调参值未经任何机器人验证，不能直接部署。验证需要 JDK 21，并要求 `ANDROID_HOME` 或 `ANDROID_SDK_ROOT` 指向已安装的 Android SDK；macOS 使用 Android Studio 默认位置时可运行：
 
 ```bash
 JAVA_HOME='/Applications/Android Studio.app/Contents/jbr/Contents/Home' \

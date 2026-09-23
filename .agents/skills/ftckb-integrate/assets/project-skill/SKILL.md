@@ -33,7 +33,7 @@ python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.
 
 `project.py resolve|check` 与底层 `ftckb` 支持临时 `--work-mode normal|test|dev`，省略等同 `normal`。模式只对当前任务生效，不写入 `.ftckb/project.yaml`，也不改变固定版本、team、season 或 profiles。**只有用户明确说明当前任务是测试代码或 dev 代码时才选择 test/dev；不得根据文件名、路径、分支、依赖或代码外观推断，也不得自行把默认模式改成 test/dev。** 交付时必须写明所用模式、覆盖的文件范围和被排除的项目改动。
 
-- **test**：用户明确指定当前编写的是测试代码时，测试代码优先实现用户的测试目的，不因正式命令架构而被迫使用 `CommandBase`，也不需要先提交编码 plan。裁决仍通过 `resolve` 取得：`global.command-responsibilities` 与 `shared.ftclib-command-candidate` 进入 `excludedRules`，原因 `work-mode-test`；命令实时输入、安全清理、`global.test-utility-layout` 的 tests/utils 位置与目标 TeamCode 不使用 JUnit 等其余规则和硬检查全部继续生效。测试代码是逐任务的明确指定，不是全局豁免，不能当作绕过其他规则的理由。
+- **test**：用户明确指定当前编写的是测试代码时，测试代码优先实现用户的测试目的，不因正式命令架构而被迫使用 `CommandBase`，也不需要先提交编码 plan。裁决仍通过 `resolve` 取得：`global.command-responsibilities` 与 `shared.ftclib-command-candidate` 进入 `excludedRules`，原因 `work-mode-test`；命令实时输入、安全清理、`global.test-utility-layout` 的 tests/utils 位置与目标 TeamCode 不使用 JUnit 等其余规则和硬检查全部继续生效。测试代码是逐任务的明确指定，不是全局豁免，不能当作绕过其他规则的理由。若工作区同时有非测试改动，`check --work-mode test` **必须**传仅覆盖本次测试代码的 `--diff FILE`；对其余改动另跑 normal 检查并披露两次检查各自的范围，不得用 test 模式放松整个脏工作区。
 - **dev**：用户明确指定当前部分是 dev 代码（新架构或新 system 的尝试）时，`check` 必须同时提供本次改动的 `--diff FILE`，只评估该补丁；每个 hard 命中都会转成带 ruleId、check、path、line、detail 的 soft 提醒，没有加载/校验/冲突/调用错误时退出码为 0。原有的 soft 保留。必须逐项向用户报告降级提醒，并说明该 diff 覆盖哪些文件、排除了哪些项目改动；用户明确表示可以忽略后才能继续。dev 模式不是“符合正式规则”，也不是机器人验证，不得这样描述。
 
 无效知识、同层级规则冲突、错误 profile、无法解析的补丁仍按退出码 2/64 失败，不因 test/dev 变成通过。
@@ -50,7 +50,7 @@ python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.
 - 退出 1：硬违规，修复后重跑。已有违规属于用户基线时明确说明，不将其冒充本次引入，也不声称最终检查通过。
 - 退出 2/64：加载、配置、规则冲突或调用错误，不等同于代码通过。
 
-默认 check 覆盖 staged、unstaged 和非忽略 untracked 变更。路径规则看触及路径（含删除/重命名）。regex 只看新增行：`regex-required` 和 review trigger 逐条匹配，`regex-forbidden` 先逐条匹配，再可匹配连续新增行块。`--diff /path/to/change.patch` 只用于明确范围的检查，并披露排除的项目改动；交付仍运行默认全工作区 check，不靠缩小 diff 隐藏违规。
+默认 check 覆盖 staged、unstaged 和非忽略 untracked 变更。路径规则看触及路径（含删除/重命名）。regex 只看新增行：`regex-required` 和 review trigger 逐条匹配，`regex-forbidden` 先逐条匹配，再可匹配连续新增行块。`--diff /path/to/change.patch` 只用于明确范围的检查，并披露排除的项目改动；交付仍运行默认 normal 全工作区 check 并如实报告其结果，不靠缩小 diff 隐藏违规。
 
 `build.dependencies.gradle` 的任何触及（含删除/重命名）会命中 `global.vendor-documented-build-dependencies` 条件式 soft：必须打开依赖厂商的第一方官方文档或官方仓库固定 commit，核对 repository/dependency、精确版本，并逐项解释实际 diff；Gradle sync/build 结果与部署/真机验证分开报告。规则引擎不联网鉴别来源、不验证证据真伪，soft 不是自动放行；缺少第一方证据时撤回或修正改动并告知用户。
 

@@ -178,16 +178,16 @@ class PedroTutorialAcceptanceTest {
         val java=source()
         assertEquals(
             setOf(
+                "com.pedropathing.api.Paths",
                 "com.pedropathing.follower.Follower",
-                "com.pedropathing.geometry.BezierLine",
-                "com.pedropathing.geometry.Pose",
-                "com.pedropathing.paths.PathChain",
+                "com.pedropathing.math.Pose",
+                "com.pedropathing.paths.Path",
                 "com.qualcomm.robotcore.eventloop.opmode.Autonomous",
                 "com.qualcomm.robotcore.eventloop.opmode.OpMode",
                 "com.qualcomm.robotcore.hardware.Servo",
                 "com.qualcomm.robotcore.util.ElapsedTime",
                 "java.util.EnumSet",
-                "org.firstinspires.ftc.teamcode.pedroPathing.Constants"
+                "org.firstinspires.ftc.teamcode.pedro.Constants"
             ),
             imports(java)
         )
@@ -203,12 +203,27 @@ class PedroTutorialAcceptanceTest {
     }
 
     @Test
+    fun `canonical auto uses only the Pedro 3 api surface`() {
+        val java=source()
+        setOf(
+            "com.pedropathing.ftc","FollowerBuilder","FollowerConstants","PathChain","BezierLine",
+            "com.pedropathing.geometry","followPath","pathBuilder","setStartingPose","getPose",
+            "getX()","getY()","getHeading()","breakFollowing","PoseConverter"
+        ).forEach { legacy -> assertFalse(legacy in java,legacy) }
+        assertTrue("Constants.create(hardwareMap)" in java)
+        assertTrue("Paths.line(start,end).linear(start,end)" in java)
+        assertTrue("follower.setPose(START_POSE)" in java)
+        assertTrue("follower.follow(path)" in java)
+        assertTrue("Constants.foresightConfig.maxPathSpeed.set(maxPathSpeed)" in java)
+    }
+
+    @Test
     fun `canonical auto defaults to locked config check`() {
         val java=source()
         assertTrue("CONFIGURATION_COMPLETE=false" in java)
         assertTrue("TEST_STAGE=TestStage.CONFIG_CHECK" in java)
         assertTrue("private boolean safetyLocked=true" in java)
-        assertFalse(Regex("""follower\.(followPath|update)\s*\(""").containsMatchIn(methodBody(java,"init")))
+        assertFalse(Regex("""follower\.(follow|update)\s*\(""").containsMatchIn(methodBody(java,"init")))
         assertFalse("servo.setPosition" in methodBody(java,"init"))
         assertFalse("servo.setPosition" in methodBody(java,"init_loop"))
         assertTrue(methodBody(java,"start").trimStart().startsWith("if (safetyLocked)"))
@@ -222,11 +237,11 @@ class PedroTutorialAcceptanceTest {
         val compactInitialize=compact(initialize)
 
         assertTrue("booleancheckAllResources=TEST_STAGE==TestStage.CONFIG_CHECK;" in compactInitialize)
-        assertTrue("if(TEST_STAGE.driveAllowed||checkAllResources){" in compact(initialize.substringBefore("Constants.createFollower")))
+        assertTrue("if(TEST_STAGE.driveAllowed||checkAllResources){" in compact(initialize.substringBefore("Constants.create")))
         assertTrue("if(TEST_STAGE.servoAllowed||checkAllResources){" in compact(initialize.substringBefore("hardwareMap.get")))
         setOf("init","init_loop").forEach { lifecycle ->
             val body=methodBody(java,lifecycle)
-            setOf("follower.followPath","follower.update","servo.setPosition").forEach { command ->
+            setOf("follower.follow","follower.update","servo.setPosition").forEach { command ->
                 assertFalse(command in body,"$command must not run during $lifecycle")
             }
         }
@@ -264,22 +279,24 @@ class PedroTutorialAcceptanceTest {
         assertFalse("Thread.sleep" in java)
         assertFalse(Regex("""\bsleep\s*\(""").containsMatchIn(java))
         assertFalse(Regex("""\b(while|do)\b""").containsMatchIn(methodBody(java,"loop")))
-        assertEquals(1,Regex("""follower\.followPath\s*\(""").findAll(java).count())
+        assertEquals(1,Regex("""follower\.follow\s*\(""").findAll(java).count())
         assertEquals(1,Regex("""servo\.setPosition\s*\(""").findAll(java).count())
-        assertEquals(1,Regex("""follower\.update\s*\(""").findAll(java).count())
-        assertEquals(1,Regex("""\.followPath\s*\(""").findAll(java).count())
+        assertEquals(2,Regex("""follower\.update\s*\(""").findAll(java).count())
+        assertEquals(1,Regex("""\.follow\s*\(""").findAll(java).count())
         assertEquals(1,Regex("""\.setPosition\s*\(""").findAll(java).count())
-        assertEquals(2,Regex("""\.update\s*\(""").findAll(java).count())
+        assertEquals(1,Regex("""telemetry\.update\s*\(""").findAll(java).count())
         assertTrue("private boolean commandPath(" in java)
         assertTrue("private boolean commandServo(" in java)
         assertTrue("private void updateFollowerIfAllowed(" in java)
-        assertTrue("if(safetyLocked||!TEST_STAGE.driveAllowed||follower==null||path==null)" in compact(commandPath.substringBefore("follower.followPath")))
+        assertTrue("if(safetyLocked||!TEST_STAGE.driveAllowed||follower==null||path==null||!inSpeedFractionRange(maxPathSpeed))" in compact(commandPath.substringBefore("follower.follow(")))
+        assertEquals(1,Regex("""Constants\.foresightConfig\.maxPathSpeed\.set\s*\(""").findAll(java).count())
         assertTrue("if(safetyLocked||!TEST_STAGE.servoAllowed||servo==null||!inClosedUnitRange(position))" in compact(commandServo.substringBefore("servo.setPosition")))
         assertTrue("if(safetyLocked||!TEST_STAGE.driveAllowed||follower==null)return;" in compact(updateFollower.substringBefore("follower.update")))
         assertEquals(setOf("follower"),Regex("""\bFollower\s+([A-Za-z_][A-Za-z0-9_]*)""").findAll(java).map { it.groupValues[1] }.toSet())
         assertEquals(setOf("servo"),Regex("""\bServo\s+([A-Za-z_][A-Za-z0-9_]*)""").findAll(java).map { it.groupValues[1] }.toSet())
         setOf("turn","holdPoint","startTeleopDrive","setTeleOpMovementVectors","setPower",
-            "setVelocity","setMotorPowers","setDrivePowers").forEach { api ->
+            "setVelocity","setMotorPowers","setDrivePowers","followPath","pathBuilder",
+            "setStartingPose","breakFollowing").forEach { api ->
             assertFalse(Regex("""\.$api\s*\(""").containsMatchIn(java),api)
         }
         setOf("DcMotor","DcMotorEx","CRServo","Motor","MotorEx").forEach { type ->
@@ -319,8 +336,10 @@ class PedroTutorialAcceptanceTest {
         val cancellation=privateMethodBody(java,"stopFollowingBestEffort")
         assertTrue("try {" in cancellation)
         assertTrue("catch (RuntimeException" in cancellation)
-        assertEquals(1,Regex("""follower\.breakFollowing\s*\(""").findAll(java).count())
-        assertTrue("follower.breakFollowing()" in cancellation)
+        assertEquals(1,Regex("""follower\.stop\s*\(""").findAll(java).count())
+        assertTrue("follower.stop()" in cancellation)
+        assertBefore(cancellation,"follower.stop()","follower.update()")
+        assertTrue("follower.drivetrain.stop()" in cancellation)
     }
 
     @Test
@@ -346,7 +365,7 @@ class PedroTutorialAcceptanceTest {
             setOf(
                 "CONFIGURATION_COMPLETE","TEST_STAGE","SERVO_NAME","SERVO_CLOSED_POSITION",
                 "SERVO_OPEN_POSITION","START_POSE","SCORE_POSE","SHORT_TEST_POSE","PARK_POSE",
-                "RELEASE_WAIT_SECONDS","SHORT_DRIVE_MAX_POWER","FULL_AUTO_MAX_POWER"
+                "RELEASE_WAIT_SECONDS","SHORT_DRIVE_MAX_PATH_SPEED","FULL_AUTO_MAX_PATH_SPEED"
             ),
             configureFieldNames(java)
         )
@@ -360,7 +379,7 @@ class PedroTutorialAcceptanceTest {
         setOf(
             "CONFIGURATION_INCOMPLETE","SERVO_NAME_MISSING_OR_SENTINEL","NON_FINITE_NUMBER",
             "SERVO_POSITION_OUT_OF_RANGE","SERVO_POSITIONS_IDENTICAL","WAIT_DURATION_OUT_OF_RANGE",
-            "POWER_OUT_OF_RANGE","POSE_INVALID","ROUTE_POSES_IDENTICAL","FOLLOWER_INIT_FAILED",
+            "PATH_SPEED_OUT_OF_RANGE","POSE_INVALID","ROUTE_POSES_IDENTICAL","FOLLOWER_INIT_FAILED",
             "SERVO_INIT_FAILED","STAGE_RESOURCE_UNAVAILABLE"
         ).forEach { assertTrue(it in java,it) }
         assertTrue("EnumSet<ValidationIssue> validationIssues" in java)
@@ -383,14 +402,15 @@ class PedroTutorialAcceptanceTest {
     fun `compile fixture pins the reviewed release matrix`() {
         val properties=fixtureProperties()
         assertEquals("8.7.0",properties.getProperty("agpVersion"))
-        assertEquals("30",properties.getProperty("compileSdk"))
+        assertEquals("34",properties.getProperty("compileSdk"))
         assertEquals("24",properties.getProperty("minSdk"))
-        assertEquals("11.2.0",properties.getProperty("ftcSdkVersion"))
-        assertEquals("v11.2",properties.getProperty("ftcSdkTag"))
-        assertEquals("4ed7c4666aec265a6fd9e674ca40462e9dfe4bf8",properties.getProperty("ftcSdkCommit"))
-        assertEquals("2.1.2",properties.getProperty("pedroVersion"))
-        assertEquals("96df977d30329eef57c226cf1e6854026f4dfe4f",properties.getProperty("pedroCommit"))
-        assertEquals("d3aea9ca3c5b4c09eded8580229b86996480ee89",properties.getProperty("pedroQuickstartCommit"))
+        assertEquals("11.2.1",properties.getProperty("ftcSdkVersion"))
+        assertEquals("v11.2.1",properties.getProperty("ftcSdkTag"))
+        assertEquals("26cd1fdd2a3c4b26173d9ff33a3279c27d1c7ad1",properties.getProperty("ftcSdkCommit"))
+        assertEquals("3.0.0",properties.getProperty("pedroVersion"))
+        assertEquals("1.0.0",properties.getProperty("pedroTuningVersion"))
+        assertEquals("fa5a07c7761ed01f943ef37ea29b71f30138b5d1",properties.getProperty("pedroCommit"))
+        assertEquals("b4312385b7d0cc5e8dd263ec3927c9ef0cb48f36",properties.getProperty("pedroQuickstartCommit"))
         val build=Files.readString(fixtureRoot.resolve("build.gradle"))
         assertTrue("../../knowledge/examples/pedro" in build)
         assertFalse("SafePedroAuto.java" in Files.walk(fixtureRoot).use { paths ->
@@ -403,6 +423,7 @@ class PedroTutorialAcceptanceTest {
         val properties=fixtureProperties()
         val wrapperProperties=Files.readString(fixtureRoot.resolve("gradle/wrapper/gradle-wrapper.properties"))
         val fixtureBuild=compact(Files.readString(fixtureRoot.resolve("build.gradle")))
+        val fixtureSettings=Files.readString(fixtureRoot.resolve("settings.gradle"))
         val canonicalSources=safePedroSources(
             repositoryRoot,
             registeredGitWorktreeRoots(repositoryRoot)
@@ -424,12 +445,36 @@ class PedroTutorialAcceptanceTest {
         assertTrue("main.java.srcDirs+='../../knowledge/examples/pedro'" in fixtureBuild)
         assertTrue("implementation\"org.firstinspires.ftc:RobotCore:${'$'}{ftcSdkVersion}\"" in fixtureBuild)
         assertTrue("implementation\"org.firstinspires.ftc:Hardware:${'$'}{ftcSdkVersion}\"" in fixtureBuild)
-        assertTrue("implementation\"com.pedropathing:ftc:${'$'}{pedroVersion}\"" in fixtureBuild)
+        assertTrue("implementation\"com.pedropathing:revhub:${'$'}{pedroVersion}\"" in fixtureBuild)
+        assertTrue("implementation\"com.pedropathing:tuning:${'$'}{pedroTuningVersion}\"" in fixtureBuild)
+        assertFalse("com.pedropathing:ftc:" in fixtureBuild)
+        assertTrue("maven { url 'https://repo.dairy.foundation/releases/' }" in fixtureSettings)
+        assertEquals(2,Regex("maven \\{ url 'https://repo.dairy.foundation/releases/' }").findAll(fixtureSettings).count())
         assertEquals(listOf("knowledge/examples/pedro/SafePedroAuto.java"),canonicalSources)
         assertEquals(listOf("knowledge/examples/pedro/SafePedroAuto.java"),trackedSources)
         assertFalse("pedro-compile" in Files.readString(repositoryRoot.resolve("settings.gradle.kts")))
-        assertEquals("11.2.0",properties.getProperty("ftcSdkVersion"))
-        assertEquals("2.1.2",properties.getProperty("pedroVersion"))
+        assertEquals("11.2.1",properties.getProperty("ftcSdkVersion"))
+        assertEquals("3.0.0",properties.getProperty("pedroVersion"))
+        assertEquals("1.0.0",properties.getProperty("pedroTuningVersion"))
+    }
+
+    @Test
+    fun `fixture constants adapter wires a real pedro three follower`() {
+        val adapter=Files.readString(
+            fixtureRoot.resolve("src/main/java/org/firstinspires/ftc/teamcode/pedro/Constants.java")
+        )
+        val compactAdapter=compact(adapter)
+        assertFalse("returnnull;" in compactAdapter)
+        assertFalse("FollowerBuilder" in adapter)
+        setOf(
+            "newFollower(",
+            "newPinpointLocalizer(hardwareMap,localizerConfig)",
+            "newMecanum(hardwareMap,drivetrainConfig)",
+            "newForesight(foresightConfig)"
+        ).forEach { fragment -> assertTrue(fragment in compactAdapter,fragment) }
+        assertTrue("mustnotbedeployed" in compactAdapter)
+        assertTrue("unvalidatedsamplevalue" in compactAdapter)
+        assertTrue("https://pedropathing.com/docs/pathing/tuning/constants" in adapter)
     }
 
     @Test
@@ -448,9 +493,9 @@ class PedroTutorialAcceptanceTest {
         val java=source()
         val guide=Files.readString(guidePath)
         val rows=markdownTableRows(guide,"SafePedroAuto 参数字典")
-        assertEquals(listOf("参数","填什么","如何获得","单位或范围","如何验证"),rows.first())
+        assertEquals(listOf("参数","填什么 / 如何获得","单位或范围 / 验证"),rows.first())
         val documented=rows.drop(1).map { row ->
-            assertEquals(5,row.size,row.joinToString())
+            assertEquals(3,row.size,row.joinToString())
             row.drop(1).forEach { assertTrue(it.isNotBlank(),row.joinToString()) }
             row.first().removeSurrounding("`")
         }
@@ -471,11 +516,14 @@ class PedroTutorialAcceptanceTest {
             "privatevoidupdateFollowerIfAllowed(){",
             "if(safetyLocked||!TEST_STAGE.driveAllowed||follower==null)return;",
             "follower.update();",
-            "if(autoState==AutoState.DRIVE_TO_PARK&&!follower.isBusy())transitionTo(AutoState.DONE);",
-            "publicvoidstop(){",
-            "safetyLocked=true;transitionTo(AutoState.STOPPED);stopFollowingBestEffort();",
-            "try{follower.breakFollowing();}"
+            "if(autoState==AutoState.DRIVE_TO_PARK&&!follower.isBusy()&&finishPathOutput(\"shortdrive\"))",
+            "follower.follow(path);",
+            "Paths.line(start,end).linear(start,end)"
         ).forEach { assertTrue(it in compactGuide,it) }
+        assertTrue("follower.stop()" in guide)
+        assertTrue("isBusy()==false` 不等于电机零输出" in guide)
+        assertTrue("stateTimer" in guide)
+        assertTrue("lastServoCommand" in guide)
     }
 
     @Test
@@ -484,87 +532,78 @@ class PedroTutorialAcceptanceTest {
         val configCheck=guide.substringAfter("### 1. CONFIG_CHECK")
             .substringBefore("### 2. SERVO_ONLY")
 
-        assertTrue("static config" in configCheck)
-        assertTrue("follower/path/servo resource construction" in configCheck)
-        assertTrue("initial static pose/telemetry" in configCheck)
-        assertTrue("移动与方向验证必须在官方 `Localization Test` 中完成" in configCheck)
-        assertFalse("手推" in configCheck)
-        assertFalse("live pose" in configCheck)
+        assertTrue("静态校验与资源构造" in configCheck)
+        assertTrue("静态起始 pose" in configCheck)
+        assertTrue("随后另用官方 Localization Test 手推确认定位轴/尺度" in configCheck)
         assertFalse("follower.update()" in configCheck)
     }
 
     @Test
     fun `route B gives exact official dependency edits without module ambiguity`() {
         val guide=Files.readString(guidePath)
-        val routeB=guide.substringAfter("### Route B — current FIRST v11.2 team project")
+        val routeB=guide.substringAfter("### Route B — current FIRST v11.2.1 team project")
             .substringBefore("## 坐标系")
 
-        assertTrue("`build.dependencies.gradle` 的 `repositories {}`" in routeB)
-        assertTrue("maven { url = \"https://mymaven.bylazar.com/releases\" }" in routeB)
-        assertTrue("implementation 'com.pedropathing:ftc:2.1.2'" in routeB)
-        assertTrue("implementation 'com.pedropathing:telemetry:1.0.0'" in routeB)
-        assertTrue("implementation 'com.bylazar:fullpanels:1.0.12'" in routeB)
-        assertTrue("只有复制并使用 Panels/tuners 时" in routeB)
-        assertTrue("outside the core fixture scope" in routeB)
+        assertTrue("build.dependencies.gradle" in routeB)
+        assertTrue("maven { url 'https://repo.dairy.foundation/releases/' }" in routeB)
+        assertTrue("implementation 'com.pedropathing:revhub:3.0.0'" in routeB)
+        assertTrue("implementation 'com.pedropathing:tuning:1.0.0'" in routeB)
+        assertTrue("只有复制并使用 tuners/Panels 时" in routeB)
+        assertTrue("不在核心编译 fixture 的范围内" in routeB)
         assertTrue("compile SDK 34" in routeB)
         assertFalse("TeamCode/build.gradle" in routeB)
+        assertFalse("com.pedropathing:ftc:" in routeB)
+        assertFalse("mymaven.bylazar.com" in routeB)
     }
 
     @Test
     fun `route A separates snapshot build from configured hardware deployment`() {
         val guide=Files.readString(guidePath)
         val routeA=guide.substringAfter("### Route A — official Quickstart snapshot")
-            .substringBefore("### Route B — current FIRST v11.2 team project")
-        val buildOnly=routeA.indexOf("未修改 snapshot 只做 Gradle Sync 和 build")
-        val noDeploy=routeA.indexOf("不要 deploy 或运行任何机器人 OpMode")
-        val configure=routeA.indexOf("配置当前机器人的 hardware names、localizer、offsets 和 directions")
-        val approval=routeA.indexOf("reviewer approval")
-        val deploy=routeA.indexOf("获得批准后才 deploy")
-        val localization=routeA.indexOf("运行 `Localization Test`")
+            .substringBefore("### Route B — current FIRST v11.2.1 team project")
+        val snapshot=routeA.indexOf("checkout 上表固定 commit")
+        val placeholder=routeA.indexOf("返回 null 的占位实现")
+        val configure=routeA.indexOf("完成自己的 MecanumConfig")
+        val build=routeA.indexOf("Gradle Sync/build 后")
+        val approval=routeA.indexOf("获得队员复核后")
+        val localization=routeA.indexOf("Localization Test")
 
-        listOf(buildOnly,noDeploy,configure,approval,deploy,localization).forEach {
+        listOf(snapshot,placeholder,configure,build,approval,localization).forEach {
             assertTrue(it>=0,"missing Route A separation cue")
         }
-        assertTrue(buildOnly<noDeploy)
-        assertTrue(noDeploy<configure)
-        assertTrue(configure<approval)
-        assertTrue(approval<deploy)
-        assertTrue(deploy<localization)
+        assertTrue(snapshot<placeholder)
+        assertTrue(placeholder<configure)
+        assertTrue(configure<build)
+        assertTrue(build<approval)
+        assertTrue(approval<localization)
     }
 
     @Test
-    fun `custom pinpoint resolution uses selected distance unit and measurable formula`() {
+    fun `pinpoint configuration uses version three fields and measured scale`() {
         val guide=Files.readString(guidePath)
         val pinpoint=guide.substringAfter("## Pinpoint 完整新生流程")
             .substringBefore("## 官方调参顺序")
 
         setOf(
-            "ticks per selected `distanceUnit`",
-            "ticks/inch","ticks/mm",
-            "encoder CPR / pod-wheel circumference",
-            "manufacturer CPR/gearing",
-            "measured/effective wheel diameter",
-            "customEncoderResolution=(encoderCPR*gearRatio)/(Math.PI*effectivePodDiameter)",
-            "Localization Test measured-vs-reported distance"
+            "Pinpoint AutoTuner","Localization Test",
+            "xPodOffset","yPodOffset","xPodDirection","yPodDirection",
+            "ticksPerUnit","encoderResolutionUnit","globalDistanceUnit",
+            "已知距离", "前推 x 增、左移 y 增"
         ).forEach { assertTrue(it in pinpoint,it) }
-        assertTrue("并不总是 ticks/mm" in pinpoint)
-        assertFalse("Pedro/Pinpoint API 要求的自定义分辨率" in pinpoint)
+        assertTrue("不能假定永远是 ticks/mm" in pinpoint)
+        assertFalse("customEncoderResolution=(" in pinpoint)
     }
 
     @Test
     fun `guide uses exact driver station telemetry labels and has no localization typo`() {
         val guide=Files.readString(guidePath)
         setOf(
-            "`CONFIG: ...`","`configuration complete`","`test stage`","`auto state`",
-            "`safety locked`","`runtime failure`","`x (in)`","`y (in)`",
-            "`heading (rad)`","`follower busy`","`last servo command`","`state elapsed (s)`"
+            "CONFIG:","configuration complete","test stage","auto state",
+            "safety locked","runtime failure","x (in)","y (in)",
+            "heading (rad)","follower busy","last servo command","state elapsed (s)"
         ).forEach { assertTrue(it in guide,it) }
-        assertTrue("当前 `auto state` 的已持续时间" in guide)
-        assertTrue("最后一次成功通过 Servo gateway 的命令" in guide)
-        assertTrue("不是舵机位置反馈" in guide)
-        assertFalse("`validationIssues`" in guide)
-        assertFalse("`elapsed seconds`" in guide)
-        assertFalse("`safety lock`" in guide)
+        assertTrue("当前状态时长" in guide)
+        assertTrue("不反映舵机实际位置" in guide)
         assertFalse("y 墤" in guide)
     }
 
@@ -573,12 +612,14 @@ class PedroTutorialAcceptanceTest {
         val guide=Files.readString(guidePath)
         setOf(
             "Pedro requirement","beginner safety convention","20827-inspired pattern","robot-specific value",
-            "11.2.0","2.1.2","4ed7c4666aec265a6fd9e674ca40462e9dfe4bf8",
+            "11.2.1","3.0.0","26cd1fdd2a3c4b26173d9ff33a3279c27d1c7ad1",
+            "fa5a07c7761ed01f943ef37ea29b71f30138b5d1",
+            "b4312385b7d0cc5e8dd263ec3927c9ef0cb48f36",
             "96df977d30329eef57c226cf1e6854026f4dfe4f","d3aea9ca3c5b4c09eded8580229b86996480ee89"
         ).forEach { assertTrue(it in guide,it) }
-        assertTrue("FTC 11.1.0" in guide)
-        assertTrue("本项目编译验证" in guide)
-        assertFalse("Pedro 官方保证兼容 FTC 11.2" in guide)
+        assertTrue("Java 编译通过" in guide)
+        assertTrue("版本组合的编译结果不是官方兼容保证" in guide)
+        assertFalse("Pedro 官方保证兼容 FTC 11.2.1" in guide)
     }
 
     @Test
@@ -586,10 +627,59 @@ class PedroTutorialAcceptanceTest {
         val guide=Files.readString(guidePath)
         val commit="118c28e137334bbbea510d77f1fa384e8b1b5779"
         assertTrue(commit in guide)
-        setOf("TopAutoBase","BottomAutoBase","TopAutoRed","TopAutoBlue","Constants.createFollower","XKCommandOpmode")
+        setOf("TopAutoBase","BottomAutoBase","TopAutoRed","TopAutoBlue","Constants.create","XKCommandOpmode")
             .forEach { assertTrue(it in guide,it) }
         assertTrue("非规范" in guide)
-        assertTrue("不是 Pedro 官方要求" in guide)
+        assertTrue("不是 Pedro 3 API 证据" in guide)
+    }
+
+    @Test
+    fun `path speed fraction is not presented as motor power cap`() {
+        val guide=Files.readString(guidePath)
+        val java=source()
+        assertTrue("不是电机功率上限" in guide)
+        assertTrue("不是 20% 电机功率硬上限" in guide)
+        assertTrue("若队伍需要真正的电机功率硬限制" in guide)
+        assertTrue("SHORT_DRIVE_MAX_PATH_SPEED=0.20" in compact(java))
+        assertFalse("MAX_POWER" in java)
+    }
+
+    @Test
+    fun `each completed path flushes holding output before the next state`() {
+        val java=source()
+        val shortDrive=privateMethodBody(java,"updateShortDriveTest")
+        val fullAuto=privateMethodBody(java,"updateFullAuto")
+        val finish=privateMethodBody(java,"finishPathOutput")
+        val stop=privateMethodBody(java,"stopFollowingBestEffort")
+        assertTrue("finishPathOutput(\"short drive\")" in shortDrive)
+        assertTrue("finishPathOutput(\"score\")" in fullAuto)
+        assertTrue("finishPathOutput(\"park\")" in fullAuto)
+        assertBefore(fullAuto,"finishPathOutput(\"score\")","transitionTo(AutoState.RELEASE)")
+        assertBefore(fullAuto,"finishPathOutput(\"park\")","transitionTo(AutoState.DONE)")
+        assertTrue("if (!stopFollowingBestEffort())" in finish)
+        assertTrue("enterSafetyStop(" in finish)
+        assertBefore(stop,"follower.stop()","follower.update()")
+        assertTrue("follower.drivetrain.stop()" in stop)
+    }
+
+    @Test
+    fun `current cross tool guidance does not suggest a removed pose converter`() {
+        val limelight=Files.readString(repositoryRoot.resolve("knowledge/guides/tools/limelight-3a.md"))
+        val integration=limelight.substringAfter("### 与 Pedro Pathing 联用")
+            .substringBefore("## 分层验收")
+        assertTrue("Pedro 3 坐标教程" in integration)
+        assertTrue("显式转换并在已知点验证" in integration)
+        assertTrue("旧版 `PoseConverter` 不能直接作为 Pedro 3 API 使用" in integration)
+        assertFalse("使用官方 PoseConverter" in integration)
+    }
+
+    @Test
+    fun `rookiebot current import example uses the pedro three tutorial package`() {
+        val loaded=org.ftckb.knowledge.FileKnowledgeRepository.load(repositoryRoot.resolve("knowledge"))
+        assertTrue(loaded.violations.isEmpty(),loaded.violations.joinToString())
+        val rule=loaded.rules.single { it.id=="shared.rookiebot-java-imports" }
+        assertTrue("teamcode.pedro.Constants" in (rule.positiveExample?:""))
+        assertFalse("teamcode.pedroPathing.Constants" in (rule.positiveExample?:""))
     }
 
     @Test

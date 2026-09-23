@@ -2,6 +2,8 @@ pluginManagement {
     repositories {
         google()
         mavenCentral()
+        // Official Pedro 3 manual-install repository.
+        maven { url 'https://repo.dairy.foundation/releases/' }
         gradlePluginPortal()
     }
     plugins {
@@ -13,6 +15,7 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        maven { url 'https://repo.dairy.foundation/releases/' }
     }
 }
 rootProject.name='pedro-example-compile'

@@ -183,9 +183,9 @@ rules:
     negativeExample: "用 @Disabled 隐藏真正要运行的 Auto，却没有解释为什么 Driver Station 看不到它。"
   - id: shared.rookiebot-pedro-complete-builder
     topic: rookiebot-pedro-complete-builder
-    title: "Pedro 构造必须接入底盘和定位器"
-    instruction: "适用范围：采用 RookieBot 新手教程约定的项目；不要求其他项目更换架构。参考代码前先核对所选 Pedro 版本。RookieBot 的 Pedro 2.1.2 构造链必须实际提供 drivetrain 和 localizer，再 build()；其麦轮和 Pinpoint 初始化入口在 Hardwares.createFollower。禁止把空 FollowerBuilder.build() 或永远抛错的函数当成完整可配置示例；条件配置锁可保留，但锁后须有真实构造实现。不要照抄参考车的机器人专属调参。"
-    rationale: "编译通过只能证明签名可用；缺少底盘或定位器的构造链不能完成初始化。"
+    title: "Pedro 构造必须接入定位、底盘和算法"
+    instruction: "适用范围：采用 RookieBot 新手教程约定的项目；不要求其他项目更换架构。先核对所选 Pedro 版本。Pedro 3 的 Constants.create(HardwareMap) 必须以当前机器人已配置的 Localizer、Drivetrain 和 Foresight/Algorithm 构造真实 Follower；若项目保留 Hardwares.createFollower，可让它委托给 Constants.create，避免在 Auto 中重复查找或重置设备。禁止把返回 null、空构造器或永远抛错的函数当成完整可运行示例；条件配置锁可保留，但锁后须有真实构造实现。旧 RookieBot 提交只作为 2.1.2 历史结构证据，不提供 Pedro 3 API；不要照抄参考车或官方示例的机器人专属调参。"
+    rationale: "Pedro 3 官方 Constants 契约需要实际的 localizer、drivetrain 和 algorithm；编译通过只能证明签名可用，不能证明当前机器人配置或硬件安全。"
     status: approved
     approval:
       approver: "lucasnotfound59"
@@ -208,16 +208,27 @@ rules:
         commit: "558141588e2a0eb766e195ab71df3c188e942891"
         file: "build.dependencies.gradle"
         line: 17
+      - type: web
+        url: "https://pedropathing.com/docs/pathing/tuning/constants"
+        title: "Pedro Pathing 3 Constants"
+        publisher: "Pedro Pathing"
+        accessedAt: 2026-09-23
+        section: "create"
+      - type: git
+        repository: "Pedro-Pathing/Quickstart"
+        commit: "b4312385b7d0cc5e8dd263ec3927c9ef0cb48f36"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/pedro/Constants.java"
+        symbol: "Constants.create"
     positiveExample: |-
-      new FollowerBuilder(Constants.followerConstants(),hardwareMap)
-              .mecanumDrivetrain(driveConstants)
-              .pinpointLocalizer(localizerConstants)
-              .build(); // 此段位于 Hardwares 内
-    negativeExample: "new FollowerBuilder(new FollowerConstants(),hardwareMap).build();"
+      // 配置项先按当前机器人测量；Hardwares.createFollower 可委托此方法。
+      return new Follower(new PinpointLocalizer(hardwareMap,localizerConfig),
+                          new Mecanum(hardwareMap,drivetrainConfig),
+                          new Foresight(foresightConfig));
+    negativeExample: "public static Follower create(HardwareMap h) { return null; }"
   - id: shared.rookiebot-nonblocking-auto
     topic: rookiebot-nonblocking-auto
     title: "用非阻塞步骤组合舵机与路径"
-    instruction: "适用范围：采用 RookieBot 新手教程约定的项目；不要求其他项目更换架构。在 init 中初始化并建路径，在 start 中启动首段，在每次 loop 中调用 follower.update。只在进入对应步骤时调用 followPath，以 isBusy 和计时器决定跳转；等待舵机时不能 sleep 或忙等，计时器只在进入等待阶段时重置。STOP 或异常时取消跟随，异常后不要在保护范围外继续查询故障对象；isBusy=false 不等于实物已零误差到点。"
+    instruction: "适用范围：采用 RookieBot 新手教程约定的项目；不要求其他项目更换架构。Pedro 3 在 init 中用 Constants.create 配置 Follower、设起点并建 Path，在 start 中启动首段，在每次 loop 中调用 follower.update。只在进入对应步骤时调用 follower.follow(path)，以 isBusy 和计时器决定跳转；等待舵机时不能 sleep 或忙等，计时器只在实际进入等待阶段时重置。路径完成可能转入保持位姿模式，因此每段完成后显式调用 follower.stop 并再 update 一次发送停止输出，失败时进入安全停止；STOP 或异常也尽力执行同样步骤。异常后不要在保护范围外查询故障对象。isBusy=false 不等于实物已零误差到点，也不证明电机零输出。"
     rationale: "持续更新定位与控制，同时保证舵机等待不会冻结寻路，也避免每帧重启同一路径。"
     status: approved
     approval:
@@ -236,13 +247,25 @@ rules:
         commit: "558141588e2a0eb766e195ab71df3c188e942891"
         file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/examples/autonomous/ServoPedroAutoExample.java"
         symbol: "ServoPedroAutoExample.loop"
+      - type: web
+        url: "https://pedropathing.com/docs/pathing/guide/path-following"
+        title: "Pedro Pathing 3 Following a Path"
+        publisher: "Pedro Pathing"
+        accessedAt: 2026-09-23
+        section: "Following a Path"
+      - type: web
+        url: "https://pedropathing.com/docs/pathing/guide/follow-state"
+        title: "Pedro Pathing 3 Follow States"
+        publisher: "Pedro Pathing"
+        accessedAt: 2026-09-23
+        section: "Path Termination"
     positiveExample: |-
       case 1:
           if(timer.seconds()<SERVO_WAIT_SECONDS) break;
-          follower.followPath(toPark,PATH_MAX_POWER,false);
+          follower.follow(toPark);
           step=2;
           break;
-    negativeExample: "在每次 loop 中同时 timer.reset() 和 followPath()，或用 sleep 等待舵机。"
+    negativeExample: "在每次 loop 中同时 timer.reset() 和 follower.follow(path)，或用 sleep 等待舵机。"
   - id: shared.rookiebot-sdk-path-hygiene
     topic: rookiebot-sdk-path-hygiene
     title: "共享项目不提交个人 SDK 路径与构建产物"
@@ -305,7 +328,7 @@ rules:
         commit: "6aa385d75484b22b3f73c3b493a695e753ccc76e"
         file: "docs/superpowers/specs/2026-09-13-ftc-test-utils-layout-design.md"
         line: 35
-    positiveExample: "import org.firstinspires.ftc.teamcode.pedroPathing.Constants;"
+    positiveExample: "Pedro 3 教程的包路径确认为 pedro 时：import org.firstinspires.ftc.teamcode.pedro.Constants;；其他项目应以实际 package 为准。"
     negativeExample: "import com.sun.tools.javac.util.Constants;"
   - id: shared.rookiebot-verification-evidence
     topic: rookiebot-verification-evidence

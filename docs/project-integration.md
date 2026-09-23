@@ -29,7 +29,7 @@ python3 -m venv /path/to/ftckb-venv
 
 下文 `python3` 替换为该虚拟环境 Python。Windows 使用环境内 `python.exe`，或 `py -3`。不要向共享配置提交个人 `JAVA_HOME`、`sdk.dir` 或 SDK 绝对路径。这个独立 CLI 构建不需要 Android SDK；机器人编译仍需要队员自己的 Android SDK。
 
-首次安装须指定包含本功能的 tag 或完整 40 位 commit SHA。仓库 V0.8.0、CLI 2.1.0、YAML v4、kernel JSON v2、项目接入协议 v2 是独立版本轴；当前知识总数为 48（42 已批准 + 6 候选）。README 的版本不代表同名 tag 已发布。正式 tag 发布前，请使用包含本 Skill 和脚本的已提交版本；审阅所选 checkout 后用 `git rev-parse HEAD` 获取完整 SHA，不要把旧版本 SHA 或 `main` 传给安装器。
+首次安装须指定包含本功能的 tag 或完整 40 位 commit SHA。仓库 V0.9.0、CLI 2.1.0、YAML v4、kernel JSON v2、项目接入协议 v2 是独立版本轴；当前知识总数为 48（42 已批准 + 6 候选）。README 的版本不代表同名 tag 已发布。正式 tag 发布前，请使用包含本 Skill 和脚本的已提交版本；审阅所选 checkout 后用 `git rev-parse HEAD` 获取完整 SHA，不要把旧版本 SHA 或 `main` 传给安装器。
 
 ## 安装与 dry-run
 

@@ -218,15 +218,15 @@ class KnowledgeGuideAcceptanceTest {
         val guide=Files.readString(root.resolve("guides/tools/pedro-pathing.md"))
         val section=h2Section(guide,"20827-inspired advanced mapping")
         setOf(
-            "observed team-code provenance","非规范","不是 Pedro 官方要求",
+            "历史结构来源","非规范","不是 Pedro 3 API 证据",
             "TopAutoBase","BottomAutoBase","TopAutoRed","TopAutoBlue",
-            "Constants.createFollower","XKCommandOpmode","Supplier<PathChain>"
+            "Constants.create","XKCommandOpmode"
         ).forEach { assertTrue(it in section,it) }
-        setOf("不得复制","四阶段最小 Auto","必须","先让").forEach {
+        setOf("四阶段实车测试清单","必须实测","先让").forEach {
             assertTrue(it !in section,"20827 removable section contains normative safety phrase: $it")
         }
-        val safetyBoundary="不得复制其他机器人的 hardware names、servo positions、poses、offsets、directions、mass、velocity、PIDF、power 或 timeout。"
-        val progressionBoundary="先让四阶段最小 Auto 在当前机器人通过，再单独设计和评审。"
+        val safetyBoundary="不要复制 20827、16093 或官方例子数值。"
+        val progressionBoundary="前三阶段在同一机器人配置上有证据"
         assertTrue(safetyBoundary in guide)
         assertTrue(progressionBoundary in guide)
         assertTrue(safetyBoundary !in section)

@@ -11,7 +11,7 @@ cd FTC-Knowledge-Bank
 # JDK 21+；产物 apps/knowledge-cli/build/install/ftckb/bin/ftckb
 ```
 
-消费方固定审阅过的完整 commit，不跟踪 main。仓库 V0.8.0、CLI 2.1.0、YAML v4、kernel JSON v2、项目接入协议 v2 是独立版本轴。YAML 解码兼容 v1-v3，不代表 kernel v1 消费方兼容 v2。旧机器模式见 [v1 schema](kernel-contract.v1.schema.json)；当前 [v2 schema](kernel-contract.schema.json)。`workMode` 是逐次调用的 ephemeral 参数，不属于项目配置或长期 profile。
+消费方固定审阅过的完整 commit，不跟踪 main。仓库 V0.9.0、CLI 2.1.0、YAML v4、kernel JSON v2、项目接入协议 v2 是独立版本轴。YAML 解码兼容 v1-v3，不代表 kernel v1 消费方兼容 v2。旧机器模式见 [v1 schema](kernel-contract.v1.schema.json)；当前 [v2 schema](kernel-contract.schema.json)。`workMode` 是逐次调用的 ephemeral 参数，不属于项目配置或长期 profile。
 
 知识总数 48（42 已批准 + 6 候选）；validate 包含候选计数，resolve 的 activeRules 不包含候选。
 
@@ -33,6 +33,7 @@ ftckb check <repo-root> --knowledge knowledge --team 20827 --season 2025-2026 --
 - validate 只接受知识根目录和可选 --json，不接受 profile 或 --work-mode。
 - `--work-mode normal|test|dev` 是 resolve/check 的逐任务临时参数，省略等同 `normal`；它不写入项目配置、不改变 team/season/profile，也不能从文件名、路径或依赖推断。只有用户明确指定当前任务是测试代码或 dev 代码时才选择 `test`/`dev`。`normal`（含显式传入）的输出、排序和退出码与旧版本逐字节相同。
 - `test` 只把强制正式命令架构的 `global.command-responsibilities` 与 `shared.ftclib-command-candidate` 放入 excludedRules，原因 `work-mode-test`（其他不匹配原因仍一并保留）；命令实时输入、安全清理、`global.test-utility-layout` 的 tests/utils 位置与目标 TeamCode 不使用 JUnit 等其余规则和硬检查全部继续生效。
+- `test` 的 CLI 不强制 `--diff`；但默认 check 会扫描整个脏工作区。若其中混有非测试改动，Agent 必须以 `--diff FILE` 限定本次测试代码，并对其余改动另跑 normal 检查；两次范围与排除项均需报告，不能用 test 模式放松正式代码。
 - `check --work-mode dev` 必须同时提供 `--diff FILE`，否则 usage/64；只评估该补丁，每个 hard 命中连 ruleId/check/path/line/detail 一起转为 soft，`violations` 为空且没有加载/校验/冲突/调用错误时退出 0，原有 soft 保留。dev 不把无效知识、同层级冲突、错误 profile 或坏补丁伪装成通过，也不代表符合正式规则或真机验证。
 - check 可选 `--diff FILE`；省略 --knowledge 时使用当前目录的 knowledge。
 - --json 存在时机器路径的成功与失败均为单行 JSON，无日志噪音；--help 是独立的人类帮助入口。
@@ -121,7 +122,7 @@ violations 必有 ruleId/check/pattern/detail，可有 path/line；soft 为 rule
 
 ## 7. 变更、工件与验证边界
 
-删除/改名/改类型等破坏性变更必须提升 schemaVersion；兼容新增字段可忽略，未知错误不能视为成功。CLI 2.0.0 是 kernel v2 破坏性升级对应的 CLI 版本；当前 CLI 2.1.0 只增加向后兼容的 `--work-mode` 与加法字段 `workMode`，不等于仓库 V0.8.0。
+删除/改名/改类型等破坏性变更必须提升 schemaVersion；兼容新增字段可忽略，未知错误不能视为成功。CLI 2.0.0 是 kernel v2 破坏性升级对应的 CLI 版本；当前 CLI 2.1.0 只增加向后兼容的 `--work-mode` 与加法字段 `workMode`，不等于仓库 V0.9.0。
 
 [fixtures/kernel](../fixtures/kernel/) 的 12 份 JSON 从实际构建 CLI stdout 生成：validate-ok / resolve-ok / resolve-conflict / resolve-test / error-usage / error-invalid-knowledge / check-pass / check-hard / check-dev / check-error-usage / check-error-load / check-error-conflict。KernelJsonAcceptanceTest 对每份执行当前 v2 JSON Schema 校验；错误与 check 样例使用隔离合成输入，resolve-ok、resolve-test 和 validate-ok 使用仓库知识。
 

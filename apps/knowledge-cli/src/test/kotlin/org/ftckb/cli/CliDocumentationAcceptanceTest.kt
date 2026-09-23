@@ -65,7 +65,7 @@ class CliDocumentationAcceptanceTest {
     fun `release documents publish all version axes and profile aware governance`() {
         val root=Path.of("..","..").normalize()
         val readme=Files.readString(root.resolve("README.md"))
-        listOf("**版本：V0.8.0**","48（42 已批准 + 6 候选）","CLI 2.1.0","YAML v4","kernel JSON v2","项目接入协议 v2").forEach {
+        listOf("**版本：V0.9.0**","48（42 已批准 + 6 候选）","CLI 2.1.0","YAML v4","kernel JSON v2","项目接入协议 v2").forEach {
             assertTrue(readme.contains(it),it)
         }
         listOf("AGENTS.md","docs/kernel-contract.md","docs/handbook/resolution.md").forEach { file ->
@@ -95,7 +95,7 @@ class CliDocumentationAcceptanceTest {
             "docs/website/integration-and-checks.md"
         )
         currentReleaseDocuments.forEach { file ->
-            assertTrue(Files.readString(root.resolve(file)).contains("V0.8.0"),"$file: V0.8.0")
+            assertTrue(Files.readString(root.resolve(file)).contains("V0.9.0"),"$file: V0.9.0")
         }
         val conditionalSoftText=currentReleaseDocuments.joinToString("\n") { file ->
             Files.readString(root.resolve(file))
@@ -134,7 +134,7 @@ class CliDocumentationAcceptanceTest {
             staleClaims.forEach { stale -> assertFalse(text.contains(stale),"$file: $stale") }
         }
         val roadmap=Files.readString(root.resolve("todolist.md"))
-        listOf("V0.8.0 基线","YAML v4、kernel JSON v2 与项目接入协议 v2","schemaVersion=2").forEach { current ->
+        listOf("V0.9.0 基线","YAML v4、kernel JSON v2 与项目接入协议 v2","schemaVersion=2").forEach { current ->
             assertTrue(roadmap.contains(current),"todolist.md: $current")
         }
     }

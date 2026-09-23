@@ -163,7 +163,7 @@ import org.firstinspires.ftc.robotcore.external.navigation.Pose3D;
 
 ### 与 Pedro Pathing 联用
 
-Limelight `botPose` 使用 FTC standard field coordinates；Pedro 使用另一坐标约定。不要把 x/y/heading 直接塞给 follower。先按[Pedro 坐标教程](pedro-pathing.md)使用官方 PoseConverter，显式处理长度单位，再经过 validity、freshness、jump gate 和队伍定义的 fusion policy。
+Limelight `botPose` 使用 FTC standard field coordinates；Pedro 3 使用另一坐标约定。不要把 x/y/heading 直接塞给 follower。先按[Pedro 3 坐标教程](pedro-pathing.md)记录双方原点、轴向、长度/角度单位和航向正方向，再写显式转换并在已知点验证；旧版 `PoseConverter` 不能直接作为 Pedro 3 API 使用。定位融合还需要 validity、freshness、jump gate 和队伍定义的 fusion policy；这些门控通过前不要将视觉 pose 写入 Follower。
 
 ## 分层验收
 

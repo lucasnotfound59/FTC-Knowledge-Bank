@@ -350,24 +350,24 @@ class VendorDependencyRuleAcceptanceTest {
     }
 
     @Test
-    fun `Pedro guide separates version three install evidence from version two one two verified scope`() {
+    fun `Pedro guide uses version three APIs with historical version two provenance`() {
         val guide=Files.readString(root.resolve("knowledge/guides/tools/pedro-pathing.md"))
 
         listOf(
-            "Pedro Pathing 3 安装证据与 v2.1.2 验证范围",
+            "Pedro Pathing 3 新生 Auto 教程",
             "https://pedropathing.com/docs/pathing/installation",
-            "Manual Installation",
             "https://repo.dairy.foundation/releases/",
             "com.pedropathing:revhub:3.0.0",
             "com.pedropathing:tuning:1.0.0",
             "v3.0.0",
             pedroQuickstartCommit,
             "global.vendor-documented-build-dependencies",
-            "2.1.2",
-            "未迁移到 Pedro 3 API"
+            "## 历史来源：Pedro 2.1.2",
+            "Paths.line(start,end).linear(start,end)",
+            "Constants.create(HardwareMap)"
         ).forEach { phrase -> assertTrue(phrase in guide,phrase) }
         assertTrue("条件式 soft" in guide)
-        assertTrue("不是自动放行" in guide)
-        assertFalse("Pedro 官方保证兼容 FTC 11.2" in guide)
+        assertTrue("第一方来源、固定版本与实际 diff 逐项对应" in guide)
+        assertTrue("版本组合的编译结果不是官方兼容保证" in guide)
     }
 }

@@ -16,5 +16,6 @@ android {
 dependencies {
     implementation "org.firstinspires.ftc:RobotCore:${ftcSdkVersion}"
     implementation "org.firstinspires.ftc:Hardware:${ftcSdkVersion}"
-    implementation "com.pedropathing:ftc:${pedroVersion}"
+    implementation "com.pedropathing:revhub:${pedroVersion}"
+    implementation "com.pedropathing:tuning:${pedroTuningVersion}"
 }

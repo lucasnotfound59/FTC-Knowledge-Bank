@@ -28,7 +28,8 @@
 - [x] V0.6.0：发布 `global.test-utility-layout` 跨赛季硬规则；目标 TeamCode 的机器人侧 OpMode 使用 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/`，工具使用 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/`，并禁止确定的错误路径/JUnit 新增。
 - [x] V0.7.0：`official.keep-customizations-in-teamcode` 的 hard 保护收窄到 `build.common.gradle`；新增跨赛季 `global.vendor-documented-build-dependencies` 条件式 soft，要求第一方厂商文档/固定 commit、精确依赖版本与 diff 逐项对应，规则引擎不联网验证证据真伪。Pedro Pathing 3 安装证据已入库，完整 Pedro 3 API 教程迁移仍未实现。
 - [x] V0.8.0：`resolve`/`check` 增加逐任务临时 `--work-mode normal|test|dev`（省略即 normal，默认 JSON/退出码字节兼容）。test 仅把 `global.command-responsibilities` 与 `shared.ftclib-command-candidate` 移入 excludedRules（原因 `work-mode-test`），命令安全与测试目录/JUnit 硬检查继续生效，用户指定的测试代码不需要先提交编码 plan；dev 的 check 必须给 `--diff FILE`，把每个 hard 命中连同位置转为 soft 并退 0，原有 soft 保留且必须逐项报告。显式 test/dev JSON 增加 `workMode`，kernel JSON v2、YAML v4 与项目接入协议 v2 不变；项目适配器透传模式且不写回配置。
-- [ ] 按 README 的 V0.8.0 基线和 feat／patch／大更新约定管理后续版本，Git tag／Release 发布另行确认。
+- [x] V0.9.0：现行 Pedro 教程、SafePedroAuto、隔离编译 fixture 和验收测试迁移到 Pedro Pathing 3.0.0 / FTC SDK 11.2.1；旧 Pedro 2.1.2 来源只作为明确标注的历史材料保留。软件编译不等于部署或实机通过。
+- [ ] 按 README 的 V0.9.0 基线和 feat／patch／大更新约定管理后续版本，Git tag／Release 发布另行确认。
 
 ## MVP：队内代码 Agent 闭环
 
@@ -82,7 +83,7 @@ Pedro 的内容契约与隔离编译基线已经入库，实机验收和后续�
 - [x] 建立新人参数字典，逐项记录填写内容、获取方法、单位或范围和验证方式；
 - [x] 提供默认锁定的 canonical `SafePedroAuto.java` 安全示例；
 - [x] 添加规范示例与教程的 source-contract 自动化测试；
-- [x] 添加 FTC SDK 11.2.0 + Pedro 2.1.2 隔离编译 fixture；
+- [x] 添加并升级隔离编译 fixture，当前固定 FTC SDK 11.2.1 + Pedro revhub 3.0.0 / tuning 1.0.0；旧 11.2.0 + 2.1.2 仅是历史基线；
 - [x] 加入 20827 Auto 架构的固定 commit、非规范映射案例；
 - [ ] 在真实机器人上依次完成 `CONFIG_CHECK`、`SERVO_ONLY`、`SHORT_DRIVE`、`FULL_AUTO` 四阶段验收并记录结果；
 - [ ] 建立 Pedro 版本升级兼容 lane，升级依赖后重新执行内容、编译和实机验收；

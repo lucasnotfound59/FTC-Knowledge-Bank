@@ -1,15 +1,15 @@
 package org.firstinspires.ftc.teamcode.examples;
 
+import com.pedropathing.api.Paths;
 import com.pedropathing.follower.Follower;
-import com.pedropathing.geometry.BezierLine;
-import com.pedropathing.geometry.Pose;
-import com.pedropathing.paths.PathChain;
+import com.pedropathing.math.Pose;
+import com.pedropathing.paths.Path;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import java.util.EnumSet;
-import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
+import org.firstinspires.ftc.teamcode.pedro.Constants;
 
 @Autonomous(name="Safe Pedro Auto",group="Tutorial")
 public class SafePedroAuto extends OpMode {
@@ -24,8 +24,8 @@ public class SafePedroAuto extends OpMode {
     private static final Pose SHORT_TEST_POSE=new Pose(Double.NaN,Double.NaN,Double.NaN);
     private static final Pose PARK_POSE=new Pose(Double.NaN,Double.NaN,Double.NaN);
     private static final double RELEASE_WAIT_SECONDS=Double.NaN;
-    private static final double SHORT_DRIVE_MAX_POWER=0.20;
-    private static final double FULL_AUTO_MAX_POWER=Double.NaN;
+    private static final double SHORT_DRIVE_MAX_PATH_SPEED=0.20;
+    private static final double FULL_AUTO_MAX_PATH_SPEED=Double.NaN;
     // CONFIGURE HERE END
 
     private enum TestStage {
@@ -49,7 +49,7 @@ public class SafePedroAuto extends OpMode {
     private enum ValidationIssue {
         CONFIGURATION_INCOMPLETE,SERVO_NAME_MISSING_OR_SENTINEL,NON_FINITE_NUMBER,
         SERVO_POSITION_OUT_OF_RANGE,SERVO_POSITIONS_IDENTICAL,WAIT_DURATION_OUT_OF_RANGE,
-        POWER_OUT_OF_RANGE,POSE_INVALID,ROUTE_POSES_IDENTICAL,FOLLOWER_INIT_FAILED,
+        PATH_SPEED_OUT_OF_RANGE,POSE_INVALID,ROUTE_POSES_IDENTICAL,FOLLOWER_INIT_FAILED,
         SERVO_INIT_FAILED,STAGE_RESOURCE_UNAVAILABLE
     }
 
@@ -61,9 +61,9 @@ public class SafePedroAuto extends OpMode {
     private LastServoCommand lastServoCommand=LastServoCommand.NONE;
     private Follower follower;
     private Servo servo;
-    private PathChain scorePath;
-    private PathChain shortDrivePath;
-    private PathChain parkPath;
+    private Path scorePath;
+    private Path shortDrivePath;
+    private Path parkPath;
 
     @Override
     public void init() {
@@ -96,13 +96,13 @@ public class SafePedroAuto extends OpMode {
                     break;
                 case SHORT_DRIVE:
                     transitionTo(AutoState.DRIVE_TO_PARK);
-                    commandPath(shortDrivePath,SHORT_DRIVE_MAX_POWER);
+                    commandPath(shortDrivePath,SHORT_DRIVE_MAX_PATH_SPEED);
                     break;
                 case FULL_AUTO:
                     transitionTo(AutoState.PRELOAD_CLOSED);
                     if (commandServo(SERVO_CLOSED_POSITION,LastServoCommand.CLOSED)) {
                         transitionTo(AutoState.DRIVE_TO_SCORE);
-                        commandPath(scorePath,FULL_AUTO_MAX_POWER);
+                        commandPath(scorePath,FULL_AUTO_MAX_PATH_SPEED);
                     }
                     break;
                 default:
@@ -145,7 +145,7 @@ public class SafePedroAuto extends OpMode {
             validationIssues.add(ValidationIssue.SERVO_NAME_MISSING_OR_SENTINEL);
 
         double[] numbers={SERVO_CLOSED_POSITION,SERVO_OPEN_POSITION,RELEASE_WAIT_SECONDS,
-            SHORT_DRIVE_MAX_POWER,FULL_AUTO_MAX_POWER};
+            SHORT_DRIVE_MAX_PATH_SPEED,FULL_AUTO_MAX_PATH_SPEED};
         for (double value:numbers) if (!Double.isFinite(value))
             validationIssues.add(ValidationIssue.NON_FINITE_NUMBER);
         validatePose(START_POSE);
@@ -159,17 +159,17 @@ public class SafePedroAuto extends OpMode {
             validationIssues.add(ValidationIssue.SERVO_POSITIONS_IDENTICAL);
         if (!(RELEASE_WAIT_SECONDS>=0.05&&RELEASE_WAIT_SECONDS<=5.0))
             validationIssues.add(ValidationIssue.WAIT_DURATION_OUT_OF_RANGE);
-        if (!(SHORT_DRIVE_MAX_POWER>0&&SHORT_DRIVE_MAX_POWER<=0.30)||
-            !(FULL_AUTO_MAX_POWER>0&&FULL_AUTO_MAX_POWER<=1.0))
-            validationIssues.add(ValidationIssue.POWER_OUT_OF_RANGE);
+        if (!inSpeedFractionRange(SHORT_DRIVE_MAX_PATH_SPEED)||SHORT_DRIVE_MAX_PATH_SPEED>0.30||
+            !inSpeedFractionRange(FULL_AUTO_MAX_PATH_SPEED))
+            validationIssues.add(ValidationIssue.PATH_SPEED_OUT_OF_RANGE);
         if (samePosition(START_POSE,SCORE_POSE)||samePosition(START_POSE,SHORT_TEST_POSE)||
             samePosition(START_POSE,PARK_POSE)||samePosition(SCORE_POSE,PARK_POSE))
             validationIssues.add(ValidationIssue.ROUTE_POSES_IDENTICAL);
     }
 
     private void validatePose(Pose pose) {
-        if (pose==null||!Double.isFinite(pose.getX())||!Double.isFinite(pose.getY())||
-            !Double.isFinite(pose.getHeading())) {
+        if (pose==null||!Double.isFinite(pose.x())||!Double.isFinite(pose.y())||
+            !Double.isFinite(pose.heading())) {
             validationIssues.add(ValidationIssue.POSE_INVALID);
             validationIssues.add(ValidationIssue.NON_FINITE_NUMBER);
         }
@@ -179,8 +179,8 @@ public class SafePedroAuto extends OpMode {
         boolean checkAllResources=TEST_STAGE==TestStage.CONFIG_CHECK;
         if (TEST_STAGE.driveAllowed||checkAllResources) {
             try {
-                follower=Constants.createFollower(hardwareMap);
-                follower.setStartingPose(START_POSE);
+                follower=Constants.create(hardwareMap);
+                follower.setPose(START_POSE);
                 buildPaths();
             } catch (RuntimeException exception) {
                 validationIssues.add(ValidationIssue.FOLLOWER_INIT_FAILED);
@@ -204,11 +204,8 @@ public class SafePedroAuto extends OpMode {
         parkPath=buildLine(SCORE_POSE,PARK_POSE);
     }
 
-    private PathChain buildLine(Pose start,Pose end) {
-        return follower.pathBuilder()
-            .addPath(new BezierLine(start,end))
-            .setLinearHeadingInterpolation(start.getHeading(),end.getHeading())
-            .build();
+    private Path buildLine(Pose start,Pose end) {
+        return Paths.line(start,end).linear(start,end);
     }
 
     private void updateServoTest() {
@@ -219,13 +216,15 @@ public class SafePedroAuto extends OpMode {
     }
 
     private void updateShortDriveTest() {
-        if (autoState==AutoState.DRIVE_TO_PARK&&!follower.isBusy()) transitionTo(AutoState.DONE);
+        if (autoState==AutoState.DRIVE_TO_PARK&&!follower.isBusy()&&finishPathOutput("short drive"))
+            transitionTo(AutoState.DONE);
     }
 
     private void updateFullAuto() {
         switch (autoState) {
             case DRIVE_TO_SCORE:
                 if (!follower.isBusy()) {
+                    if (!finishPathOutput("score")) break;
                     transitionTo(AutoState.RELEASE);
                     if (commandServo(SERVO_OPEN_POSITION,LastServoCommand.OPEN)) {
                         transitionTo(AutoState.RELEASE_WAIT);
@@ -235,11 +234,11 @@ public class SafePedroAuto extends OpMode {
             case RELEASE_WAIT:
                 if (stateTimer.seconds()>=RELEASE_WAIT_SECONDS) {
                     transitionTo(AutoState.DRIVE_TO_PARK);
-                    commandPath(parkPath,FULL_AUTO_MAX_POWER);
+                    commandPath(parkPath,FULL_AUTO_MAX_PATH_SPEED);
                 }
                 break;
             case DRIVE_TO_PARK:
-                if (!follower.isBusy()) transitionTo(AutoState.DONE);
+                if (!follower.isBusy()&&finishPathOutput("park")) transitionTo(AutoState.DONE);
                 break;
             case DONE:
                 break;
@@ -248,13 +247,25 @@ public class SafePedroAuto extends OpMode {
         }
     }
 
-    private boolean commandPath(PathChain path,double maxPower) {
-        if (safetyLocked||!TEST_STAGE.driveAllowed||follower==null||path==null) {
+    private boolean commandPath(Path path,double maxPathSpeed) {
+        if (safetyLocked||!TEST_STAGE.driveAllowed||follower==null||path==null||
+            !inSpeedFractionRange(maxPathSpeed)) {
             enterSafetyStop("drive command rejected");
             return false;
         }
-        follower.followPath(path,maxPower,false);
+        if (!applyPathSpeedLimit(maxPathSpeed)) return false;
+        follower.follow(path);
         return true;
+    }
+
+    private boolean applyPathSpeedLimit(double maxPathSpeed) {
+        try {
+            Constants.foresightConfig.maxPathSpeed.set(maxPathSpeed);
+            return true;
+        } catch (RuntimeException exception) {
+            enterSafetyStop("path speed limit failed: "+exception.getClass().getSimpleName());
+            return false;
+        }
     }
 
     private boolean commandServo(double position,LastServoCommand command) {
@@ -285,12 +296,31 @@ public class SafePedroAuto extends OpMode {
         stopFollowingBestEffort();
     }
 
-    private void stopFollowingBestEffort() {
-        if (follower==null) return;
+    private boolean finishPathOutput(String phase) {
+        if (!stopFollowingBestEffort()) {
+            enterSafetyStop(phase+" follower stop failed");
+            return false;
+        }
+        return true;
+    }
+
+    private boolean stopFollowingBestEffort() {
+        if (follower==null) return false;
         try {
-            follower.breakFollowing();
+            follower.stop();
+            // Pedro 3 stop() switches the follower to IDLE; update() flushes the
+            // drivetrain stop so no earlier motion command keeps running.
+            follower.update();
+            return true;
         } catch (RuntimeException ignored) {
-            // The logical stop state is already committed; cancellation is best effort.
+            // Follower.update() refreshes localization before it reaches IDLE's
+            // drivetrain stop. If localization fails, stop the drivetrain directly.
+            try {
+                follower.drivetrain.stop();
+            } catch (RuntimeException stopFailure) {
+                // Software cannot prove that hardware power was removed.
+            }
+            return false;
         }
     }
 
@@ -310,9 +340,9 @@ public class SafePedroAuto extends OpMode {
         telemetry.addData("runtime failure",runtimeFailure);
         for (ValidationIssue issue: validationIssues) telemetry.addLine("CONFIG: "+issue);
         if (follower!=null) {
-            telemetry.addData("x (in)",follower.getPose().getX());
-            telemetry.addData("y (in)",follower.getPose().getY());
-            telemetry.addData("heading (rad)",follower.getPose().getHeading());
+            telemetry.addData("x (in)",follower.pose().x());
+            telemetry.addData("y (in)",follower.pose().y());
+            telemetry.addData("heading (rad)",follower.pose().heading());
             telemetry.addData("follower busy",follower.isBusy());
         }
         telemetry.addData("last servo command",lastServoCommand);
@@ -324,8 +354,12 @@ public class SafePedroAuto extends OpMode {
         return Double.isFinite(value)&&value>=0&&value<=1;
     }
 
+    private static boolean inSpeedFractionRange(double value) {
+        return Double.isFinite(value)&&value>0&&value<=1;
+    }
+
     private static boolean samePosition(Pose first,Pose second) {
         if (first==null||second==null) return false;
-        return Math.hypot(first.getX()-second.getX(),first.getY()-second.getY())<1e-6;
+        return Math.hypot(first.x()-second.x(),first.y()-second.y())<1e-6;
     }
 }

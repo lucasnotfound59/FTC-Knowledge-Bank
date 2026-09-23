@@ -5,7 +5,7 @@
 面向 Codex / Claude Code / Qoder / DSH 等任何能执行 shell、读文件的 Agent。
 本文件是入口；完整契约见 `docs/kernel-contract.md`。
 
-版本轴：仓库 V0.8.0、CLI 2.1.0、YAML v4、kernel JSON v2、项目接入协议 v2。
+版本轴：仓库 V0.9.0、CLI 2.1.0、YAML v4、kernel JSON v2、项目接入协议 v2。
 `authority` 表示来源，`policyLevel` 表示 global/local/shared 策略；official 来源始终最高。
 resolve/check 不需要 API key。必须显式选择 generic 或命名 profile，不从依赖猜测：
 `--profile command-based`、`--profile ftclib-command`、`--profile rookiebot`、`--profile simple-opmode`。
