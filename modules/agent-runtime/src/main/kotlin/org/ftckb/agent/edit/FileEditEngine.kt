@@ -132,14 +132,14 @@ class FileEditEngine(
                 is CreateText -> {
                     require(operation.expectedAbsent) { "create destination must be expected absent: ${operation.path}" }
                     val resolved=paths.resolve(operation.path)
-                    require(state(resolved).snapshot==FileSnapshot.Missing) { "create destination already exists: ${resolved.relative}" }
+                    requireBaseline(state(resolved).snapshot==FileSnapshot.Missing) { "create destination already exists: ${resolved.relative}" }
                     current[resolved.relative]=VirtualFile(textSnapshot(operation.content),null)
                 }
                 is ReplaceText -> {
                     val resolved=paths.resolve(operation.path)
                     val currentState=state(resolved)
                     val text=requireText(currentState.snapshot,resolved.relative)
-                    require(text.sha256==operation.expectedSha256) { "stale file hash: ${resolved.relative}" }
+                    requireBaseline(text.sha256==operation.expectedSha256) { "stale file hash: ${resolved.relative}" }
                     require(operation.oldText.isNotEmpty()) { "replacement text must not be empty: ${resolved.relative}" }
                     val first=text.content.indexOf(operation.oldText)
                     require(first>=0 && text.content.indexOf(operation.oldText,first+1)<0) {
@@ -151,7 +151,7 @@ class FileEditEngine(
                 is DeleteText -> {
                     val resolved=paths.resolve(operation.path)
                     val text=requireText(state(resolved).snapshot,resolved.relative)
-                    require(text.sha256==operation.expectedSha256) { "stale file hash: ${resolved.relative}" }
+                    requireBaseline(text.sha256==operation.expectedSha256) { "stale file hash: ${resolved.relative}" }
                     current[resolved.relative]=VirtualFile(FileSnapshot.Missing,null)
                 }
                 is MoveText -> {
@@ -163,8 +163,8 @@ class FileEditEngine(
                     require(source.relative!=destination.relative) { "move source and destination must differ" }
                     val sourceState=state(source)
                     val sourceText=requireText(sourceState.snapshot,source.relative)
-                    require(sourceText.sha256==operation.expectedSha256) { "stale file hash: ${source.relative}" }
-                    require(state(destination).snapshot==FileSnapshot.Missing) {
+                    requireBaseline(sourceText.sha256==operation.expectedSha256) { "stale file hash: ${source.relative}" }
+                    requireBaseline(state(destination).snapshot==FileSnapshot.Missing) {
                         "move destination already exists: ${destination.relative}"
                     }
                     current[source.relative]=VirtualFile(FileSnapshot.Missing,null)
@@ -759,6 +759,10 @@ class FileEditEngine(
         val bytes=encodeUtf8(content)
         require(bytes.size<=MAX_FILE_BYTES) { "edit result exceeds per-file size limit" }
         return FileSnapshot.Text(content,sha256(bytes))
+    }
+
+    private inline fun requireBaseline(condition:Boolean,message:()->String) {
+        if (!condition) throw EditBaselineValidationException(message())
     }
 
     private fun requireText(snapshot:FileSnapshot,path:String):FileSnapshot.Text {

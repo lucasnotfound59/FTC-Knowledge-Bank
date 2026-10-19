@@ -103,7 +103,8 @@ class ServeApi(
         val question=node["question"]?.asText()?.trim().orEmpty()
         if (question.isEmpty()) return jsonError("usage","question must not be blank")
         return try {
-            answerJson(runtime.session().ask(question))
+            val workMode=requestWorkMode(node) ?: return jsonError("usage","workMode must be normal|test|dev")
+            answerJson(runtime.ask(question,workMode))
         } catch (_:ModelProviderException) {
             jsonError("provider","model provider error: request failed")
         } catch (_:CitationValidationException) {
@@ -120,13 +121,22 @@ class ServeApi(
         val message=node["message"]?.asText()?.trim().orEmpty()
         if (message.isEmpty()) return jsonError("usage","message must not be blank")
         return try {
-            when (val result=runtime.controller().submit(message)) {
+            val workMode=requestWorkMode(node) ?: return jsonError("usage","workMode must be normal|test|dev")
+            when (val result=runtime.submit(message,workMode)) {
                 is AskResult -> answerJson(result.answer)
                 is EditResult -> editJson(result.report)
                 is RejectedResult -> jsonError("refused",result.message)
             }
         } catch (_:ModelProviderException) {
             jsonError("provider","model provider error: request failed")
+        } catch (_:AskChatSessionException.KnowledgeRead) {
+            jsonError("knowledge","knowledge error: local knowledge is unavailable")
+        } catch (failure:org.ftckb.agent.edit.EditGateException) {
+            gateError(failure)
+        } catch (failure:org.ftckb.agent.edit.FileEditApplyException) {
+            val gate=failure.originalFailure as? org.ftckb.agent.edit.EditGateException
+            if(gate!=null && failure.rollbackFailures.isEmpty()) gateError(gate)
+            else jsonError("edit",if(failure.rollbackFailures.isNotEmpty()) "edit failed; rollback also failed; files may have changed" else "edit failed; rollback succeeded")
         } catch (_:Exception) {
             jsonError("edit","edit error: request did not complete")
         }
@@ -159,7 +169,7 @@ class ServeApi(
     private fun historyCommand(undo:Boolean):String {
         val controller=runtime.controller()
         return try {
-            when (val result=if (undo) controller.undo() else controller.discard()) {
+            when (val result=runtime.restore(undo)) {
                 is RejectedResult -> jsonError("refused",result.message)
                 is HistoryAppliedResult -> {
                     val root=jsonOk()
@@ -171,6 +181,8 @@ class ServeApi(
                     root.toString()
                 }
             }
+        } catch (failure:org.ftckb.agent.edit.FileEditApplyException) {
+            jsonError("edit",if(failure.rollbackFailures.isNotEmpty()) "restore failed; rollback also failed; files may have changed" else "restore failed; rollback succeeded")
         } catch (_:Exception) {
             jsonError("edit","${if (undo) "undo" else "discard"} error: request did not complete")
         }
@@ -242,6 +254,21 @@ class ServeApi(
         }
     }
 
+    private fun requestWorkMode(node:com.fasterxml.jackson.databind.JsonNode):org.ftckb.domain.WorkMode? {
+        val supplied=node["workMode"] ?: return org.ftckb.domain.WorkMode.NORMAL
+        return if(supplied.isTextual) org.ftckb.domain.WorkMode.parse(supplied.asText()) else null
+    }
+
+    private fun gateError(failure:org.ftckb.agent.edit.EditGateException):String {
+        val root=mapper.createObjectNode().put("ok",false)
+        root.putObject("error").put("code",failure.code).put("message",failure.message)
+        root.putArray("gateNotices").apply { failure.notices.forEach { notice -> addObject().apply {
+            put("kind",notice.kind); put("ruleId",notice.ruleId); put("check",notice.check); put("path",notice.path)
+            notice.line?.let { put("line",it) }; put("detail",notice.detail)
+        } } }
+        return root.toString()
+    }
+
     private fun answerJson(answer:org.ftckb.agent.AgentAnswer):String {
         val root=jsonOk()
         val claims=root.putArray("claims")
@@ -264,6 +291,12 @@ class ServeApi(
     private fun editJson(report:org.ftckb.agent.edit.EditReport):String {
         val root=jsonOk()
         root.put("summary",report.summary)
+        root.putArray("gateNotices").apply {
+            report.gateNotices.forEach { notice -> addObject().apply {
+                put("kind",notice.kind); put("ruleId",notice.ruleId); put("check",notice.check)
+                put("path",notice.path); notice.line?.let { put("line",it) }; put("detail",notice.detail)
+            } }
+        }
         putArray(root,"changedPaths",report.changedPaths.sorted())
         putArray(root,"reasons",report.reasons)
         putArray(root,"citations",report.citations.sorted())

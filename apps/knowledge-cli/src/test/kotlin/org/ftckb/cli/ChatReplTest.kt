@@ -37,7 +37,7 @@ class ChatReplTest {
             git.commit().setAuthor("Fixture","fixture@example.invalid").setCommitter("Fixture","fixture@example.invalid")
                 .setMessage("baseline").call()
         }
-        val knowledge=Files.createDirectories(root.resolve("knowledge"))
+        val knowledge=Files.createDirectories(root.resolve("knowledge")).toRealPath()
         Files.writeString(knowledge.resolve("rules.yaml"),"schemaVersion: 1\nrules: []\n")
         val config=root.resolve("config.yaml")
         writeFakeConfig(config,"FTC_KB_FAKE_KEY")
@@ -78,7 +78,7 @@ class ChatReplTest {
     fun `missing current repository cannot partially publish configuration`(@TempDir root:Path) {
         val repository=root.resolve("repository")
         writeFtcRepository(repository)
-        val knowledge=Files.createDirectories(root.resolve("knowledge"))
+        val knowledge=Files.createDirectories(root.resolve("knowledge")).toRealPath()
         Files.writeString(knowledge.resolve("rules.yaml"),"schemaVersion: 1\nrules: []\n")
         val config=root.resolve("config.yaml")
         writeFakeConfig(config,"OLD_KEY")
@@ -125,7 +125,7 @@ class ChatReplTest {
     fun `named profile reaches model evidence and same-path reconfigure reloads rules`(@TempDir root:Path) {
         val repository=root.resolve("repository")
         writeFtcRepository(repository)
-        val knowledge=Files.createDirectories(root.resolve("knowledge"))
+        val knowledge=Files.createDirectories(root.resolve("knowledge")).toRealPath()
         val rules=knowledge.resolve("rules.yaml")
         val yaml="""
             schemaVersion: 4
@@ -176,7 +176,7 @@ class ChatReplTest {
     fun `runtime preserves normalized profiles and session on failed reconfiguration`(@TempDir root:Path) {
         val repository=root.resolve("repository")
         writeFtcRepository(repository)
-        val knowledge=Files.createDirectories(root.resolve("knowledge"))
+        val knowledge=Files.createDirectories(root.resolve("knowledge")).toRealPath()
         Files.writeString(knowledge.resolve("rules.yaml"),"schemaVersion: 1\nrules: []\n")
         val config=root.resolve("config.yaml")
         writeFakeConfig(config,"FTC_KB_FAKE_KEY")
@@ -213,7 +213,7 @@ class ChatReplTest {
         assertEquals(2,created)
         assertEquals("20827",runtime.team)
         assertEquals(knowledge,runtime.currentKnowledgeRoot())
-        val replacement=Files.createDirectories(root.resolve("replacement-knowledge"))
+        val replacement=Files.createDirectories(root.resolve("replacement-knowledge")).toRealPath()
         Files.writeString(replacement.resolve("rules.yaml"),"schemaVersion: 1\nrules: []\n")
         runtime.reconfigureKnowledge(replacement,"16093","2026-2027",emptySet())
         runtime.reconfigureRepository(repository,emptySet())
@@ -370,7 +370,7 @@ class ChatReplTest {
                 "// \"$quotedAssignmentKey\": \"$quotedAssignmentValue\"\n" +
                 "// config[\"$indexedAssignmentKey\"]=\"$indexedAssignmentValue\"\n"
         )
-        val knowledge=root.resolve("knowledge")
+        val knowledge=Files.createDirectories(root.resolve("knowledge")).toRealPath()
         Files.createDirectories(knowledge.resolve("guides"))
         Files.writeString(
             knowledge.resolve("guides/drive.md"),
@@ -618,10 +618,10 @@ class ChatReplTest {
     }
 
     @Test
-    fun `production reports a deleted guide root for one turn and keeps the REPL alive`(@TempDir root:Path) {
+    fun `production reloads a deleted guide root before the turn and keeps the REPL alive`(@TempDir root:Path) {
         val repository=root.resolve("repository")
         writeFtcRepository(repository)
-        val knowledge=root.resolve("knowledge")
+        val knowledge=Files.createDirectories(root.resolve("knowledge")).toRealPath()
         val guides=knowledge.resolve("guides")
         val unavailable=knowledge.resolve("guides-unavailable")
         Files.createDirectories(guides)
@@ -656,7 +656,11 @@ class ChatReplTest {
         )
 
         assertEquals(0,code)
-        assertTrue(output.toString().contains("knowledge error: local knowledge is unavailable"))
+        assertFalse(output.toString().contains("knowledge error: local knowledge is unavailable"))
+        assertEquals(2,provider.requests.count { it.messages.first().content.startsWith("Answer only as JSON") })
+        val answers=provider.requests.filter { it.messages.first().content.startsWith("Answer only as JSON") }
+        assertFalse(answers.first().messages.last().content.contains("Safe drive context."))
+        assertTrue(answers.last().messages.last().content.contains("Safe drive context."))
         assertTrue(output.toString().contains("代码观察 [CODE:C1]"))
     }
 

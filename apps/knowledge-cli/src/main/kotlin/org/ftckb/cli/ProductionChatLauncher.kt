@@ -37,7 +37,7 @@ class ProductionChatLauncher(
         }
         return ChatRepl(
             runtime.session(),input,out,runtime.controller(),runtime.repositoryRoot,
-            runtime.baselineDirtyPaths,runtime::redact
+            runtime.baselineDirtyPaths,runtime::redact,runtime
         ).run()
     }
 }

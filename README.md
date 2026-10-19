@@ -6,6 +6,34 @@
 
 **[完整文档 → ftckb.lucasxl.com](https://ftckb.lucasxl.com)**
 
+## 必做：先启动并确认 Dashboard
+
+开始规则维护、裁决或按知识库编写代码前，**必须启动或复用当前知识库的 Dashboard，并确认页面已连接**。按以下顺序操作：
+
+1. **先复用已有服务。** 确认已有管理台使用本次实际知识库和相同审计目录，可用就复用，不重复启动。
+2. **准备 CLI 和路径。** 在 Knowledge Bank 仓库根目录执行；产物缺失时构建，源码更新后也需重新运行构建命令：
+
+   ```bash
+   if [ ! -x apps/knowledge-cli/build/install/ftckb/bin/ftckb ]; then
+     ./gradlew :apps:knowledge-cli:installDist
+   fi
+   FTCKB_KNOWLEDGE_ROOT="$(python3 -c 'from pathlib import Path; print(Path("knowledge").resolve(strict=True))')"
+   ```
+
+   接入其他项目时，将 `knowledge` 替换为项目配置中的实际知识库路径；Dashboard、resolve 和 check 必须使用同一份知识库。
+3. **没有已有实例时启动。** 在持久终端会话中运行：
+
+   ```bash
+   apps/knowledge-cli/build/install/ftckb/bin/ftckb dashboard --knowledge "$FTCKB_KNOWLEDGE_ROOT" --no-browser
+   ```
+
+   无需模型 API key，仅监听 `127.0.0.1`，默认空闲端口；可加 `--port 8080`。去掉 `--no-browser` 可自动尝试打开浏览器。
+4. **核验并保持运行。** 看到 `dashboard=ok` 后打开完整 `url=` 链接，确认页面已连接、知识库路径正确且规则已加载，再开始规则/代码流程。`#token=` 是会话凭据，不写入仓库或公开日志；页面移除片段后，浏览器刷新如缺凭据就重新打开原链接。失败须如实报告，不能声称已启动。后续工作用另一会话，保留管理台进程，任务收尾不自动关闭。
+
+管理台提供规则搜索与编辑、候选批准/拒绝、指定队伍/赛季/profile 的裁决解释，以及本版本记录的调用审计。规则修改先预览差异并校验完整知识库，再保存；修改已批准规则的实质内容或归属会转回候选并清除旧批准记录。审批校验的是声明的角色与队伍，不是身份认证。
+
+审计默认保存到 `~/.ftckb/audit`，用 `FTCKB_AUDIT_DIR` 可更换目录；需要共享记录的 CLI 和管理台进程应使用相同审计目录和知识库规范路径。**CLI 独立写入审计日志，Dashboard 读取这些共享日志；启动 Dashboard 是本项目要求的工作步骤，不是 CLI 记录审计的技术前提。** 旧固定 commit 副本不会自动获得审计或编辑前检查，未接入的外部 Agent 行为也不可观测。使用流程与覆盖边界见[本地管理台指南](docs/dashboard.md)。
+
 ## 快速接入
 
 把下面的指令交给你使用的编码 Agent，替换目标项目、队号和赛季：
@@ -14,9 +42,10 @@
 将 https://github.com/lucasnotfound59/FTC-Knowledge-Bank 接入我的 FTC 项目。
 目标项目：<项目路径>；队号：<实际队号>；赛季：<YYYY-YYYY>；profile：generic（或明确选择 command-based / ftclib-command / rookiebot / simple-opmode）。
 请读取 .agents/skills/ftckb-integrate/SKILL.md，固定已审阅的版本，先预览再安装。
+开始规则或代码工作前，按 README 和 AGENTS.md 启动或复用实际知识库的 Dashboard，确认可用并保持运行。
 ```
 
-接入后的日常流程：**`resolve` → 按规则写代码 → `check`**。这些确定性命令在本地运行，不需要额外模型 API key；编码 Agent 自身的登录与费用由其供应商决定。
+接入后的日常流程：**启动或复用 Dashboard 并确认连接 → `resolve` → 按规则写代码 → `check`**。这些确定性命令在本地运行，不需要额外模型 API key；编码 Agent 自身的登录与费用由其供应商决定。
 
 需要 Git、Python 3.10+、JDK 21+ 和 jsonschema。安装步骤、依赖配置与版本升级见[接入指南](https://ftckb.lucasxl.com/getting-started/integrate/)。
 
@@ -34,7 +63,7 @@
 
 ## 项目状态
 
-已实现规则裁决、diff 检查、项目级接入、候选提取与审批、Ask/Edit、本地网页及 Android Studio 插件。Run 模式、官方文档联网检索和 Control Hub 自动部署尚未实现。静态检查不替代真机验证。
+已实现规则裁决、diff 检查、项目级接入、候选提取与审批、Ask/Edit、本地聊天网页、独立知识库管理台及 Android Studio 插件。Run 模式、官方文档联网检索和 Control Hub 自动部署尚未实现。静态检查不替代真机验证。
 
 当前规则总数为 48（42 已批准 + 6 候选）。裁决器、CLI、运行时和固定版本接入均传递显式 profile；20827／16093 的 8 条规则已迁移到 global，保留 2025-2026 赛季与 2 条 candidate，并增加 3 条 command-based 规则。`global.test-utility-layout` 与 `global.vendor-documented-build-dependencies` 是独立的跨赛季 global 规则。相同赛季和 profile 下两队当前 active IDs 相同；这不是忽略队号的理由。
 

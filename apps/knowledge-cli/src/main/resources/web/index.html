@@ -31,6 +31,13 @@
                 background:var(--accent-soft); color:var(--accent); vertical-align:middle; }
   .citations { font-size:11px; color:var(--muted); margin-top:4px; }
   .error-bubble { background:#fdecea; color:var(--danger); }
+  .msg.assistant .bubble.gate-notice { border:1px solid #ead5a5; border-left:3px solid #b78320;
+    background:#fff6e4; color:var(--warn); font-size:13px; }
+  .msg.assistant .bubble.gate-notice.hard { border-color:#ecc1bc; border-left-color:var(--danger);
+    background:#fdecea; color:var(--danger); }
+  .gate-notice-title { display:block; font-weight:650; margin-bottom:5px; }
+  .gate-notice-detail { margin:0; font:12px/1.7 ui-monospace,Menlo,Consolas,monospace;
+    white-space:pre-wrap; overflow-wrap:anywhere; }
   #composer { display:flex; gap:8px; margin-top:10px; }
   #question { flex:1; padding:10px 12px; border:1px solid var(--line); border-radius:8px; font-size:14px;
               font-family:inherit; resize:none; min-height:44px; max-height:160px; }
@@ -148,15 +155,43 @@ function appendError(text){
   chat.scrollTop=chat.scrollHeight;
 }
 
+function renderGateNotices(data){
+  const notices=Array.isArray(data.gateNotices)?data.gateNotices:[];
+  notices.forEach(notice=>{
+    const kind=String(notice.kind||"").toLowerCase();
+    const label=kind==="hard"?"硬违规 · 写入被阻止":
+      kind==="dev_downgrade"?"dev 降级提醒 · 待复核":
+      kind==="soft"?"soft · 待复核":"检测提醒 · "+(notice.kind||"未分类");
+    const bubble=appendMessage("assistant","");
+    bubble.classList.add("gate-notice");
+    if(kind==="hard")bubble.classList.add("hard");
+    const title=document.createElement("strong");
+    title.className="gate-notice-title";title.textContent=label;
+    const detail=document.createElement("p");detail.className="gate-notice-detail";
+    const lines=[];
+    if(notice.ruleId)lines.push("规则: "+notice.ruleId);
+    if(notice.check)lines.push("检查: "+notice.check);
+    if(notice.path)lines.push("位置: "+notice.path+(notice.line!=null?":"+notice.line:""));
+    else if(notice.line!=null)lines.push("行号: "+notice.line);
+    lines.push("原因: "+(notice.detail||"未提供说明"));
+    if(kind==="soft"||kind==="dev_downgrade")lines.push("需要逐项复核；这不表示人工复核已完成或机器人运行安全。");
+    detail.textContent=lines.join("\n");
+    bubble.appendChild(title);bubble.appendChild(detail);
+  });
+  if(notices.length)$("chat").scrollTop=$("chat").scrollHeight;
+}
+
 function renderAnswer(data){
+  renderGateNotices(data);
   if(!data.ok){appendError(data.error?data.error.message:"请求失败");return;}
   if(!data.claims||!data.claims.length){appendMessage("assistant","（空回答）");return;}
   data.claims.forEach(c=>appendMessage("assistant",c.text,{kind:c.kind,citations:c.citations||[]}));
 }
 
 function renderEdit(data){
-  if(!data.ok){appendError(data.error?data.error.message:"请求失败");return;}
+  if(!data.ok){appendError(data.error?data.error.message:"请求失败");renderGateNotices(data);return;}
   appendMessage("assistant","已完成修改: "+data.summary);
+  renderGateNotices(data);
   appendMessage("assistant","修改文件: "+(data.changedPaths||[]).join(", ")+
     "\n理由: "+(data.reasons||[]).join("; ")+
     "\n引用: "+(data.citations||[]).join(" ")+
@@ -191,6 +226,7 @@ async function setMode(mode){
 
 async function historyCommand(path,label){
   const data=await api(path);
+  renderGateNotices(data);
   if(!data.ok){appendError(label+"被拒绝: "+data.error.message);return;}
   if(data.conflicts){appendError(label+"冲突，未覆盖任何文件: "+(data.conflictPaths||[]).join(", "));}
   else appendMessage("assistant",label+"完成。文件: "+(data.changedPaths||[]).join(", "));

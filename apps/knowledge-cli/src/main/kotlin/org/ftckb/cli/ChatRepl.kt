@@ -30,11 +30,14 @@ class ChatRepl(
     private val controller:SessionController?,
     private val repositoryRoot:Path?,
     private val baselineDirtyPaths:Set<String>?,
-    private val sanitize:(String)->String
+    private val sanitize:(String)->String,
+    private val runtime:org.ftckb.session.SessionRuntime?=null
 ) {
     constructor(session:AskChatSession,input:BufferedReader,out:PrintStream):this(
         session,input,out,null,null,emptySet(),CredentialRedactor::redact
     )
+
+    private var nextWorkMode=org.ftckb.domain.WorkMode.NORMAL
 
     fun run():Int {
         out.println("FTC Agent chat ready. Type /help for commands.")
@@ -53,6 +56,11 @@ class ChatRepl(
                 line=="/status" -> printStatus()
                 line=="/save" -> save(null)
                 line.startsWith("/save ") -> save(line.removePrefix("/save "))
+                line.startsWith("/work-mode ") -> {
+                    val selected=org.ftckb.domain.WorkMode.parse(line.removePrefix("/work-mode ").trim())
+                    if(selected==null) out.println("work-mode must be normal|test|dev")
+                    else { nextWorkMode=selected; out.println("next-request work-mode=${selected.id}") }
+                }
                 line.startsWith("/") -> out.println("unknown command: $line")
                 else -> submit(line)
             }
@@ -79,27 +87,36 @@ class ChatRepl(
     }
 
     private fun submit(message:String) {
+        val workMode=nextWorkMode
+        nextWorkMode=org.ftckb.domain.WorkMode.NORMAL
         val active=controller
         if (active==null || active.mode==AgentMode.ASK) {
-            ask(message)
+            ask(message,workMode)
             return
         }
         try {
-            when (val result=active.submit(message)) {
+            when (val result=runtime?.submit(message,workMode) ?: active.submit(message)) {
                 is EditResult -> render(result.report)
                 is RejectedResult -> out.println("edit refused: ${safeLine(result.message)}")
                 is AskResult -> render(result.answer)
             }
         } catch (_:ModelProviderException) {
             out.println("model provider error: request failed")
+        } catch (_:AskChatSessionException.KnowledgeRead) {
+            out.println("knowledge error: local knowledge is unavailable")
+        } catch (failure:org.ftckb.agent.edit.EditGateException) {
+            out.println("edit blocked: ${safeLine(failure.message.orEmpty())}")
+            failure.notices.forEach { notice -> out.println("${notice.kind} rule=${notice.ruleId.orEmpty()} check=${notice.check.orEmpty()} path=${notice.path.orEmpty()} line=${notice.line ?: ""}: ${safeLine(notice.detail)}") }
+        } catch (failure:org.ftckb.agent.edit.FileEditApplyException) {
+            out.println(if(failure.rollbackFailures.isNotEmpty()) "edit failed; rollback also failed; files may have changed" else "edit failed; rollback succeeded")
         } catch (_:Exception) {
             out.println("edit error: request did not complete")
         }
     }
 
-    private fun ask(question:String) {
+    private fun ask(question:String,workMode:org.ftckb.domain.WorkMode=org.ftckb.domain.WorkMode.NORMAL) {
         try {
-            render(session.ask(question))
+            render(runtime?.ask(question,workMode) ?: session.ask(question))
         } catch (_:ModelProviderException) {
             out.println("model provider error: request failed")
         } catch (_:CitationValidationException) {
@@ -121,6 +138,9 @@ class ChatRepl(
 
     private fun render(report:EditReport) {
         out.println("edit=ok")
+        report.gateNotices.forEach { notice ->
+            out.println("${notice.kind} rule=${notice.ruleId.orEmpty()} check=${notice.check.orEmpty()} path=${notice.path.orEmpty()} line=${notice.line ?: ""}: ${safeLine(notice.detail)}")
+        }
         out.println("summary: ${safeLine(report.summary)}")
         printPaths("paths",report.changedPaths.sorted())
         printValues("reasons",report.reasons,MAX_REASONS)
@@ -157,7 +177,7 @@ class ChatRepl(
             return
         }
         try {
-            when (val result=if (undo) active.undo() else active.discard()) {
+            when (val result=runtime?.restore(undo) ?: if (undo) active.undo() else active.discard()) {
                 is RejectedResult -> out.println("${if (undo) "undo" else "discard"} refused: ${safeLine(result.message)}")
                 is HistoryAppliedResult -> {
                     val name=if (undo) "undo" else "discard"
@@ -171,6 +191,8 @@ class ChatRepl(
                     if (result.warnings.isNotEmpty()) printValues("warnings",result.warnings,MAX_WARNINGS)
                 }
             }
+        } catch (failure:org.ftckb.agent.edit.FileEditApplyException) {
+            out.println(if(failure.rollbackFailures.isNotEmpty()) "restore failed; rollback also failed; files may have changed" else "restore failed; rollback succeeded")
         } catch (_:Exception) {
             out.println("${if (undo) "undo" else "discard"} error: request did not complete")
         }
@@ -270,7 +292,7 @@ class ChatRepl(
             out.println("commands: /help /mode ask /status /save [path] /exit")
             out.println("Ask Core is read-only; edit commands are unavailable.")
         } else {
-            out.println("commands: /help /mode ask|edit /undo /discard /diff /commit /status /save [path] /exit")
+            out.println("commands: /help /mode ask|edit /work-mode normal|test|dev /undo /discard /diff /commit /status /save [path] /exit")
             out.println("Edit writes validated text changes on the current named branch; commit is local-only.")
         }
     }

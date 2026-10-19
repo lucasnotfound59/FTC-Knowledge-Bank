@@ -9,30 +9,32 @@ enum class EditScope { NORMAL,PROJECT_LEVEL }
 
 data class ResolvedEditPath(val relative:String,val absolute:Path,val scope:EditScope)
 
+class EditPathValidationException(message:String):IllegalArgumentException(message)
+
 class SafeEditPath(root:Path) {
     private val root=root.toRealPath()
 
     fun resolve(value:String):ResolvedEditPath {
-        require(value.isNotBlank() && value.length<=MAX_PATH_LENGTH) { "edit path must be a non-blank path up to $MAX_PATH_LENGTH characters" }
-        require('\u0000' !in value && '\\' !in value) { "edit path contains unsafe path syntax" }
-        require(!value.startsWith('/') && !WINDOWS_ABSOLUTE.containsMatchIn(value)) { "edit path must be relative" }
+        requireSafePath(value.isNotBlank() && value.length<=MAX_PATH_LENGTH) { "edit path must be a non-blank path up to $MAX_PATH_LENGTH characters" }
+        requireSafePath('\u0000' !in value && '\\' !in value) { "edit path contains unsafe path syntax" }
+        requireSafePath(!value.startsWith('/') && !WINDOWS_ABSOLUTE.containsMatchIn(value)) { "edit path must be relative" }
         val components=value.split('/')
-        require(components.none { it.isEmpty() || it=="." || it==".." }) { "edit path contains unsafe path syntax" }
-        require(components.none { it.lowercase(Locale.ROOT) in PROTECTED_DIRECTORIES }) { "edit path is protected" }
+        requireSafePath(components.none { it.isEmpty() || it=="." || it==".." }) { "edit path contains unsafe path syntax" }
+        requireSafePath(components.none { it.lowercase(Locale.ROOT) in PROTECTED_DIRECTORIES }) { "edit path is protected" }
         val basename=components.last().lowercase(Locale.ROOT)
-        require(!isProtectedBasename(basename)) { "edit path is protected" }
-        require(isApprovedExtension(basename)) { "edit path must use a supported text extension" }
+        requireSafePath(!isProtectedBasename(basename)) { "edit path is protected" }
+        requireSafePath(isApprovedExtension(basename)) { "edit path must use a supported text extension" }
 
         val relative=Path.of(value)
-        require(!relative.isAbsolute) { "edit path must be relative" }
+        requireSafePath(!relative.isAbsolute) { "edit path must be relative" }
         val absolute=root.resolve(relative).normalize()
-        require(absolute.startsWith(root)) { "edit path escapes the repository" }
+        requireSafePath(absolute.startsWith(root)) { "edit path escapes the repository" }
         rejectSymbolicLinkComponents(relative)
-        require(Files.isDirectory(absolute.parent,LinkOption.NOFOLLOW_LINKS) && !Files.isSymbolicLink(absolute.parent)) {
+        requireSafePath(Files.isDirectory(absolute.parent,LinkOption.NOFOLLOW_LINKS) && !Files.isSymbolicLink(absolute.parent)) {
             "edit parent must be an existing directory"
         }
         if (Files.exists(absolute,LinkOption.NOFOLLOW_LINKS)) {
-            require(Files.isRegularFile(absolute,LinkOption.NOFOLLOW_LINKS)) { "edit path must identify a regular file" }
+            requireSafePath(Files.isRegularFile(absolute,LinkOption.NOFOLLOW_LINKS)) { "edit path must identify a regular file" }
         }
         val invariant=relative.toString().replace('\\','/')
         val scope=if (invariant.startsWith("TeamCode/")) EditScope.NORMAL else EditScope.PROJECT_LEVEL
@@ -43,8 +45,12 @@ class SafeEditPath(root:Path) {
         var current=root
         relative.forEach { component ->
             current=current.resolve(component)
-            require(!Files.isSymbolicLink(current)) { "edit path contains a symbolic link" }
+            requireSafePath(!Files.isSymbolicLink(current)) { "edit path contains a symbolic link" }
         }
+    }
+
+    private inline fun requireSafePath(condition:Boolean,message:()->String) {
+        if (!condition) throw EditPathValidationException(message())
     }
 
     private fun isProtectedBasename(name:String):Boolean {

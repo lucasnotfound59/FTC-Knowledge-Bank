@@ -9,6 +9,9 @@ import org.ftckb.agent.ContextRetriever
 import org.ftckb.agent.ConversationState
 import org.ftckb.agent.KnowledgeRetriever
 import org.ftckb.agent.RetrievalPlanner
+import org.ftckb.agent.RuntimeStageEvidence
+import org.ftckb.agent.RuntimeStageObserver
+import org.ftckb.agent.RuntimeStageStatus
 import org.ftckb.model.ModelProvider
 import org.ftckb.model.ModelRequest
 import org.ftckb.model.ModelResponse
@@ -74,13 +77,36 @@ class EditAgentTest {
     }
 
     @Test
+    fun `invalid model plans emit bounded blocked stage evidence without writes`(@TempDir root:Path) {
+        val repository=repository(root)
+        val provider=ScriptedProvider(retrievalPlan(),"private invalid plan one","private invalid plan two")
+        val stages=mutableListOf<RuntimeStageEvidence>()
+        val agent=agent(root,repository,provider,observer=RuntimeStageObserver(stages::add))
+
+        val failure=assertThrows(EditValidationException::class.java) { agent.edit("Create requested file") }
+
+        assertEquals("model_failure",failure.category)
+        assertEquals(List(2) {
+            RuntimeStageEvidence("model",RuntimeStageStatus.BLOCKED,"model_failure","Edit plan validation failed")
+        },stages)
+        assertEquals(3,provider.requests.size)
+        Files.list(repository.resolve("TeamCode")).use {
+            assertEquals(listOf("Drive.java"),it.map { path->path.fileName.toString() }.toList())
+        }
+    }
+
+    @Test
     fun `invalid citations receive one repair then reject with zero writes`(@TempDir root:Path) {
         val repository=repository(root)
         val invalid="""{"summary":"invalid","operations":[{"kind":"create","path":"TeamCode/Unsafe.java","expectedAbsent":true,"content":"class Unsafe {}\n","reason":"unsupported","citations":["RULE:R99"]}]}"""
         val provider=ScriptedProvider(retrievalPlan(),invalid,invalid)
-        val agent=agent(root,repository,provider)
+        val stages=mutableListOf<RuntimeStageEvidence>()
+        val agent=agent(root,repository,provider,observer=RuntimeStageObserver(stages::add))
 
-        assertThrows(EditValidationException::class.java) { agent.edit("Create unsupported file") }
+        val failure=assertThrows(EditValidationException::class.java) { agent.edit("Create unsupported file") }
+        assertEquals("citation_guard",failure.category)
+        assertEquals(listOf(RuntimeStageStatus.BLOCKED,RuntimeStageStatus.BLOCKED),stages.map { it.status })
+        assertTrue(stages.all { it.name=="citation_guard" })
 
         assertTrue(Files.notExists(repository.resolve("TeamCode/Unsafe.java")))
         assertEquals(3,provider.requests.size)
@@ -92,9 +118,14 @@ class EditAgentTest {
         val repository=repository(root)
         val invalid="""{"summary":"invalid","operations":[{"kind":"create","path":".env","expectedAbsent":true,"content":"secret=value\n","reason":"unsafe","citations":["CODE:C1"]}]}"""
         val provider=ScriptedProvider(retrievalPlan(),invalid,invalid)
-        val agent=agent(root,repository,provider)
+        val stages=mutableListOf<RuntimeStageEvidence>()
+        val agent=agent(root,repository,provider,observer=RuntimeStageObserver(stages::add))
 
-        assertThrows(EditValidationException::class.java) { agent.edit("Create protected file") }
+        val failure=assertThrows(EditValidationException::class.java) { agent.edit("Create protected file") }
+        assertEquals("path_guard",failure.category)
+        assertEquals(2,stages.count { it.name=="citation_guard" && it.status==RuntimeStageStatus.PASSED })
+        assertEquals(2,stages.count { it.name=="path_guard" && it.status==RuntimeStageStatus.BLOCKED })
+        assertTrue(stages.none { it.name=="write" })
 
         assertTrue(Files.notExists(repository.resolve(".env")))
         assertEquals(3,provider.requests.size)
@@ -115,7 +146,8 @@ class EditAgentTest {
             provider,index,engine,history,ConversationState(provider),"supported FTC repository"
         )
 
-        assertThrows(EditValidationException::class.java) { agent.edit("Make no effective change") }
+        val failure=assertThrows(EditValidationException::class.java) { agent.edit("Make no effective change") }
+        assertEquals("model_failure",failure.category)
 
         assertEquals("class Drive {}\n",Files.readString(repository.resolve("TeamCode/Drive.java")))
         assertTrue(history.changes().isEmpty())
@@ -203,6 +235,162 @@ class EditAgentTest {
         assertEquals(2,provider.requests.size)
     }
 
+    @Test
+    fun `blocked prewrite decision writes nothing and does not retry model`(@TempDir root:Path) {
+        val repository=repository(root)
+        val provider=ScriptedProvider(retrievalPlan(),createPlan())
+        val notice=EditGateNotice("hard","rule.blocked","path-forbidden","TeamCode/Gated.java",null,"blocked path")
+        var inspected=false
+        val gate=object:EditPrewriteGate {
+            override fun inspect(preview:ValidatedEditBatch):EditGateResult {
+                inspected=true
+                assertEquals("TeamCode/Gated.java",preview.changes.single().path)
+                return EditGateResult(false,listOf(notice))
+            }
+            override fun verifyCurrent(preview:ValidatedEditBatch)=error("blocked preview must not be verified")
+            override fun beginWrite(preview:ValidatedEditBatch):AutoCloseable=error("blocked preview must not acquire a lease")
+        }
+        val engine=FileEditEngine(repository)
+        val history=EditHistory(repository,engine)
+        val agent=agent(root,repository,provider,gate,engine,history)
+
+        val failure=assertThrows(EditGateException::class.java) { agent.edit("Create gated") }
+
+        assertTrue(inspected)
+        assertEquals("blocked",failure.code)
+        assertEquals(listOf(notice),failure.notices)
+        assertTrue(Files.notExists(repository.resolve("TeamCode/Gated.java")))
+        assertTrue(history.changes().isEmpty())
+        assertEquals(2,provider.requests.size)
+    }
+
+    @Test
+    fun `soft and dev notices survive successful edit under write lease`(@TempDir root:Path) {
+        val repository=repository(root)
+        val provider=ScriptedProvider(retrievalPlan(),createPlan())
+        val notices=listOf(
+            EditGateNotice("soft","rule.review",null,null,null,"review required"),
+            EditGateNotice("dev_downgrade","rule.dev","regex-forbidden","TeamCode/Gated.java",1,"explicit dev")
+        )
+        var leaseOpen=false
+        var verifications=0
+        var inspected=0
+        val gate=object:EditPrewriteGate {
+            override fun inspect(preview:ValidatedEditBatch):EditGateResult {
+                inspected++
+                return EditGateResult(true,notices)
+            }
+            override fun beginWrite(preview:ValidatedEditBatch):AutoCloseable {
+                leaseOpen=true
+                return AutoCloseable { leaseOpen=false }
+            }
+            override fun verifyCurrent(preview:ValidatedEditBatch) {
+                assertTrue(leaseOpen)
+                verifications++
+            }
+        }
+        val stages=mutableListOf<RuntimeStageEvidence>()
+        val report=agent(root,repository,provider,gate,observer=RuntimeStageObserver(stages::add)).edit("Create gated")
+
+        assertEquals(notices,report.gateNotices)
+        assertEquals(listOf("citation_guard","path_guard","write"),stages.map { it.name })
+        assertTrue(stages.all { it.status==RuntimeStageStatus.PASSED })
+        assertEquals(1,inspected)
+        assertEquals(2,verifications)
+        assertFalse(leaseOpen)
+        assertEquals("class Gated {}\n",Files.readString(repository.resolve("TeamCode/Gated.java")))
+    }
+
+    @Test
+    fun `stale gate before apply closes lease without writes`(@TempDir root:Path) {
+        val repository=repository(root)
+        val provider=ScriptedProvider(retrievalPlan(),createPlan())
+        var closed=false
+        val gate=object:EditPrewriteGate {
+            override fun inspect(preview:ValidatedEditBatch)=EditGateResult(true)
+            override fun beginWrite(preview:ValidatedEditBatch)=AutoCloseable { closed=true }
+            override fun verifyCurrent(preview:ValidatedEditBatch) {
+                throw EditGateException("stale_knowledge",emptyList(),"request snapshot is stale")
+            }
+        }
+        val engine=FileEditEngine(repository)
+        val history=EditHistory(repository,engine)
+        val failure=assertThrows(EditGateException::class.java) {
+            agent(root,repository,provider,gate,engine,history).edit("Create gated")
+        }
+
+        assertEquals("stale_knowledge",failure.code)
+        assertTrue(closed)
+        assertTrue(Files.notExists(repository.resolve("TeamCode/Gated.java")))
+        assertTrue(history.changes().isEmpty())
+    }
+
+    @Test
+    fun `stale gate at final mutation boundary prevents write and cleans temporary file`(@TempDir root:Path) {
+        val repository=repository(root)
+        val provider=ScriptedProvider(retrievalPlan(),createPlan())
+        var stale=false
+        val engine=FileEditEngine(repository,beforeMutation={ _,_->stale=true })
+        val history=EditHistory(repository,engine)
+        val gate=object:EditPrewriteGate {
+            override fun inspect(preview:ValidatedEditBatch)=EditGateResult(true)
+            override fun verifyCurrent(preview:ValidatedEditBatch) {
+                if (stale) throw EditGateException("stale_knowledge",emptyList(),"request snapshot is stale")
+            }
+        }
+        val failure=assertThrows(FileEditApplyException::class.java) {
+            agent(root,repository,provider,gate,engine,history).edit("Create gated")
+        }
+
+        assertTrue(failure.originalFailure is EditGateException)
+        assertEquals("stale_knowledge",editFailureCategory(failure))
+        assertTrue(failure.rollbackFailures.isEmpty())
+        assertTrue(failure.cleanupFailures.isEmpty())
+        assertTrue(Files.notExists(repository.resolve("TeamCode/Gated.java")))
+        assertTrue(history.changes().isEmpty())
+        Files.list(repository.resolve("TeamCode")).use { assertEquals(listOf("Drive.java"),it.map { path->path.fileName.toString() }.toList()) }
+    }
+
+    @Test
+    fun `stale gate between files rolls back earlier mutations under same lease`(@TempDir root:Path) {
+        val repository=repository(root)
+        val provider=ScriptedProvider(retrievalPlan(),createPlan(twoFiles=true))
+        var stale=false
+        var leaseOpen=false
+        var verifications=0
+        val engine=FileEditEngine(repository,afterMutation={ _,_->stale=true })
+        val history=EditHistory(repository,engine)
+        val gate=object:EditPrewriteGate {
+            override fun inspect(preview:ValidatedEditBatch)=EditGateResult(true)
+            override fun beginWrite(preview:ValidatedEditBatch):AutoCloseable {
+                leaseOpen=true
+                return AutoCloseable { leaseOpen=false }
+            }
+            override fun verifyCurrent(preview:ValidatedEditBatch) {
+                assertTrue(leaseOpen)
+                verifications++
+                if (stale) throw EditGateException("stale_knowledge",emptyList(),"request snapshot is stale")
+            }
+        }
+        val failure=assertThrows(FileEditApplyException::class.java) {
+            agent(root,repository,provider,gate,engine,history).edit("Create both")
+        }
+
+        assertTrue(failure.originalFailure is EditGateException)
+        assertEquals(3,verifications)
+        assertFalse(leaseOpen)
+        assertTrue(failure.rollbackFailures.isEmpty())
+        assertTrue(Files.notExists(repository.resolve("TeamCode/Gated.java")))
+        assertTrue(Files.notExists(repository.resolve("TeamCode/Second.java")))
+        assertTrue(history.changes().isEmpty())
+        assertEquals(2,provider.requests.size)
+    }
+
+    private fun createPlan(twoFiles:Boolean=false):String {
+        val second=if (twoFiles) ",{\"kind\":\"create\",\"path\":\"TeamCode/Second.java\",\"expectedAbsent\":true,\"content\":\"class Second {}\\n\",\"reason\":\"requested\",\"citations\":[\"CODE:C1\"]}" else ""
+        return """{"summary":"gated","operations":[{"kind":"create","path":"TeamCode/Gated.java","expectedAbsent":true,"content":"class Gated {}\n","reason":"requested","citations":["CODE:C1"]}$second]}"""
+    }
+
     private fun repository(root:Path):Path=root.resolve("repository").also { repository ->
         Files.createDirectories(repository.resolve("TeamCode"))
         Files.writeString(repository.resolve("TeamCode/Drive.java"),"class Drive {}\n")
@@ -210,13 +398,16 @@ class EditAgentTest {
 
     private fun knowledge(root:Path):Path=root.resolve("knowledge").also(Files::createDirectories)
 
-    private fun agent(root:Path,repository:Path,provider:ModelProvider):EditAgent {
+    private fun agent(
+        root:Path,repository:Path,provider:ModelProvider,gate:EditPrewriteGate?=null,
+        engine:FileEditEngine=FileEditEngine(repository),history:EditHistory=EditHistory(repository,engine),
+        observer:RuntimeStageObserver=RuntimeStageObserver {}
+    ):EditAgent {
         val index=RepositoryIndex().also { it.build(repository) }
-        val engine=FileEditEngine(repository)
         return EditAgent(
             RetrievalPlanner(provider),
             ContextRetriever(index,KnowledgeRetriever(knowledge(root),null,null,ruleProfiles=emptySet())),
-            provider,index,engine,EditHistory(repository,engine),ConversationState(provider),"supported FTC repository"
+            provider,index,engine,history,ConversationState(provider),"supported FTC repository",gate,observer
         )
     }
 

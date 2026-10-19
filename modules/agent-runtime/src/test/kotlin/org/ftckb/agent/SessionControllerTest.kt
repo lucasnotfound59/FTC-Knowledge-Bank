@@ -349,12 +349,83 @@ class SessionControllerTest {
         assertTrue(fixture.controller.changes().isEmpty())
     }
 
+    @Test
+    fun `replacing request agents preserves authorized branch and pending history`(@TempDir root:Path) {
+        var branch="team-work"
+        val fixture=fixture(root,ScriptedProvider(retrievalPlan(),twoCreatesPlan())) { repository ->
+            GitBranchState.Named(repository.toRealPath(),branch)
+        }
+        assertNull(fixture.controller.setMode(AgentMode.EDIT))
+        assertTrue(fixture.controller.submit("Create both") is EditResult)
+        val refreshedProvider=ScriptedProvider(
+            retrievalPlan(),
+            """{"summary":"refreshed","operations":[{"kind":"create","path":"TeamCode/Refreshed.java","expectedAbsent":true,"content":"class Refreshed {}\n","reason":"requested","citations":["CODE:C1"]}]}"""
+        )
+        val (ask,edit)=fixture.replacementAgents(refreshedProvider)
+
+        fixture.controller.replaceAgents(ask,edit)
+
+        assertEquals(AgentMode.EDIT,fixture.controller.mode)
+        assertEquals("team-work",fixture.controller.authorizedEditBranch)
+        assertEquals(2,fixture.controller.changes().size)
+        assertTrue(fixture.controller.submit("Create refreshed") is EditResult)
+        assertEquals(2,refreshedProvider.requests.size)
+        branch="other-branch"
+        assertTrue(fixture.controller.undo() is RejectedResult)
+        assertEquals(3,fixture.controller.changes().size)
+        branch="team-work"
+        assertTrue(fixture.controller.undo() is HistoryAppliedResult)
+        assertTrue(Files.notExists(fixture.repository.resolve("TeamCode/Refreshed.java")))
+        assertEquals(2,fixture.controller.changes().size)
+        assertTrue(fixture.controller.discard() is HistoryAppliedResult)
+        assertTrue(fixture.controller.changes().isEmpty())
+    }
+
+    @Test
+    fun `observer records actual recovery conflict and branch rejection without guessing pass`(@TempDir root:Path) {
+        var branch="team-work"
+        val stages=mutableListOf<RuntimeStageEvidence>()
+        val fixture=fixture(
+            root,ScriptedProvider(retrievalPlan(),twoCreatesPlan()),
+            observer=RuntimeStageObserver(stages::add)
+        ) { repository->GitBranchState.Named(repository.toRealPath(),branch) }
+        assertNull(fixture.controller.setMode(AgentMode.EDIT))
+        assertTrue(fixture.controller.submit("Create both") is EditResult)
+        stages.clear()
+        Files.writeString(fixture.repository.resolve("TeamCode/First.java"),"class First { int external; }\n")
+
+        val conflict=fixture.controller.discard() as HistoryAppliedResult
+
+        assertFalse(conflict.result.succeeded)
+        assertEquals("stale_baseline",stages.last().category)
+        assertEquals("restore",stages.last().name)
+        assertEquals(RuntimeStageStatus.BLOCKED,stages.last().status)
+        stages.clear()
+        branch="other-work"
+        assertTrue(fixture.controller.undo() is RejectedResult)
+        assertEquals(listOf(RuntimeStageEvidence("branch_guard",RuntimeStageStatus.BLOCKED,"branch_guard","Authorized branch is not current")),stages)
+    }
+
+    @Test
+    fun `empty recovery is not presented as a completed restore`(@TempDir root:Path) {
+        val stages=mutableListOf<RuntimeStageEvidence>()
+        val fixture=fixture(root,ScriptedProvider(),observer=RuntimeStageObserver(stages::add))
+        assertNull(fixture.controller.setMode(AgentMode.EDIT))
+        stages.clear()
+
+        assertTrue(fixture.controller.undo() is HistoryAppliedResult)
+
+        assertEquals(RuntimeStageStatus.NOT_APPLICABLE,stages.last().status)
+        assertEquals("restore",stages.last().name)
+    }
+
     private fun fixture(
         root:Path,
         provider:ScriptedProvider,
         beforeMutation:(Path,Int)->Unit={ _,_-> },
         beforeWrite:(Path,Int)->Unit={ _,_-> },
         historyIndexRefresher:((Set<String>)->Unit)?=null,
+        observer:RuntimeStageObserver=RuntimeStageObserver {},
         branchInspector:(Path)->GitBranchState={ repository ->
             GitBranchState.Named(repository.toRealPath(),"team-work")
         }
@@ -381,8 +452,13 @@ class SessionControllerTest {
                 branchInspector={ branchInspector(repository) },
                 indexRefresher={ paths->
                     if (historyIndexRefresher!=null) historyIndexRefresher(paths) else index.refresh(paths)
-                }
-            )
+                },
+                stageObserver=observer
+            ),
+            replacementAgents={ replacementProvider->
+                AskAgent(RetrievalPlanner(replacementProvider),contextRetriever,AnswerGenerator(replacementProvider,index),conversation,"supported FTC repository") to
+                    EditAgent(RetrievalPlanner(replacementProvider),contextRetriever,replacementProvider,index,engine,history,conversation,"supported FTC repository")
+            }
         )
     }
 
@@ -393,7 +469,8 @@ class SessionControllerTest {
         """{"summary":"two files","operations":[{"kind":"create","path":"TeamCode/First.java","expectedAbsent":true,"content":"class First {}\n","reason":"requested","citations":["CODE:C1"]},{"kind":"create","path":"TeamCode/Second.java","expectedAbsent":true,"content":"class Second {}\n","reason":"requested","citations":["CODE:C1"]}]}"""
 
     private data class Fixture(
-        val repository:Path,val provider:ScriptedProvider,val controller:SessionController
+        val repository:Path,val provider:ScriptedProvider,val controller:SessionController,
+        val replacementAgents:(ModelProvider)->Pair<AskAgent,EditAgent>
     )
 
     private class ScriptedProvider(vararg responses:String):ModelProvider {
