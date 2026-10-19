@@ -11,9 +11,10 @@ import org.ftckb.domain.WorkMode
 import org.ftckb.knowledge.FileKnowledgeRepository
 import org.ftckb.standardizer.Standardizer
 
-internal fun runCheckCommand(args:List<String>,out:PrintStream):Int {
+internal fun runCheckCommand(args:List<String>,out:PrintStream,audit:KernelAudit?=null):Int {
     val jsonMode=args.contains("--json")
     fun fail(message:String,code:String,exit:Int):Int {
+        audit?.failure(code)
         if (jsonMode) out.println(KernelJson.errorJson("check",code,message))
         else out.println(message)
         return exit
@@ -60,13 +61,18 @@ internal fun runCheckCommand(args:List<String>,out:PrintStream):Int {
     }
     val repoRoot=Path.of(args[0])
     val knowledgeRoot=Path.of(values["--knowledge"] ?: "knowledge")
+    audit?.passed("parameters")
+    audit?.begin("knowledge_load")
     val loaded=try {
         FileKnowledgeRepository.load(knowledgeRoot)
     } catch (exception:Exception) {
         val detail=exception.message?.lineSequence()?.firstOrNull()?.trim().orEmpty()
         return fail("error loading knowledge: ${detail.ifEmpty { exception.javaClass.simpleName }}","load-error",2)
     }
+    audit?.loaded(loaded.rules)
+    audit?.begin("knowledge_validate")
     if (loaded.violations.isNotEmpty()) {
+        audit?.invalid(loaded.violations)
         if (jsonMode) {
             out.println(KernelJson.violationsJson("check",loaded.violations))
         } else {
@@ -76,22 +82,31 @@ internal fun runCheckCommand(args:List<String>,out:PrintStream):Int {
         }
         return 2
     }
+    audit?.passed("knowledge_validate")
+    audit?.begin("resolve")
     val resolved=RuleResolver.resolve(
         loaded.rules,RuleContext(values.getValue("--team"),values.getValue("--season"),profiles,workMode)
     )
+    if (resolved.conflicts.isEmpty()) audit?.active(resolved.activeRules)
     if (resolved.conflicts.isNotEmpty()) {
+        audit?.conflicts(resolved.conflicts,loaded.rules,resolved.activeRules)
         val detail=resolved.conflicts.joinToString("; ") { conflict ->
             "conflict topic=${conflict.topic} rules=${conflict.ruleIds.sorted().joinToString(",")}"
         }
         return fail(detail,"conflict",2)
     }
+    audit?.passed("resolve")
+    audit?.begin("diff_read")
     val changes=try {
         values["--diff"]?.let { Standardizer.parsePatch(Files.readString(Path.of(it))) } ?: Standardizer.worktreeChanges(repoRoot)
     } catch (exception:Exception) {
         val detail=exception.message?.lineSequence()?.firstOrNull()?.trim().orEmpty()
         return fail("error reading diff: ${detail.ifEmpty { exception.javaClass.simpleName }}","load-error",2)
     }
+    audit?.passed("diff_read")
+    audit?.begin("standardizer")
     val evaluated=Standardizer.evaluate(resolved.activeRules,changes)
+    audit?.checked(evaluated,workMode==WorkMode.DEV)
     // DEV is a per-task downgrade: hard findings stay visible as location-rich soft notices,
     // pre-existing soft notices are retained, and only usage/load/validation/conflict errors
     // still fail. It never claims production-rule compliance.

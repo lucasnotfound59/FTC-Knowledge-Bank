@@ -22,7 +22,7 @@ import org.snakeyaml.engine.v2.api.LoadSettings
 
 object RuleYamlCodec {
     private val localDatePattern=Regex("""\d{4}-\d{2}-\d{2}""")
-    private val load=Load(LoadSettings.builder().setAllowDuplicateKeys(false).build())
+    private val loadSettings=LoadSettings.builder().setAllowDuplicateKeys(false).build()
     private val ruleKeys=setOf(
         "id","topic","title","instruction","rationale","status","authority","applicability",
         "evidence","approval","supersedes","positiveExample","negativeExample","checks","policyLevel",
@@ -30,7 +30,8 @@ object RuleYamlCodec {
     )
 
     fun decode(text:String):List<KnowledgeRule> {
-        val root=load.loadFromString(text).asMap("root")
+        // SnakeYAML Load owns mutable constructor state; concurrent dashboard requests must not share it.
+        val root=Load(loadSettings).loadFromString(text).asMap("root")
         root.rejectUnknownFields(setOf("schemaVersion","rules"),"root")
         val schemaVersion=root.int("schemaVersion")
         require(schemaVersion in 1..4) { "unsupported schemaVersion" }

@@ -6,9 +6,13 @@ plugins {
 kotlin { jvmToolchain(21) }
 application { mainClass.set("org.ftckb.cli.MainKt"); applicationName="ftckb" }
 tasks.named<JavaExec>("run") { workingDir(rootProject.projectDir) }
-tasks.named<Test>("test") { dependsOn(tasks.named("installDist")) }
+tasks.named<Test>("test") {
+    dependsOn(tasks.named("installDist"))
+    environment("FTCKB_AUDIT_DIR",layout.buildDirectory.dir("test-audit").get().asFile.absolutePath)
+}
 
 dependencies {
+    implementation(project(":modules:audit"))
     implementation(project(":modules:agent-runtime"))
     implementation(project(":modules:standardizer"))
     implementation(project(":modules:session-shell"))

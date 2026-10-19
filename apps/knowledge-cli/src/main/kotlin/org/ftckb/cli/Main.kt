@@ -18,7 +18,23 @@ fun runCli(
     chatLauncher:ChatLauncher=ProductionChatLauncher(),
     evalCommand:EvalCommand=EvalCommand(),
     serveCommand:ServeRunner=ServeCommand(),
-    extractCommand:ExtractRunner=ExtractCommand()
+    extractCommand:ExtractRunner=ExtractCommand(),
+    auditDirectory:Path?=null,
+    auditDiagnostics:(String)->Unit={ System.err.println(it) }
+):Int {
+    val command=args.firstOrNull()
+    val kernelHelp=if (command=="check") args.drop(1)==listOf("--help") else "--help" in args
+    val audit=if (command in setOf("validate","resolve","check") && !kernelHelp)
+        KernelAudit(command!!,args,auditDirectory,auditDiagnostics) else null
+    var exit:Int?=null
+    try {
+        return runCliBody(args,out,input,chatLauncher,evalCommand,serveCommand,extractCommand,audit).also { exit=it }
+    } finally { audit?.finish(exit) }
+}
+
+private fun runCliBody(
+    args:List<String>, out:PrintStream, input:BufferedReader, chatLauncher:ChatLauncher,
+    evalCommand:EvalCommand, serveCommand:ServeRunner, extractCommand:ExtractRunner, audit:KernelAudit?
 ):Int {
     if (args.isEmpty() || args==listOf("--help") || args==listOf("-h") || args==listOf("help")) {
         printTopLevelHelp(out)
@@ -32,7 +48,8 @@ fun runCli(
     if (args.firstOrNull()=="eval") return evalCommand.run(args.drop(1),out)
     if (args.firstOrNull()=="serve") return runServeCommand(args.drop(1),out,serveCommand)
     if (args.firstOrNull()=="extract") return runExtractCommand(args.drop(1),out,extractCommand)
-    if (args.firstOrNull()=="check") return runCheckCommand(args.drop(1),out)
+    if (args.firstOrNull()=="dashboard") return runDashboardCommand(args.drop(1),out)
+    if (args.firstOrNull()=="check") return runCheckCommand(args.drop(1),out,audit)
     if (args.firstOrNull() in setOf("candidates","approve","reject")) {
         return runApprovalCommand(args.first(),args.drop(1),out)
     }
@@ -49,6 +66,7 @@ fun runCli(
     // {"schemaVersion":2,"command":"<validate|resolve>","ok":false,"error":{"code","message"}}.
     val jsonMode=args.contains("--json")
     fun fail(message:String,code:String,exit:Int):Int {
+        audit?.failure(code)
         if (jsonMode) out.println(KernelJson.errorJson(args.firstOrNull(),code,message))
         else out.println(message)
         return exit
@@ -114,13 +132,18 @@ fun runCli(
             return fail(exception.message.orEmpty(),exception.code,2)
         }
     } else emptySet()
+    audit?.passed("parameters")
+    audit?.begin("knowledge_load")
     val loaded=try {
         FileKnowledgeRepository.load(Path.of(args[1]))
     } catch (exception:Exception) {
         val detail=exception.message?.lineSequence()?.firstOrNull()?.trim().orEmpty()
         return fail("error loading knowledge: ${detail.ifEmpty { exception.javaClass.simpleName }}","load-error",2)
     }
+    audit?.loaded(loaded.rules)
+    audit?.begin("knowledge_validate")
     if (loaded.violations.isNotEmpty()) {
+        audit?.invalid(loaded.violations)
         if (jsonMode) {
             out.println(KernelJson.violationsJson(args[0],loaded.violations))
         } else {
@@ -130,6 +153,7 @@ fun runCli(
         }
         return 2
     }
+    audit?.passed("knowledge_validate")
     return when (args[0]) {
         "validate" -> {
             if (jsonMode) out.println(KernelJson.validateJson(loaded.rules.size))
@@ -140,7 +164,10 @@ fun runCli(
             val options=optionArgs.chunked(2).associate { pair -> pair[0] to pair.getOrElse(1) { "" } }
             val team=options["--team"] ?: return 64.also { out.println("missing --team") }
             val season=options["--season"] ?: return 64.also { out.println("missing --season") }
+            audit?.begin("resolve")
             val result=RuleResolver.resolve(loaded.rules,RuleContext(team,season,profiles,workMode))
+            if (result.conflicts.isEmpty()) audit?.active(result.activeRules)
+            if (result.conflicts.isNotEmpty()) audit?.conflicts(result.conflicts,loaded.rules,result.activeRules) else audit?.passed("resolve")
             if (jsonMode) {
                 out.println(KernelJson.resolveJson(team,season,result,workMode))
                 if (result.conflicts.isNotEmpty()) 2 else 0
@@ -180,6 +207,8 @@ private fun printTopLevelHelp(out:PrintStream) {
     out.println("      interactive chat agent (Ask / Edit modes)")
     out.println("  serve --knowledge PATH --team N --season YYYY-YYYY --provider NAME [options]")
     out.println("      local web session on 127.0.0.1")
+    out.println("  dashboard --knowledge PATH [--port N] [--no-browser]")
+    out.println("      local rule management and audit dashboard; no API key required")
     out.println("  eval --cases PATH --knowledge PATH --provider NAME --output PATH")
     out.println("      run the fixed evaluation scenarios")
     out.println()

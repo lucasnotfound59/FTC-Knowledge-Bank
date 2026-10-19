@@ -1,5 +1,6 @@
 package org.ftckb.agent.edit
 
+import java.util.Collections
 import org.ftckb.agent.AgentAnswer
 import org.ftckb.agent.AnswerClaim
 import org.ftckb.agent.CitationValidationException
@@ -13,6 +14,10 @@ import org.ftckb.agent.EvidenceSerialization
 import org.ftckb.agent.PlanningInput
 import org.ftckb.agent.RetrievalPlanner
 import org.ftckb.agent.RuleEvidenceItem
+import org.ftckb.agent.RuntimeStageEvidence
+import org.ftckb.agent.RuntimeStageObserver
+import org.ftckb.agent.RuntimeStageStatus
+import org.ftckb.agent.record
 import org.ftckb.domain.RuleStatus
 import org.ftckb.git.AgentDiffRenderer
 import org.ftckb.git.TextChange
@@ -25,10 +30,11 @@ import org.ftckb.repository.RepositoryIndex
 
 data class EditReport(
     val summary:String,val changedPaths:Set<String>,val projectLevelPaths:Set<String>,
-    val diff:String,val reasons:List<String>,val citations:Set<String>,val warnings:List<String>
+    val diff:String,val reasons:List<String>,val citations:Set<String>,val warnings:List<String>,
+    val gateNotices:List<EditGateNotice> =emptyList()
 )
 
-class EditValidationException(message:String):RuntimeException(message)
+class EditValidationException(message:String,val category:String="model_failure"):RuntimeException(message)
 
 class EditAgent(
     private val retrievalPlanner:RetrievalPlanner,
@@ -38,7 +44,9 @@ class EditAgent(
     private val editEngine:FileEditEngine,
     private val history:EditHistory,
     val conversation:ConversationState,
-    private val repositorySummary:String
+    private val repositorySummary:String,
+    private val prewriteGate:EditPrewriteGate?=null,
+    private val stageObserver:RuntimeStageObserver=RuntimeStageObserver {}
 ) {
     internal fun edit(request:String,authorizationGuard:()->Unit={}):EditReport {
         require(request.isNotBlank()) { "edit request must not be blank" }
@@ -54,24 +62,51 @@ class EditAgent(
         var accepted:AcceptedPlan?=null
         for (attempt in 0..1) {
             val response=provider.complete(modelRequest(safeRequest,conversationContext,context,issue))
+            var failureCategory="model_failure"
             try {
                 val plan=EditPlanParser.parse(response.content)
                 validateCitations(plan,context)
+                stageObserver.record(RuntimeStageEvidence("citation_guard",RuntimeStageStatus.PASSED))
                 val preview=editEngine.preview(plan)
+                stageObserver.record(RuntimeStageEvidence("path_guard",RuntimeStageStatus.PASSED))
                 accepted=AcceptedPlan(plan,preview,response.usage)
                 break
             } catch (error:IllegalArgumentException) {
                 issue=boundedIssue(error)
+                failureCategory=editFailureCategory(error) ?: "model_failure"
+                when (failureCategory) {
+                    "path_guard" -> stageObserver.record(RuntimeStageEvidence("path_guard",RuntimeStageStatus.BLOCKED,"path_guard","Edit path validation failed"))
+                    "stale_baseline" -> stageObserver.record(RuntimeStageEvidence("baseline_guard",RuntimeStageStatus.BLOCKED,"stale_baseline","Edit baseline is stale"))
+                    "model_failure" -> stageObserver.record(RuntimeStageEvidence("model",RuntimeStageStatus.BLOCKED,"model_failure","Edit plan validation failed"))
+                }
             } catch (error:CitationValidationException) {
                 issue=boundedIssue(error)
+                failureCategory="citation_guard"
+                stageObserver.record(RuntimeStageEvidence("citation_guard",RuntimeStageStatus.BLOCKED,"citation_guard","Edit citation validation failed"))
             }
-            if (attempt==1) throw EditValidationException("edit plan rejected: $issue")
+            if (attempt==1) throw EditValidationException("edit plan rejected: $issue",failureCategory)
         }
         val selected=requireNotNull(accepted)
-        authorizationGuard()
-        val applied=history.applyAndRecord(selected.preview,authorizationGuard)
+        val decision=prewriteGate?.inspect(selected.preview) ?: EditGateResult(true)
+        val notices=Collections.unmodifiableList(ArrayList(decision.notices))
+        if (!decision.allowed) throw EditGateException("blocked",notices,"edit blocked by prewrite gate")
+        val mutationGuard={
+            authorizationGuard()
+            prewriteGate?.verifyCurrent(selected.preview)
+            Unit
+        }
+        val applied=try {
+            (prewriteGate?.beginWrite(selected.preview) ?: AutoCloseable {}).use {
+                mutationGuard()
+                history.applyAndRecord(selected.preview,mutationGuard)
+            }
+        } catch (failure:Throwable) {
+            stageObserver.record(RuntimeStageEvidence("write",RuntimeStageStatus.BLOCKED,editFailureCategory(failure),"Edit transaction failed"))
+            throw failure
+        }
+        stageObserver.record(RuntimeStageEvidence("write",RuntimeStageStatus.PASSED))
         val changedPaths=applied.changes.mapTo(linkedSetOf()) { it.path }
-        var report=report(selected.plan,applied)
+        var report=report(selected.plan,applied).copy(gateNotices=notices)
         try {
             repositoryIndex.refresh(changedPaths)
         } catch (_:Exception) {

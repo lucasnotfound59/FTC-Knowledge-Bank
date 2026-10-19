@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>FTC Knowledge Bank · 规则管理台</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到主要内容</a>
+  <div class="shell">
+    <aside class="sidebar" aria-label="主导航">
+      <a class="brand" href="#overview"><span class="brand-mark" aria-hidden="true">K<span>›</span></span><span>FTC <b>Knowledge Bank</b><small>规则管理台</small></span></a>
+      <div class="nav-label">工作区</div>
+      <nav id="navigation">
+        <button data-view="overview" class="nav-button active" aria-current="page"><span aria-hidden="true">◫</span>概览</button>
+        <button data-view="rules" class="nav-button"><span aria-hidden="true">≡</span>规则管理</button>
+        <button data-view="resolve" class="nav-button"><span aria-hidden="true">⌘</span>归属与裁决</button>
+        <button data-view="audit" class="nav-button"><span aria-hidden="true">↳</span>调用审计</button>
+      </nav>
+      <div class="sidebar-bottom"><div class="local-marker"><i></i> LOCAL / 127.0.0.1</div><p>确定性规则裁决<br>每次检测保留实际证据</p><small>软件检查不代表真机通过</small></div>
+    </aside>
+    <div class="workspace">
+      <header class="topbar"><div class="root-block"><span class="eyebrow">当前知识库</span><span id="knowledge-root" class="mono root-path">正在连接…</span></div><div class="connection-block"><span id="connection" class="connection"><i></i>连接中</span><span id="last-refresh" class="muted small">尚未刷新</span><button id="refresh-all" class="icon-button" aria-label="立即刷新" title="立即刷新">↻</button></div></header>
+      <div id="connection-alert" class="connection-alert" role="alert" hidden></div>
+      <main id="main" tabindex="-1">
+        <div id="knowledge-alert" role="alert" hidden></div>
+        <section id="view-overview" class="view">
+          <div class="page-heading"><div><div class="eyebrow">KNOWLEDGE / OPERATIONS</div><h1>让规则与检测都有据可查。</h1><p>查看当前规则、解释裁决，并追踪每一次已记录调用。</p></div><button id="validate-library" class="button primary">校验知识库</button></div>
+          <div id="overview-integrity"></div>
+          <div class="overview-grid"><section class="panel"><div class="panel-heading"><h2>规则目录</h2><button class="text-button" data-go="rules">管理规则 →</button></div><div id="rule-stats" class="rule-stats"></div><div id="overview-version" class="panel-footer mono"></div></section><section class="panel"><div class="panel-heading"><h2>已记录的 diff 检测</h2><button class="text-button" data-go="audit">查看调用 →</button></div><div id="audit-stats"></div><p class="panel-note">仅统计此知识库已记录的顶层调用；未接入进程、旧版本及绕过 CLI 的行为不可观测。拦截是已检测调用的子集。</p></section></div>
+          <section class="panel"><div class="panel-heading"><div><h2>最近调用</h2><p class="muted small">阶段轨迹来自调用当时的记录</p></div><button class="text-button" data-go="audit">完整审计 →</button></div><div id="recent-calls"></div></section>
+          <div id="validate-result"></div>
+          <div class="scope-note"><span aria-hidden="true">ⓘ</span><p>裁决成功只表示完成规则选择。soft 需要复核，dev 提醒保留原命中；两者都不表示人工复核已完成。</p></div>
+        </section>
+        <section id="view-rules" class="view" hidden>
+          <div class="page-heading"><div><div class="eyebrow">RULE CATALOG</div><h1>规则管理</h1><p>来源、策略层级与适用范围分别呈现。</p></div><button id="create-rule" class="button primary">＋ 新增候选规则</button></div>
+          <section class="panel filters-panel"><label class="search-field"><span aria-hidden="true">⌕</span><input id="rule-search" type="search" placeholder="搜索 ID、标题、指令或正文" aria-label="搜索规则"></label><div id="rule-filters" class="filter-grid"></div><div class="filter-summary"><span id="rule-count"></span><button id="clear-filters" class="text-button">清除筛选</button></div></section>
+          <div class="split-layout"><section class="panel list-panel"><div id="rule-list" class="rule-list"></div></section><section id="rule-detail" class="panel detail-panel" aria-label="规则详情"><div class="empty-state"><span class="empty-symbol">≡</span><h2>选择一条规则</h2><p>查看完整指令、证据与检查方式。</p></div></section></div>
+        </section>
+        <section id="view-resolve" class="view" hidden>
+          <div class="page-heading"><div><div class="eyebrow">OWNERSHIP / RESOLUTION</div><h1>归属与裁决</h1><p>显式选择上下文，查看引擎实际裁决结果。</p></div></div>
+          <div class="priority-strip"><span>优先级</span><b>OFFICIAL</b><i>›</i><b>GLOBAL</b><i>›</i><b>LOCAL</b><i>›</i><b>SHARED</b><small>official 来源始终取得最高优先级</small></div>
+          <section class="panel context-panel"><div class="panel-heading"><h2>检测上下文</h2><span class="muted small">不会猜测队伍、赛季或架构</span></div><form id="resolve-form"><div id="resolve-context"></div><button class="button primary" type="submit">执行裁决</button></form></section>
+          <div id="resolve-result"><div class="empty-state panel"><h2>尚未裁决</h2><p>填写队号、赛季并明确选择 generic 或命名 profile。</p></div></div>
+          <section class="panel patch-panel"><div class="panel-heading"><div><h2>手动检测指定补丁</h2><p class="muted small">只检查下方明确提供的 patch，使用上面的检测上下文。</p></div></div><form id="check-form"><label for="manual-diff">Unified diff</label><textarea id="manual-diff" class="code-editor patch-editor" spellcheck="false" placeholder="粘贴 unified diff；空补丁也是一次明确的检测输入。"></textarea><div class="form-footer"><span class="muted small">dev 会保留每一项降级命中，不能解释为没有违规。</span><button class="button primary" type="submit">检测指定补丁</button></div></form><div id="check-result"></div></section>
+        </section>
+        <section id="view-audit" class="view" hidden>
+          <div class="page-heading"><div><div class="eyebrow">INVOCATION LEDGER</div><h1>调用审计</h1><p>保留调用当时的快照，区分拦截、待复核与尚未执行。</p></div><button id="audit-refresh" class="button">刷新记录</button></div>
+          <div class="audit-toolbar"><label>记录范围 <select id="audit-scope"><option value="knowledge">当前知识库</option><option value="unscoped">未归属调用（独立分区）</option></select></label><span id="audit-stale" class="badge warning" hidden>有新记录，可刷新</span><span id="audit-total" class="muted small"></span></div><div id="audit-health"></div>
+          <div class="split-layout audit-layout"><section class="panel list-panel"><div id="audit-list"></div><div class="pagination"><button id="audit-prev" class="button" disabled>上一页</button><span id="audit-page" class="muted small">第 1 页</span><button id="audit-next" class="button" disabled>下一页</button></div></section><section id="audit-detail" class="panel detail-panel" aria-label="调用详情"><div class="empty-state"><span class="empty-symbol">↳</span><h2>选择一次调用</h2><p>逐阶段检查实际运行状态、命中与原因。</p></div></section></div>
+        </section>
+      </main>
+      <footer class="workspace-footer"><span>FTC Knowledge Bank</span><span>本地规则管理 · 无模型密钥依赖</span></footer>
+    </div>
+  </div>
+  <dialog id="editor-dialog" aria-labelledby="editor-title"><div class="dialog-shell"><header class="dialog-header"><div><div class="eyebrow">RULE CHANGE</div><h2 id="editor-title">编辑规则</h2></div><button id="editor-close" class="icon-button" aria-label="关闭编辑器">×</button></header><div class="dialog-content"><div id="editor-error" role="alert"></div><div id="editor-instructions" class="notice"></div><form id="editor-form"><label for="editor-id">规则 ID</label><input id="editor-id" class="mono" required><div id="yaml-editor-section"><label for="editor-yaml">单规则 YAML <span class="muted small">schemaVersion: 4 与 rules 序列；全部字段均可编辑</span></label><textarea id="editor-yaml" class="code-editor" spellcheck="false"></textarea></div><fieldset id="approver-section" hidden><legend>批准角色声明</legend><p class="muted small">校验声明的角色与队伍；这不是身份认证。</p><div class="form-grid"><label>批准人 ID<input id="approver-id" autocomplete="off"></label><label>角色<select id="approver-role"><option value="">明确选择角色</option><option value="overall_software_lead">总软件负责人</option><option value="team_software_lead">队伍软件负责人</option></select></label><label>适用队伍<input id="approver-team" inputmode="numeric" placeholder="队伍负责人必填"></label></div></fieldset><label class="checkbox-label"><input id="preview-with-context" type="checkbox">同时预览指定上下文的裁决影响</label><div id="preview-context" hidden></div><div class="form-footer"><span class="muted small">完整知识库校验后，才能应用预览。</span><button id="preview-button" class="button primary" type="submit">预览差异与校验</button></div></form><div id="mutation-preview" hidden></div></div><footer class="dialog-footer"><span id="editor-base" class="mono small muted"></span><button id="apply-preview" class="button primary" disabled>保存此预览</button></footer></div></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

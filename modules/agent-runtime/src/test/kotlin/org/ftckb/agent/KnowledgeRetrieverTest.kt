@@ -3,6 +3,11 @@ package org.ftckb.agent
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
+import org.ftckb.domain.RuleContext
+import org.ftckb.domain.RuleViolation
+import org.ftckb.knowledge.FileKnowledgeRepository
+import org.ftckb.knowledge.KnowledgeSnapshot
+import org.ftckb.knowledge.KnowledgeSourceError
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.assertThrows
@@ -70,6 +75,78 @@ class KnowledgeRetrieverTest {
 
         assertTrue(guides.size<=2)
         assertTrue(guides.all { it.heading.contains("tune",ignoreCase=true) })
+    }
+
+    @Test
+    fun `snapshot retrieval keeps captured rules after live YAML becomes invalid`() {
+        writeKnowledge()
+        val root=tempDir.resolve("knowledge")
+        val rule="""
+            schemaVersion: 1
+            rules:
+              - id: official.captured
+                topic: captured-topic
+                title: Captured rule
+                instruction: Use captured instruction.
+                rationale: Captured evidence.
+                status: approved
+                authority: official
+                applicability: {teams: [], seasons: []}
+                evidence:
+                  - {repository: example/repo, commit: abcdef1, file: Source.java, symbol: Source}
+                approval: {approver: lead, role: overall_software_lead, approvedAt: 2026-08-15T00:00:00Z}
+        """.trimIndent()
+        root.resolve("rules.yaml").writeText(rule)
+        val loaded=FileKnowledgeRepository.load(root)
+        val capturedRules=loaded.rules.toMutableList()
+        val snapshot=KnowledgeSnapshot(root,"captured",capturedRules,emptyList(),emptyList(),emptyMap(),emptyMap())
+        root.resolve("rules.yaml").writeText("this is invalid yaml: [")
+        val retriever=KnowledgeRetriever.fromSnapshot(snapshot,RuleContext(null,null,emptySet()))
+        capturedRules.clear()
+
+        val rules=retriever.retrieveRules(RetrievalIntent(emptySet(),emptySet(),emptySet(),setOf("captured-topic"),emptySet()))
+
+        assertEquals(listOf("official.captured"),rules.map { it.id })
+        assertEquals("Use captured instruction.",rules.single().instruction)
+    }
+
+    @Test
+    fun `snapshot factory rejects validation and load errors`() {
+        writeKnowledge()
+        val root=tempDir.resolve("knowledge")
+        val snapshot=KnowledgeSnapshot(root,"bad",emptyList(),emptyList(),emptyList(),emptyMap(),emptyMap())
+        val context=RuleContext(null,null,emptySet())
+
+        assertThrows(IllegalArgumentException::class.java) {
+            KnowledgeRetriever.fromSnapshot(snapshot.copy(violations=listOf(RuleViolation("bad","id","invalid"))),context)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            KnowledgeRetriever.fromSnapshot(snapshot.copy(loadErrors=listOf(KnowledgeSourceError("bad.yaml","malformed"))),context)
+        }
+    }
+
+    @Test
+    fun `snapshot factory retains resolver conflict and explicit profile protections`() {
+        writeKnowledge()
+        val root=tempDir.resolve("knowledge")
+        val empty=KnowledgeSnapshot(root,"empty",emptyList(),emptyList(),emptyList(),emptyMap(),emptyMap())
+        assertThrows(IllegalArgumentException::class.java) {
+            KnowledgeRetriever.fromSnapshot(empty,RuleContext(null,null))
+        }
+        KnowledgeRetriever.fromSnapshot(empty,RuleContext(null,null,emptySet()))
+
+        val rule=org.ftckb.domain.KnowledgeRule(
+            "official.one","conflict-topic","One","Use one.","Evidence.",
+            org.ftckb.domain.RuleStatus.APPROVED,org.ftckb.domain.RuleAuthority.OFFICIAL,
+            org.ftckb.domain.RuleApplicability(),
+            listOf(org.ftckb.domain.GitRuleEvidence("example/repo","abcdef1","Source.java","Source")),
+            org.ftckb.domain.Approval("lead",org.ftckb.domain.ApproverRole.OVERALL_SOFTWARE_LEAD,
+                approvedAt=java.time.Instant.parse("2026-08-15T00:00:00Z"))
+        )
+        val failure=assertThrows(IllegalArgumentException::class.java) {
+            KnowledgeRetriever.fromSnapshot(empty.copy(rules=listOf(rule,rule.copy(id="official.two"))),RuleContext(null,null,emptySet()))
+        }
+        assertEquals("rule conflicts: conflict-topic: official.one,official.two",failure.message)
     }
 
     private fun writeKnowledge() {

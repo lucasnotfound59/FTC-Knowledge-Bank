@@ -13,10 +13,12 @@ import java.nio.file.Path
 import java.nio.file.SimpleFileVisitor
 import java.nio.file.StandardOpenOption
 import java.nio.file.attribute.BasicFileAttributes
+import java.util.Collections
 import org.ftckb.domain.KnowledgeRule
 import org.ftckb.domain.RuleContext
 import org.ftckb.domain.RuleResolver
 import org.ftckb.knowledge.FileKnowledgeRepository
+import org.ftckb.knowledge.KnowledgeSnapshot
 
 class GuideTraversalLimits(
     val maxFiles:Int=5_000,
@@ -34,27 +36,21 @@ class GuideTraversalException(message:String):RuntimeException(message)
 
 class KnowledgeAccessException:RuntimeException("knowledge files are unavailable")
 
-class KnowledgeRetriever(
+class KnowledgeRetriever private constructor(
     knowledgeRoot:Path,
-    team:String?,
-    season:String?,
-    private val guideLimits:GuideTraversalLimits=GuideTraversalLimits(),
-    ruleProfiles:Set<String>?=null
+    resolvedRules:List<KnowledgeRule>,
+    private val guideLimits:GuideTraversalLimits
 ) {
-    private val activeRules:List<KnowledgeRule>
+    constructor(
+        knowledgeRoot:Path,team:String?,season:String?,
+        guideLimits:GuideTraversalLimits=GuideTraversalLimits(),ruleProfiles:Set<String>?=null
+    ):this(knowledgeRoot,loadAndResolve(knowledgeRoot,RuleContext(team,season,ruleProfiles)),guideLimits)
+
+    private val activeRules:List<KnowledgeRule> =Collections.unmodifiableList(ArrayList(resolvedRules))
     private val guidesRoot:Path?
 
     init {
         val canonicalKnowledgeRoot=knowledgeRoot.toRealPath()
-        val loaded=FileKnowledgeRepository.load(canonicalKnowledgeRoot)
-        require(loaded.violations.isEmpty()) {
-            "knowledge validation failed: "+loaded.violations.joinToString("; ") { "${it.ruleId}:${it.field}:${it.message}" }
-        }
-        val resolved=RuleResolver.resolve(loaded.rules,RuleContext(team,season,ruleProfiles))
-        require(resolved.conflicts.isEmpty()) {
-            "rule conflicts: "+resolved.conflicts.joinToString("; ") { "${it.topic}: ${it.ruleIds.joinToString(",")}" }
-        }
-        activeRules=resolved.activeRules
         val candidate=canonicalKnowledgeRoot.resolve("guides")
         guidesRoot=if (Files.isDirectory(candidate,LinkOption.NOFOLLOW_LINKS) && !Files.isSymbolicLink(candidate)) {
             candidate.toRealPath()
@@ -62,6 +58,8 @@ class KnowledgeRetriever(
             null
         }
     }
+
+    fun resolvedRules():List<KnowledgeRule> =activeRules
 
     fun retrieveRules(intent:RetrievalIntent):List<KnowledgeRule> =activeRules.filter { rule ->
         val text="${rule.topic} ${rule.title} ${rule.instruction} ${rule.rationale}".lowercase()
@@ -172,10 +170,34 @@ class KnowledgeRetriever(
         null
     }
 
-    private companion object {
-        const val maxGuideBytes=1_048_576L
-        const val MAX_GUIDE_SECTIONS=2
-        val heading=Regex("^#{1,6}\\s+(.+?)\\s*$")
+    companion object {
+        fun fromSnapshot(
+            snapshot:KnowledgeSnapshot,context:RuleContext,
+            guideLimits:GuideTraversalLimits=GuideTraversalLimits()
+        ):KnowledgeRetriever {
+            require(snapshot.valid) { "knowledge snapshot is invalid" }
+            return KnowledgeRetriever(snapshot.root,resolve(snapshot.rules,context),guideLimits)
+        }
+
+        private fun loadAndResolve(root:Path,context:RuleContext):List<KnowledgeRule> {
+            val loaded=FileKnowledgeRepository.load(root.toRealPath())
+            require(loaded.violations.isEmpty()) {
+                "knowledge validation failed: "+loaded.violations.joinToString("; ") { "${it.ruleId}:${it.field}:${it.message}" }
+            }
+            return resolve(loaded.rules,context)
+        }
+
+        private fun resolve(rules:List<KnowledgeRule>,context:RuleContext):List<KnowledgeRule> {
+            val resolved=RuleResolver.resolve(rules.toList(),context)
+            require(resolved.conflicts.isEmpty()) {
+                "rule conflicts: "+resolved.conflicts.joinToString("; ") { "${it.topic}: ${it.ruleIds.joinToString(",")}" }
+            }
+            return resolved.activeRules
+        }
+
+        private const val maxGuideBytes=1_048_576L
+        private const val MAX_GUIDE_SECTIONS=2
+        private val heading=Regex("^#{1,6}\\s+(.+?)\\s*$")
     }
 }
 

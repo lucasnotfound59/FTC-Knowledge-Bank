@@ -25,6 +25,13 @@ import org.ftckb.model.ProviderConfigLoader
 import org.ftckb.model.ProviderProfile
 import org.ftckb.model.SecretResolver
 import org.ftckb.repository.RepositoryIndex
+import org.ftckb.agent.*
+import org.ftckb.agent.edit.editFailureCategory
+import org.ftckb.audit.*
+import org.ftckb.domain.WorkMode
+import org.ftckb.domain.RuleContext
+import org.ftckb.knowledge.KnowledgeSnapshot
+import org.ftckb.knowledge.KnowledgeWorkspace
 
 /**
  * Assembled agent session shared by the chat REPL and the web serve mode.
@@ -42,7 +49,9 @@ class SessionRuntime(
     initialTeam:String,
     initialSeason:String,
     initialProvider:String,
-    initialRuleProfiles:Set<String>
+    initialRuleProfiles:Set<String>,
+    private val entrypoint:String="chat",
+    private val auditStoreFactory:(Path)->AuditStore={ root -> FileAuditStore(defaultAuditDirectory(),root) }
 ) {
     private val swapProvider=SwapModelProvider(ModelProvider {
         throw IllegalStateException("session is not configured")
@@ -53,6 +62,9 @@ class SessionRuntime(
     private lateinit var secret:String
     private var repositoryIndex=RepositoryIndex()
     private lateinit var knowledgeRetriever:KnowledgeRetriever
+    private lateinit var knowledgeSnapshot:KnowledgeSnapshot
+    private var activeAudit:SessionAudit?=null
+    private val stageObserver=RuntimeStageObserver { evidence -> activeAudit?.observe(evidence) }
     private lateinit var history:EditHistory
     private lateinit var knowledgeRoot:Path
     private lateinit var repositorySummary:String
@@ -75,7 +87,98 @@ class SessionRuntime(
     }
 
     fun controller():SessionController=controller
-    fun session():AskChatSession=askSession
+    private val sessionFacade:AskChatSession=object:AskChatSession {
+        override fun ask(question:String):AgentAnswer=request("ask") { askSession.ask(question) }
+        override fun status():ChatStatus=askSession.status()
+        override fun save(path:Path?):Path=askSession.save(path)
+    }
+
+    fun session():AskChatSession=sessionFacade
+
+    @Synchronized
+    fun ask(question:String,workMode:WorkMode=WorkMode.NORMAL):AgentAnswer=request("ask",workMode=workMode) { askSession.ask(question) }
+
+    @Synchronized
+    fun submit(message:String,workMode:WorkMode=WorkMode.NORMAL):SessionResult=request(if(currentMode()==AgentMode.EDIT) "edit" else "ask",workMode=workMode) {
+        controller.submit(message)
+    }
+
+    @Synchronized
+    fun restore(undo:Boolean):HistoryCommandResult=request(if(undo) "undo" else "discard",refresh=false) {
+        if(undo) controller.undo() else controller.discard()
+    }
+
+    private fun stageFor(category:String):String=when(category) {
+        "stale_baseline","stale_knowledge"->"baseline_guard"
+        "path_guard","branch_guard","citation_guard"->category
+        "hard"->"standardizer"
+        else->"model"
+    }
+
+    @Synchronized
+    private fun <T> request(command:String,refresh:Boolean=true,workMode:WorkMode=WorkMode.NORMAL,action:()->T):T {
+        val audit=SessionAudit(auditStoreFactory(knowledgeRoot),AuditMetadata(entrypoint,command,
+            knowledgeRoot.toAbsolutePath().normalize().toString(),AuditContext(team,season,ruleProfiles.sorted(),workMode.id)))
+        activeAudit=audit
+        audit.stage("parameters",AuditStageStatus.PASSED)
+        try {
+            if(refresh) refreshForRequest(audit,workMode) else audit.snapshot(knowledgeSnapshot,knowledgeRetriever.resolvedRules())
+            val result=action()
+            val rejection=result as? RejectedResult
+            val recoveryFailed=(result as? HistoryAppliedResult)?.result?.succeeded==false
+            val failed=rejection!=null || recoveryFailed
+            audit.finish(failed=failed,exit=if(failed) 2 else 0)
+            return result
+        } catch (failure:Throwable) {
+            if(failure is org.ftckb.agent.edit.FileEditApplyException) {
+                audit.stage("restore",if(failure.rollbackFailures.isEmpty()) AuditStageStatus.PASSED else AuditStageStatus.BLOCKED,
+                    detail=if(failure.rollbackFailures.isEmpty()) "Rollback succeeded" else "Rollback failed; files may have changed")
+            }
+            val rawCategory=editFailureCategory(failure) ?: when(failure) {
+                is org.ftckb.model.ModelProviderException->"model_failure"
+                is CitationValidationException->"citation_guard"
+                is AskChatSessionException.KnowledgeRead,is SessionAssemblyException.KnowledgeInvalid->"invalid_knowledge"
+                else->"load_error"
+            }
+            val category=if(rawCategory=="blocked") "hard" else rawCategory
+            // Stage emitters report only boundaries actually reached; this terminal classification is bounded.
+            if(category !in setOf("invalid_knowledge","conflict","load_error") && !audit.has(stageFor(category)))
+                audit.stage(stageFor(category),AuditStageStatus.BLOCKED,category)
+            audit.finish(failed=category!="hard",exit=if(category=="hard") 1 else 2)
+            throw failure
+        } finally { activeAudit=null }
+    }
+
+    private fun refreshForRequest(audit:SessionAudit,workMode:WorkMode) {
+        val snapshot=try { KnowledgeWorkspace(knowledgeRoot).snapshot() } catch (_:Exception) {
+            audit.stage("knowledge_load",AuditStageStatus.BLOCKED,"load_error")
+            throw AskChatSessionException.KnowledgeRead()
+        }
+        audit.snapshot(snapshot,snapshot.rules)
+        audit.stage("knowledge_load",if(snapshot.loadErrors.isEmpty()) AuditStageStatus.PASSED else AuditStageStatus.BLOCKED,
+            if(snapshot.loadErrors.isEmpty()) null else "load_error")
+        if(snapshot.loadErrors.isNotEmpty()) throw AskChatSessionException.KnowledgeRead()
+        audit.stage("knowledge_validate",if(snapshot.valid) AuditStageStatus.PASSED else AuditStageStatus.BLOCKED,
+            if(snapshot.valid) null else "invalid_knowledge")
+        if(!snapshot.valid) throw AskChatSessionException.KnowledgeRead()
+        val retriever=try { KnowledgeRetriever.fromSnapshot(snapshot,RuleContext(team,season,ruleProfiles,workMode)) } catch (_:Exception) {
+            audit.stage("resolve",AuditStageStatus.BLOCKED,"conflict")
+            throw AskChatSessionException.KnowledgeRead()
+        }
+        audit.stage("resolve",AuditStageStatus.PASSED)
+        audit.snapshot(snapshot,retriever.resolvedRules())
+        try { repositoryIndex.build(repositoryRoot) } catch (_:Exception) { throw AskChatSessionException.RepositoryRead() }
+        val graph=assembleAgents(repositoryIndex,retriever,repositoryRoot,history,repositorySummary,profile,
+            askSession.status(),conversation,snapshot,workMode)
+        controller.replaceAgents(graph.ask,graph.edit)
+        retrievalPlanner=graph.planner
+        contextRetriever=graph.context
+        askAgent=graph.ask
+        editAgent=graph.edit
+        askSession=graph.session
+        knowledgeRetriever=retriever
+        knowledgeSnapshot=snapshot
+    }
     fun redact(text:String):String=
         org.ftckb.agent.CredentialRedactor.redact(text,swapProvider.currentSecrets())
 
@@ -96,7 +199,9 @@ class SessionRuntime(
         val nextSecret=if (provider!=null) secretResolver(nextProfile.apiKeyEnv)?.takeIf(String::isNotBlank)
             ?:throw SessionAssemblyException.MissingSecret(nextProfile.apiKeyEnv) else secret
         val nextKnowledgeRoot=knowledge ?: knowledgeRoot
-        val nextKnowledge=loadKnowledge(nextKnowledgeRoot,nextTeam,nextSeason,profiles)
+        val nextSnapshot=loadKnowledge(nextKnowledgeRoot)
+        val nextKnowledge=try { KnowledgeRetriever.fromSnapshot(nextSnapshot,RuleContext(nextTeam,nextSeason,profiles)) }
+        catch (_:Exception) { throw SessionAssemblyException.KnowledgeInvalid() }
         val nextIndex=if (repository!=null) RepositoryIndex() else repositoryIndex
         val snapshot=if (repository!=null) try {
             nextIndex.build(repository).also {
@@ -123,7 +228,7 @@ class SessionRuntime(
         } else repositorySummary
         val nextStatus=ChatStatus(nextRoot,nextTeam,nextSeason,provider ?: providerName,nextProfile.model,profiles)
         val nextGraph=if (contextChanged) assembleAgents(
-            nextIndex,nextKnowledge,nextRoot,nextHistory ?: history,nextSummary,nextProfile,nextStatus,conversation
+            nextIndex,nextKnowledge,nextRoot,nextHistory ?: history,nextSummary,nextProfile,nextStatus,conversation,nextSnapshot
         ) else null
         val nextSession=nextGraph?.session ?: makeSession(askAgent,nextProfile,nextStatus,nextIndex)
         val nextProvider=if (provider!=null) createProvider(nextProfile,nextSecret) else null
@@ -136,6 +241,7 @@ class SessionRuntime(
             conversation.replaceSecrets(swapProvider.currentSecrets())
         }
         knowledgeRoot=nextKnowledgeRoot
+        knowledgeSnapshot=nextSnapshot
         team=nextTeam
         season=nextSeason
         ruleProfiles=profiles
@@ -176,7 +282,7 @@ class SessionRuntime(
         val nextConversation=ConversationState(swapProvider,swapProvider.currentSecrets())
         val nextGraph=assembleAgents(
             repositoryIndex,knowledgeRetriever,repositoryRoot,history,repositorySummary,
-            profile,askSession.status(),nextConversation
+            profile,askSession.status(),nextConversation,knowledgeSnapshot
         )
         conversation=nextConversation
         installAgents(nextGraph)
@@ -188,13 +294,10 @@ class SessionRuntime(
         throw SessionAssemblyException.KnowledgeInvalid(error.message ?: "invalid rule profiles")
     }
 
-    private fun loadKnowledge(knowledge:Path,nextTeam:String,nextSeason:String,profiles:Set<String>):KnowledgeRetriever=try {
-        KnowledgeRetriever(knowledge,nextTeam,nextSeason,ruleProfiles=profiles)
-    } catch (error:IllegalArgumentException) {
-        throw SessionAssemblyException.KnowledgeInvalid(error.message ?: "invalid knowledge root")
-    } catch (_:Exception) {
-        throw SessionAssemblyException.KnowledgeInvalid()
-    }
+    private fun loadKnowledge(knowledge:Path):KnowledgeSnapshot=try {
+        KnowledgeWorkspace(knowledge).snapshot().also { if(!it.valid) throw SessionAssemblyException.KnowledgeInvalid() }
+    } catch (error:SessionAssemblyException) { throw error }
+    catch (_:Exception) { throw SessionAssemblyException.KnowledgeInvalid() }
 
     private data class AgentGraph(
         val planner:RetrievalPlanner,val context:ContextRetriever,val ask:AskAgent,val edit:EditAgent,
@@ -203,7 +306,7 @@ class SessionRuntime(
 
     private fun assembleAgents(
         index:RepositoryIndex,knowledge:KnowledgeRetriever,root:Path,editHistory:EditHistory,
-        summary:String,providerProfile:ProviderProfile,status:ChatStatus,transcript:ConversationState
+        summary:String,providerProfile:ProviderProfile,status:ChatStatus,transcript:ConversationState,snapshot:KnowledgeSnapshot,workMode:WorkMode=WorkMode.NORMAL
     ):AgentGraph=try {
         val planner=RetrievalPlanner(swapProvider)
         val context=ContextRetriever(index,knowledge)
@@ -211,10 +314,12 @@ class SessionRuntime(
             planner,context,AnswerGenerator(swapProvider,index),transcript,summary
         )
         val edit=EditAgent(
-            planner,context,swapProvider,index,FileEditEngine(root),editHistory,transcript,summary
+            planner,context,swapProvider,index,FileEditEngine(root),editHistory,transcript,summary,
+            prewriteGate=StandardizerEditGate(KnowledgeWorkspace(snapshot.root),snapshot,knowledge.resolvedRules(),root,workMode) { activeAudit },
+            stageObserver=stageObserver
         )
         val nextController=SessionController(
-            ask,edit,editHistory,root,index,indexRefresher=historyIndexRefresher(index)
+            ask,edit,editHistory,root,index,indexRefresher=historyIndexRefresher(index),stageObserver=stageObserver
         )
         AgentGraph(planner,context,ask,edit,nextController,makeSession(ask,providerProfile,status,index))
     } catch (_:java.io.IOException) {
@@ -236,7 +341,25 @@ class SessionRuntime(
         RuntimeAskChatSession(agent,ConversationSaver(providerProfile.name,providerProfile.model),status,sessionsDirectory,index)
 
     private fun createProvider(profile:ProviderProfile,secret:String):ModelProvider=try {
-        providerCreator(profile,SecretResolver { name-> if (name==profile.apiKeyEnv) secret else null })
+        val delegate=providerCreator(profile,SecretResolver { name-> if (name==profile.apiKeyEnv) secret else null })
+        ModelProvider { request ->
+            val parent=activeAudit
+            if(parent==null) delegate.complete(request) else {
+                val child=SessionAudit(parent.store,parent.metadata.copy(command="model",parentInvocationId=parent.id,model=profile.model))
+                try {
+                    delegate.complete(request).also { response ->
+                        child.stage("model",AuditStageStatus.PASSED)
+                        parent.stage("model",AuditStageStatus.PASSED)
+                        child.finish(input=response.usage?.inputTokens,output=response.usage?.outputTokens)
+                    }
+                } catch(failure:Throwable) {
+                    child.stage("model",AuditStageStatus.BLOCKED,"model_failure")
+                    parent.stage("model",AuditStageStatus.BLOCKED,"model_failure")
+                    child.finish(failed=true)
+                    throw failure
+                }
+            }
+        }
     } catch (_:Exception) {
         throw SessionAssemblyException.ProviderInit()
     }
