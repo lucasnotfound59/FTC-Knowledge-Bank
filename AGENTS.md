@@ -80,11 +80,13 @@ ftckb check <repo-root> --knowledge knowledge --team 20827 --season 2025-2026 --
 
 ### 4. 规则管理与调用审计
 
-`dashboard` 不需要模型 API key，使用终端输出的本次启动链接访问，仅监听 `127.0.0.1`。它提供规则目录、单规则 YAML 编辑、候选批准/拒绝、确定性裁决及调用审计；操作说明见 [`docs/dashboard.md`](docs/dashboard.md)。普通编辑不能更名规则 ID 或直接晋升状态；修改已批准规则的实质内容或归属会移除 approval 并转回 candidate。批准与拒绝要求明确批准人、角色和适用队伍，复用 ApprovalPolicy；角色声明不等于身份认证。所有写入先预览、校验完整知识库，再核对版本保存，不自动 commit/push。
+`dashboard` 不需要模型 API key，使用终端输出的本次启动链接访问，仅监听 `127.0.0.1`。它提供规则目录、单规则 YAML 编辑、候选批准/拒绝、确定性裁决、调用审计及逐项复核；操作说明见 [`docs/dashboard.md`](docs/dashboard.md)。普通编辑不能更名规则 ID 或直接晋升状态；修改已批准规则的实质内容或归属会移除 approval 并转回 candidate。批准与拒绝要求明确批准人、角色和适用队伍，复用 ApprovalPolicy；角色声明不等于身份认证。所有写入先预览、校验完整知识库，再核对版本保存，不自动 commit/push。
 
 本版本的 `validate`/`resolve`/`check`、chat/serve 用户请求与模型子调用，以及 dashboard 手动检测/规则事务记录到本地审计。默认目录是 `~/.ftckb/audit`；所有相关进程可用 `FTCKB_AUDIT_DIR` 指定相同目录。按知识库规范路径分区，无法归属知识库的记录单列为 unscoped。审计失败使用独立诊断通道，不能改写 kernel JSON v2 的 stdout 或退出码。
 
-审计只证明实际记录的阶段：resolve 不代表 diff 已检查；soft 不代表人工复核完成；中断记录不能算通过。内置 chat/serve 的新编辑在写入前检查本次预览 diff，normal/test 中仍生效的硬违规阻止写入，soft 必须向用户报告；显式 dev 保留每条降级项。chat 的 `/work-mode normal|test|dev` 仅作用于下一条提交的消息，之后重置为 normal；serve 的 ask/submit 可显式传本次 `workMode`，不保存到设置。undo/discard 是独立恢复事务，不冒充新编辑通过检查。旧固定 commit 副本、审计启用前的调用、未接入进程和绕过 CLI 的操作不在覆盖内，不能推断外部 Agent 的全部对话或任意工具调用，也不能擅自将分开的 resolve/check 记录配对。
+独立复核声明追加到同知识分区的 `reviews.jsonl`（`reviews.lock` 协调写入），不修改 `events.jsonl` 或检测统计。每项只可记录已核对/需修改/本次不适用，理由与复核人必填；身份只是声明，证据链接仅允许安全 http(s) URL，不抓取。保留全部 revision 与 dev 原类型，不解除 hard；来源不可校验时禁写。版本状态区分历史快照、需重新复核、版本未知，缺版本的历史声明不算当前代码结论。代码修改后重新运行检查，新检查默认待复核；只关联实际检查快照，不监控外部编辑、不从日志路径读取用户文件。Dashboard 手动 supplied_patch 可显式关联前次检查重检，但历史不保存补丁正文，必须重新提供补丁并核对上下文。
+
+审计只证明实际记录的阶段：resolve 不代表 diff 已检查；soft 本身不代表人工复核完成；仅独立复核声明能说明指定历史快照有人声明复核，原检测仍保留；中断记录不能算通过。内置 chat/serve 的新编辑在写入前检查本次预览 diff，normal/test 中仍生效的硬违规阻止写入，soft 必须向用户报告；显式 dev 保留每条降级项。chat 的 `/work-mode normal|test|dev` 仅作用于下一条提交的消息，之后重置为 normal；serve 的 ask/submit 可显式传本次 `workMode`，不保存到设置。undo/discard 是独立恢复事务，不冒充新编辑通过检查。旧固定 commit 副本、审计启用前的调用、未接入进程和绕过 CLI 的操作不在覆盖内，不能推断外部 Agent 的全部对话或任意工具调用，也不能擅自将分开的 resolve/check 记录配对。
 
 ## 关键规则（不要做）
 

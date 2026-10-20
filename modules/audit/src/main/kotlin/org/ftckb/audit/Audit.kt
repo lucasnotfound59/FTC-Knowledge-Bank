@@ -23,9 +23,18 @@ data class AuditRuleSnapshot(
     val seasons: List<String>, val profiles: List<String>
 )
 data class AuditHit(val kind: String, val ruleId: String?, val check: String?, val path: String?, val line: Int?, val detail: String)
+data class AuditCodeVersion(
+    val kind: String,
+    val subjectId: String?,
+    val inputDigest: String,
+    val head: String? = null,
+    val predecessorInvocationId: String? = null,
+    val schemaVersion: Int = 1
+)
 data class AuditStage(
     val name: String, val status: AuditStageStatus, val category: String? = null,
-    val detail: String? = null, val hits: List<AuditHit> = emptyList()
+    val detail: String? = null, val hits: List<AuditHit> = emptyList(),
+    val codeVersion: AuditCodeVersion? = null
 )
 data class AuditEvent(
     val invocationId: String, val type: AuditEventType, val timestamp: String,

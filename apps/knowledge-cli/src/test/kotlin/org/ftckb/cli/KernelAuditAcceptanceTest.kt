@@ -221,4 +221,58 @@ class KernelAuditAcceptanceTest {
         assertEquals(0L,store.summary().unfinished)
         assertTrue(store.page().items.all { it.status==AuditRunStatus.COMPLETED })
     }
+    @Test fun `supplied patch versions bind complete input and preserve exact kernel output`() {
+        val root=knowledge()
+        val supplied=patch("example.txt")
+        val first=invoke(check(root,supplied))
+        val version=stage(record(root),"standardizer").codeVersion!!
+        assertEquals("supplied_patch",version.kind)
+        assertNull(version.head)
+        assertNotNull(version.subjectId)
+        assertEquals(64,version.inputDigest.length)
+        assertEquals(first,invoke(check(root,supplied)))
+        assertEquals(version,stage(FileAuditStore(base,root).page().items.first(),"standardizer").codeVersion)
+        Files.writeString(supplied,Files.readString(supplied).replace("-old","-different deleted body"))
+        assertEquals(first,invoke(check(root,supplied)))
+        val changed=stage(FileAuditStore(base,root).page().items.first(),"standardizer").codeVersion!!
+        assertEquals(version.subjectId,changed.subjectId)
+        assertNotEquals(version.inputDigest,changed.inputDigest)
+        assertFalse(Files.readString(FileAuditStore(base,root).partitionPath.resolve("events.jsonl")).contains("different deleted body"))
+    }
+    @Test fun `worktree versions distinguish binary and untracked bytes with stable output`() {
+        val root=knowledge()
+        val repository=Files.createDirectories(temp.resolve("repo"))
+        org.eclipse.jgit.api.Git.init().setDirectory(repository.toFile()).call().use { git ->
+            Files.write(repository.resolve("binary.bin"),byteArrayOf(0,1))
+            git.add().addFilepattern(".").call()
+            git.commit().setMessage("baseline").setAuthor("test","test@example.invalid").call()
+            Files.write(repository.resolve("binary.bin"),byteArrayOf(0,2))
+            Files.write(repository.resolve("untracked.bin"),byteArrayOf(0,3))
+            val args=listOf("check",repository.toString(),"--knowledge",root.toString())+context+"--json"
+            val first=invoke(args)
+            val firstVersion=stage(record(root),"standardizer").codeVersion!!
+            assertEquals("worktree",firstVersion.kind)
+            assertEquals(git.repository.resolve("HEAD").name,firstVersion.head)
+            assertEquals(first,invoke(args))
+            assertEquals(firstVersion,stage(FileAuditStore(base,root).page().items.first(),"standardizer").codeVersion)
+            Files.write(repository.resolve("binary.bin"),byteArrayOf(0,4))
+            assertEquals(first,invoke(args))
+            val binary=stage(FileAuditStore(base,root).page().items.first(),"standardizer").codeVersion!!
+            assertNotEquals(firstVersion.inputDigest,binary.inputDigest)
+            Files.write(repository.resolve("untracked.bin"),byteArrayOf(0,5))
+            assertEquals(first,invoke(args))
+            val untracked=stage(FileAuditStore(base,root).page().items.first(),"standardizer").codeVersion!!
+            assertNotEquals(binary.inputDigest,untracked.inputDigest)
+            assertEquals(firstVersion.subjectId,untracked.subjectId)
+        }
+    }
+    @Test fun `supplied patch with unresolvable repository keeps independent version and succeeds`() {
+        val root=knowledge()
+        val args=check(root,patch("example.txt")).toMutableList().apply { this[1]=temp.resolve("absent-repository").toString() }
+        assertEquals(0,invoke(args).first)
+        val version=stage(record(root),"standardizer").codeVersion!!
+        assertEquals("supplied_patch",version.kind)
+        assertNull(version.subjectId)
+    }
+
 }

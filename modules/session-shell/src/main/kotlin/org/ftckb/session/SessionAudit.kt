@@ -13,8 +13,8 @@ internal class SessionAudit(val store:AuditStore,val metadata:AuditMetadata) {
     private val started=System.nanoTime()
     private val seen=mutableSetOf<String>()
     init { event(AuditEventType.STARTED,metadata=metadata,status=AuditRunStatus.STARTED) }
-    fun stage(name:String,status:AuditStageStatus,category:String?=null,hits:List<AuditHit> =emptyList(),detail:String?=null) {
-        if(store.append(AuditEvent(id,AuditEventType.STAGE,Instant.now().toString(),stage=AuditStage(name,status,category,detail,hits)))) seen+=name
+    fun stage(name:String,status:AuditStageStatus,category:String?=null,hits:List<AuditHit> =emptyList(),detail:String?=null,codeVersion:AuditCodeVersion?=null) {
+        if(store.append(AuditEvent(id,AuditEventType.STAGE,Instant.now().toString(),stage=AuditStage(name,status,category,detail,hits,codeVersion)))) seen+=name
     }
     fun has(name:String):Boolean=name in seen
     fun observe(evidence:RuntimeStageEvidence) {

@@ -79,7 +79,7 @@ internal class KernelAudit(command:String, args:List<String>, baseDirectory:Path
         stage("knowledge_validate",AuditStageStatus.BLOCKED,"invalid_knowledge","Knowledge validation failed.",
             violations.take(1000).map { AuditHit("invalid_knowledge",bounded(it.ruleId,256),bounded(it.field,256),null,null,"Rule validation failed.") })
     }
-    fun checked(evaluated:Standardizer.Outcome,dev:Boolean) {
+    fun checked(evaluated:Standardizer.Outcome,dev:Boolean,codeVersion:AuditCodeVersion?=null) {
         val hits=evaluated.violations.map { violation ->
             AuditHit(if (dev) "dev_downgrade" else "hard",bounded(violation.ruleId,256),bounded(violation.check,256),
                 violation.path?.let { bounded(it,2048) },violation.line,bounded(violation.detail,2048))
@@ -87,15 +87,16 @@ internal class KernelAudit(command:String, args:List<String>, baseDirectory:Path
         val blocked=!dev && evaluated.violations.isNotEmpty()
         stage("standardizer",if (blocked) AuditStageStatus.BLOCKED else AuditStageStatus.PASSED,
             if (blocked) "hard" else if (dev && evaluated.violations.isNotEmpty()) "dev_downgrade" else if (evaluated.soft.isNotEmpty()) "soft" else null,
-            hits=hits.take(1000))
+            hits=hits.take(1000),codeVersion=codeVersion)
     }
     fun finish(exit:Int?) {
         if (exit==null && !failed) failure("load-error")
         emit(AuditEvent(id,AuditEventType.FINISHED,now(),status=if (failed || exit==null || exit !in setOf(0,1)) AuditRunStatus.FAILED else AuditRunStatus.COMPLETED,
             exitCode=exit,durationMillis=(System.nanoTime()-start)/1_000_000))
     }
-    private fun stage(name:String,status:AuditStageStatus,category:String?=null,detail:String?=null,hits:List<AuditHit> = emptyList()) {
-        emit(AuditEvent(id,AuditEventType.STAGE,now(),stage=AuditStage(name,status,category,detail,hits)))
+    fun codeVersionUnavailable() { try { diagnostics("ftckb audit: checked input version unavailable") } catch (_:Exception) { } }
+    private fun stage(name:String,status:AuditStageStatus,category:String?=null,detail:String?=null,hits:List<AuditHit> = emptyList(),codeVersion:AuditCodeVersion?=null) {
+        emit(AuditEvent(id,AuditEventType.STAGE,now(),stage=AuditStage(name,status,category,detail,hits,codeVersion)))
     }
     private fun emit(event:AuditEvent) { try { store?.append(event) } catch (_:Exception) { warn() } }
     private fun warn() { try { diagnostics("ftckb audit: storage unavailable; invocation audit is incomplete") } catch (_:Exception) { } }

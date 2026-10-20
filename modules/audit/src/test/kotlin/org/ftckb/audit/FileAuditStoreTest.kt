@@ -193,6 +193,18 @@ class FileAuditStoreTest {
         assertEquals(170, Files.readAllLines(reader.partitionPath.resolve("events.jsonl")).size)
     }
 
+    @Test fun `old stages without code version remain readable and new versions round trip`() {
+        val s = start(); val old = stage(s.invocationId, AuditStageStatus.PASSED)
+        val oldJson = ObjectMapper().readTree(AuditCodec.encode(old))
+        (oldJson.get("stage") as com.fasterxml.jackson.databind.node.ObjectNode).remove("codeVersion")
+        assertNull(AuditCodec.decode(ObjectMapper().writeValueAsBytes(oldJson)).stage!!.codeVersion)
+        val version = AuditCodeVersion("supplied_patch", "a".repeat(64), "b".repeat(64), predecessorInvocationId = UUID.randomUUID().toString())
+        val current = old.copy(stage = old.stage!!.copy(codeVersion = version))
+        assertEquals(version, AuditCodec.decode(AuditCodec.encode(current)).stage!!.codeVersion)
+        assertThrows(IllegalArgumentException::class.java) { AuditCodec.encode(current.copy(stage = current.stage!!.copy(codeVersion = version.copy(schemaVersion = 2)))) }
+        assertThrows(IllegalArgumentException::class.java) { AuditCodec.encode(current.copy(stage = current.stage!!.copy(codeVersion = version.copy(inputDigest = "invalid")))) }
+    }
+
     @Test fun `directory override is consistent and empty override uses home`() {
         assertEquals(Path.of("/chosen/audit"), defaultAuditDirectory(mapOf("FTCKB_AUDIT_DIR" to "/chosen/audit")))
         assertEquals(Path.of(System.getProperty("user.home"), ".ftckb", "audit"), defaultAuditDirectory(mapOf("FTCKB_AUDIT_DIR" to " ")))

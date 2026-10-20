@@ -41,12 +41,19 @@ internal class StandardizerEditGate(
             throw EditGateException("load_error",emptyList(),"unable to parse generated edit diff")
         }
         audit()?.stage("diff_read",AuditStageStatus.PASSED)
+        val codeVersion=runCatching {
+            val baseline=requireNotNull(repositoryBaseline)
+            AuditCodeVersion("edit_preview",ReviewFingerprint.sha256(listOf(baseline[0].toString(),baseline[2].toString())),
+                ReviewFingerprint.sha256(listOf("edit-preview-v1",baseline.map { it?.toString() },preview.changes.map {
+                    listOf(it.path,it.before.text(),it.after.text(),it.expectedExecutable)
+                })),baseline.last() as String?)
+        }.onFailure { runCatching { System.err.println("ftckb audit: checked input version unavailable") } }.getOrNull()
         val result=Standardizer.evaluate(rules,changes)
         val notices=result.violations.map { EditGateNotice(if(workMode==WorkMode.DEV) "dev_downgrade" else "hard",it.ruleId,it.check,it.path,it.line,it.detail) }+
             result.soft.map { (id,note)->EditGateNotice("soft",id,null,null,null,note) }
         audit()?.stage("standardizer",if(result.violations.isEmpty() || workMode==WorkMode.DEV) AuditStageStatus.PASSED else AuditStageStatus.BLOCKED,
             if(result.violations.isNotEmpty()) if(workMode==WorkMode.DEV) "dev_downgrade" else "hard" else if(result.soft.isNotEmpty()) "soft" else null,
-            notices.map { AuditHit(it.kind,it.ruleId,it.check,it.path,it.line,it.detail) })
+            notices.map { AuditHit(it.kind,it.ruleId,it.check,it.path,it.line,it.detail) },codeVersion=codeVersion)
         return EditGateResult(result.violations.isEmpty() || workMode==WorkMode.DEV,notices)
     }
     override fun beginWrite(preview:ValidatedEditBatch):AutoCloseable=try {

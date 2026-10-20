@@ -73,4 +73,51 @@ class StandardizerEditGateTest {
         assertThrows(EditGateException::class.java) { runtime.submit("safety still applies",WorkMode.TEST) }
     }
 
+    @Test fun `preview version uses immutable before after input and no private body is persisted`(@TempDir root:Path) {
+        val f=SessionTestFixture(root);val runtime=f.runtime();runtime.controller().setMode(AgentMode.EDIT)
+        f.replacement="if(result!=null) consume(result); // PRIVATE_PREVIEW_BODY"
+        runtime.submit("guard")
+        fun version()=f.store().page(limit=100).items.first { it.metadata.command=="edit" }
+            .stages.last { it.name=="standardizer" }.codeVersion!!
+        val first=version()
+        assertEquals("edit_preview",first.kind)
+        assertNotNull(first.subjectId);assertNotNull(first.head)
+        runtime.restore(false)
+        runtime.submit("guard again")
+        assertEquals(first,version())
+        runtime.restore(false)
+        f.replacement="if(result!=null) consume(result); // PRIVATE_DIFFERENT_PREVIEW_BODY"
+        runtime.submit("different guard")
+        val second=version()
+        assertEquals(first.subjectId,second.subjectId)
+        assertNotEquals(first.inputDigest,second.inputDigest)
+        assertFalse(f.auditText().contains("PRIVATE_PREVIEW_BODY"))
+        assertFalse(f.auditText().contains("PRIVATE_DIFFERENT_PREVIEW_BODY"))
+    }
+    @Test fun `hard preview failure retains checked version while gate remains blocked`(@TempDir root:Path) {
+        val f=SessionTestFixture(root);Files.writeString(f.ruleFile,f.rule(hard=true));val runtime=f.runtime()
+        runtime.controller().setMode(AgentMode.EDIT)
+        val original=Files.readString(f.source)
+        assertThrows(EditGateException::class.java) { runtime.submit("guard") }
+        val checked=f.store().page(limit=100).items.first { it.metadata.command=="edit" }.stages.last { it.name=="standardizer" }
+        assertEquals(AuditStageStatus.BLOCKED,checked.status)
+        assertEquals("edit_preview",checked.codeVersion!!.kind)
+        assertEquals(original,Files.readString(f.source))
+    }
+
+    @Test fun `missing repository identity drops preview version without changing hard gate result`(@TempDir root:Path) {
+        val f=SessionTestFixture(root);Files.writeString(f.ruleFile,f.rule(hard=true))
+        val workspace=org.ftckb.knowledge.KnowledgeWorkspace(f.knowledge)
+        val snapshot=workspace.snapshot()
+        val audit=SessionAudit(f.store(),AuditMetadata("chat","edit",f.knowledge.toString(),null))
+        val gate=StandardizerEditGate(workspace,snapshot,snapshot.rules,root.resolve("missing-repository"),audit={audit})
+        val preview=ValidatedEditBatch("private preview",listOf(PlannedFileChange(f.sourcePath,
+            FileSnapshot.Text("old body\n","unused"),FileSnapshot.Text("consume(result);\n","unused"),EditScope.NORMAL)))
+        val result=gate.inspect(preview)
+        assertFalse(result.allowed)
+        val checked=f.store().page(limit=100).items.single().stages.last { it.name=="standardizer" }
+        assertEquals(AuditStageStatus.BLOCKED,checked.status)
+        assertNull(checked.codeVersion)
+    }
+
 }
