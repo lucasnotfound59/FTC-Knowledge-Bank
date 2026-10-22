@@ -259,6 +259,10 @@ def kernel(source,config,command,root,diff=None,work_mode="normal"):
 
 
 def main(argv=None):
+    argv=list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0]=="doctor":
+        from project_doctor import main as doctor_main
+        return doctor_main(argv[1:])
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command",choices=["validate","resolve","check"])
     parser.add_argument("--project",required=True)

@@ -6,6 +6,14 @@
 
 **[完整文档 → ftckb.lucasxl.com](https://ftckb.lucasxl.com)**
 
+已接入目标项目先从其 Git 根目录运行只读诊断：
+
+```bash
+python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py doctor --project .
+```
+
+未初始化或旧 pin 没有 doctor 时，使用独立已审阅 checkout 的绝对入口，`--project` 指向目标；不会改变目标 pin，后续裁决仍用固定源码。doctor 的独立 JSON/退出码及恢复示例见[项目接入](docs/project-integration.md#只读接入诊断)。它不构建、联网、启动服务或执行内核；接入检查不代表规则、代码、构建来源或真机通过。
+
 ## 必做：先启动并确认 Dashboard
 
 开始规则维护、裁决或按知识库编写代码前，**必须启动或复用当前知识库的 Dashboard，并确认页面已连接**。按以下顺序操作：
@@ -45,7 +53,7 @@
 开始规则或代码工作前，按 README 和 AGENTS.md 启动或复用实际知识库的 Dashboard，确认可用并保持运行。
 ```
 
-接入后的日常流程：**启动或复用 Dashboard 并确认连接 → `resolve` → 按规则写代码 → `check`**。这些确定性命令在本地运行，不需要额外模型 API key；编码 Agent 自身的登录与费用由其供应商决定。
+接入后的日常流程：**doctor → Dashboard 已连接 → resolve → 修改 → check**。这些确定性命令在本地运行，不需要额外模型 API key；编码 Agent 自身的登录与费用由其供应商决定。
 
 需要 Git、Python 3.10+、JDK 21+ 和 jsonschema。安装步骤、依赖配置与版本升级见[接入指南](https://ftckb.lucasxl.com/getting-started/integrate/)。
 

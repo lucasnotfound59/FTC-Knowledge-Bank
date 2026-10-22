@@ -87,9 +87,31 @@ dry-run 会查询远程或在临时目录获取选定版本，以检查模板与
 
 重跑时可省略 team/season/ref，缺省重用配置中的 SHA，不重新解析 tag。相同输入不会产生新 diff。AGENTS 托管段之外的原文及队伍补充保留；项目补充写在段外，不改生成的 Skill。若生成文件/段落有人工修改、路径冲突、symlink 或 submodule 脏改动，脚本停止而非覆盖。
 
+## 只读接入诊断
+
+日常顺序：**doctor → Dashboard 已连接 → resolve → 修改 → check**。已安装且固定源码包含 doctor 时，从目标 Git 根目录运行：
+
+```bash
+python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py doctor --project .
+```
+
+尚未初始化 submodule 或旧 pin 没有 doctor 时，先取得独立、已审阅的 Knowledge Bank checkout，再用它的绝对脚本入口：
+
+```bash
+python3 /path/to/reviewed-FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py doctor --project /path/to/FTC-project
+```
+
+替换为实际绝对路径。此入口不改变目标 pin，后续 resolve/check 仍使用项目固定源码。doctor 核验 `.gitmodules` 和 gitlink 后才建议初始化；缺配置时先明确真实 team/season/profile 并执行安装，不调用目标尚不存在的脚本。旧版不支持 Dashboard 时报告限制并显式选择升级，不自动跟随 main。
+
+doctor 只读配置、Git 元数据、源码能力与静态发行产物，不联网、不构建、不运行 kernel、不启动 Dashboard、不写 audit、不改配置/pin。它使用单独的 `doctorSchemaVersion:1`（不是 kernel JSON v2），输出 `context/checks/nextSteps`；每项为 `passed/failed/blocked/unknown/not_checked`。必需项均 passed 才退出 0；问题或必需证据不足退出 1；参数错误退出 64，仍返回 JSON。无法验证的 context 为 null；v1 不自动补 generic。`nextSteps` 的 cwd/argv 是数据和建议，不会执行。静态 receipt 只核对记录，不证明所有产物来源或可运行；Dashboard 连接、裁决、diff 与硬件始终 not_checked，不代表通过。
+
+先处理诊断问题，按需要显式构建，然后复用/启动与配置 actual knowledge 路径、审计目录一致的 Dashboard。核对 `dashboard=ok`、本次完整链接可访问、页面已连接且目录正确；不把 token 链接写入仓库或公开日志。连接后才运行 resolve，修改后运行 check。Dashboard 步骤不等于 CLI 审计的技术前提，覆盖边界见 [Dashboard 文档](dashboard.md)。
+
+新模板仅在显式安装/升级时生成；不要为同步新流程覆盖旧项目的托管文件或改摘要。
+
 ## 每次编码与验收
 
-从目标根目录运行：
+完成 doctor 和 Dashboard 连接核验后，从目标根目录运行：
 
 ```bash
 python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py resolve --project .

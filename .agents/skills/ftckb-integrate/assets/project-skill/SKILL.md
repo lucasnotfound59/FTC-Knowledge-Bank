@@ -13,13 +13,27 @@ v2 的 `schemaVersion`、`kernelSchemaVersion`、`integrationVersion` 都为 2�
 
 记录 `git status --short` 和已有 staged/unstaged/untracked 修改，区分用户已有改动与本次变更。直接使用当前分支；不要求新建分支，也不因文件已有改动而一律拒绝协作，但不得覆盖/撤销用户修改。
 
-未初始化 submodule 时先执行：
+日常顺序：**doctor → Dashboard 已连接 → resolve → 修改 → check**。
+
+先用只读诊断检查实际接入状态（Python 3.10+）：
 
 ```bash
-git submodule update --init -- tools/FTC-Knowledge-Bank
+python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py doctor --project .
 ```
 
-运行下列脚本（Python 3.10+；同一 Python 环境安装 `jsonschema>=4.18,<5`）：
+doctor 返回独立 `doctorSchemaVersion:1` JSON；0 表示必需接入检查通过，1 表示存在问题或证据不足，64 表示调用错误。它不构建、不联网、不启动服务、不运行规则内核、不修改配置/pin，也不执行目标脚本；`nextSteps` 中的 `cwd`/`argv` 只是建议。逐项处理 failed/blocked/unknown，不能把接入检查当规则、代码或真机通过；静态 receipt 也不能证明构建来源或可运行。
+
+若 submodule 尚未初始化，或旧 pin 没有 doctor，不能调用不存在的脚本。先取得独立、已审阅的 Knowledge Bank checkout，再运行其绝对入口：
+
+```bash
+python3 /path/to/reviewed-FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py doctor --project /path/to/FTC-project
+```
+
+该外部入口只诊断，不改变目标 pin；经元数据核验后才按建议初始化。缺配置时先明确真实 team/season/profile 并走接入流程；不要用示例默认值。后续 resolve/check 仍使用项目固定源码，升级是独立的显式选择。
+
+然后复用或启动与配置实际 knowledge 路径和审计目录一致的 Dashboard；核对 `dashboard=ok`、完整本次链接可访问、页面已连接且规则目录正确。token 链接只私下交给用户，不写仓库/公开日志。旧 pin 无 Dashboard 时报告限制，明确选择升级，不能暗改 pin。doctor 不验证连接，也不代表 CLI 审计已覆盖所有外部操作。详见固定源码的 `docs/dashboard.md`。
+
+确认 Dashboard 后运行（同一 Python 环境需要 `jsonschema>=4.18,<5`）：
 
 ```bash
 python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py resolve --project .

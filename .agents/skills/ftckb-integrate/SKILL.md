@@ -7,6 +7,16 @@ description: 将固定版本的 FTC Knowledge Bank 接入现有 FTC Git 项目�
 
 适用于用户要求“把此仓库接入当前 FTC 项目”。这不是全局 Skill 安装，也不把知识库作为机器人 Android 运行依赖。
 
+接入前和日常编码顺序：**doctor → Dashboard 已连接 → resolve → 修改 → check**。先运行已审阅 checkout 的只读入口：
+
+```bash
+python3 /path/to/reviewed-FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py doctor --project /path/to/FTC-project
+```
+
+缺配置会报告需安装；仍须下列明确参数。doctor 不构建、不联网、不运行内核、不改配置/pin；独立 `doctorSchemaVersion:1`，退出 0/1/64 分别表示接入检查通过/问题或未知/参数错误。`nextSteps.cwd/argv` 仅建议。未初始化或旧 pin 无 doctor 均用此外部入口，后续 resolve/check 仍走原固定源码，不隐式升级。接入检查通过不代表规则、代码或真机通过。
+
+启动或复用实际 knowledge 路径及审计目录一致的 Dashboard，确认本次链接可访问、页面已连接与规则目录正确后再裁决/编码；不要将 token 写入仓库或公开日志。旧 pin 不支持 Dashboard 时明确说明限制并显式选择升级，不暗改 pin。安装/升级才重新生成托管模板，不用新模板覆盖旧项目文件。
+
 1. 确认目标 Git 根目录、`TeamCode` 和 Gradle 项目结构。目标须已有提交。保留当前分支及所有用户修改。
 2. 获取明确队号。用户未提供且 `.ftckb/project.yaml` 不存在时，询问，不能默认 README 的 20827。赛季仅接受用户明确值或现有项目配置；无法唯一确定时询问，不按当前日期猜测。
    新安装还必须明确 profile：`--profile rookiebot`、`--profile simple-opmode`、`--profile command-based`、`--profile ftclib-command`，或明确无项目风格的 `--generic-profile`。不能从队号猜测 profile；选择不明时询问。`--profile` 可重复但不可重复同名；与 `--generic-profile` 互斥。`rookiebot` 隐含 `simple-opmode`，`ftclib-command` 隐含 `command-based`；隐含后 simple/command 两类不可混用。
