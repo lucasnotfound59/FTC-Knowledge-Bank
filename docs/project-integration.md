@@ -89,7 +89,7 @@ dry-run 会查询远程或在临时目录获取选定版本，以检查模板与
 
 ## 只读接入诊断
 
-日常顺序：**doctor → Dashboard 已连接 → resolve → 修改 → check**。已安装且固定源码包含 doctor 时，从目标 Git 根目录运行：
+日常顺序：**doctor → Dashboard 已连接 → work resolve → 修改 → work check --receipt ID**。已安装且固定源码包含 doctor 时，从目标 Git 根目录运行：
 
 ```bash
 python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py doctor --project .
@@ -114,14 +114,31 @@ doctor 只读配置、Git 元数据、源码能力与静态发行产物，不联
 完成 doctor 和 Dashboard 连接核验后，从目标根目录运行：
 
 ```bash
-python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py resolve --project .
+python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py work resolve --project .
 # Agent 根据 activeRules 修改代码
-python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py check --project .
+python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py work check --project . --receipt RETURNED_UUID
 ```
 
-包装器验证固定版本、知识路径、托管内容、schema 和退出码，并验证返回的 normalized profiles 与配置相符；resolve/check 自动附加配置的显式 profile 参数。CLI 尚未构建或版本改变时才重新构建；构建日志走 stderr，kernel JSON 保持 stdout 可解析。
+`RETURNED_UUID` 是占位，使用成功 resolve 返回的 `nextSteps.cwd/argv` 中的准确 ID；不手填多份 context，也不选最近一次。新 work 入口不构建、不联网，要求已有 CLI 发行和匹配 build receipt；缺失时先显式准备，确认 Dashboard 连接后再运行固定验收/resolve。内核输出位于 `kernel.output`，仍按原 schemaVersion 校验；旧 resolve/check 默认输出和退出码保留，也保留原构建行为，但不具有关联证明。
 
 `resolve|check` 还可用 `--work-mode normal|test|dev` 透传逐任务工作模式，例如用户明确指定测试代码时 `project.py resolve --project . --work-mode test`，或用户明确指定 dev 代码时 `project.py check --project . --diff /tmp/change.patch --work-mode dev`。该参数不写入 `.ftckb/project.yaml`，不改变固定版本、team、season、profiles 或托管文件；省略时保持原命令与输出。`--work-mode dev` 缺少 `--diff` 时包装器拒绝执行。模式不能按文件名、路径或依赖推断，只有用户明确指定才使用；包装器会核对内核响应确实回报了请求的 `workMode`，避免旧内核静默忽略。
+
+### 工作收据边界
+
+固定源码已有 doctor 但尚无 work 入口时，用已审阅新 checkout 的绝对入口 `python3 /path/to/reviewed-FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py work resolve --project /path/to/FTC-project`；保留目标 pin，后续沿返回的 nextSteps 使用同一外部入口，不自动升级。
+
+work 的独立 envelope/file 为 `workReceiptSchemaVersion:1`；退出0为真实成功且关联验证通过，退出1为真实 check 硬违规，退出2为收据/上下文/接入/运行错误或冲突，退出64为新参数错误。`kernel:{exitCode,output}` 保留真实内核结果，不往 kernel JSON v2 加字段。
+
+收据位于实际 Git directory 的 `ftckb/receipts/<UUID>.json`；若自定义 gitDir 在工作区内且不位于 `.git` 子树，明确拒绝，不修改 ignore 或迁移数据。允许普通 linked worktree 的外部 metadata；收据不进入项目工作区、不自动 commit、不改 audit，不自动选择 latest。它绑定 root/gitDir、配置原字节、team/season、原/规范 profiles、协议、pin、实际 knowledgePath、全部实际小写 `.yaml/.yml` 的路径/内容摘要和本次 mode，含 Git ignored 规则。任何这些输入变化都必须重新 resolve；v1 profiles 仍为 null，不变成 generic。normal 不静默继承 test/dev；dev check 必须提供本次 diff。普通机器人代码修改/提交和重复 check 允许，不设时间 TTL，不消费收据；用户可自行删除旧文件。
+
+调用前后重验上下文，传入diff时也核对其字节；中途变化即返回关联失败，并保留已执行的实际内核事实。收据是本地摘要，不是签名/身份/审批/不可抵赖审计；同用户可重算伪造，前后快照也不是抵御同权限 ABA 的事务。缺失、损坏、symlink 或不匹配时明确重新 resolve，不猜配分开的 audit 调用。compile/deploy/真机仍分别验证。
+
+旧兼容入口仍可显式调用（不创建或使用工作收据）：
+
+```bash
+python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py resolve --project .
+python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py check --project .
+```
 
 完整验收：
 

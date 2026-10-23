@@ -53,7 +53,7 @@ python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.
 开始规则或代码工作前，按 README 和 AGENTS.md 启动或复用实际知识库的 Dashboard，确认可用并保持运行。
 ```
 
-接入后的日常流程：**doctor → Dashboard 已连接 → resolve → 修改 → check**。这些确定性命令在本地运行，不需要额外模型 API key；编码 Agent 自身的登录与费用由其供应商决定。
+接入后的日常流程：**doctor → Dashboard 已连接 → work resolve → 修改 → work check --receipt ID**。`project.py work resolve --project .` 返回显式 UUID 和完整下一步 `work check --receipt ID`，配置或实际规则变化会拒绝旧收据。收据在 Git metadata，不进入工作区 diff；旧 resolve/check 仍兼容但无关联证明。这些确定性命令在本地运行，不需要额外模型 API key；编码 Agent 自身的登录与费用由其供应商决定。
 
 需要 Git、Python 3.10+、JDK 21+ 和 jsonschema。安装步骤、依赖配置与版本升级见[接入指南](https://ftckb.lucasxl.com/getting-started/integrate/)。
 

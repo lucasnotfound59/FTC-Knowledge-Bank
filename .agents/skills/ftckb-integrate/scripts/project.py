@@ -263,6 +263,9 @@ def main(argv=None):
     if argv and argv[0]=="doctor":
         from project_doctor import main as doctor_main
         return doctor_main(argv[1:])
+    if argv and argv[0]=="work":
+        from work_receipt import main as work_main
+        return work_main(argv[1:])
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command",choices=["validate","resolve","check"])
     parser.add_argument("--project",required=True)

@@ -13,7 +13,7 @@ v2 的 `schemaVersion`、`kernelSchemaVersion`、`integrationVersion` 都为 2�
 
 记录 `git status --short` 和已有 staged/unstaged/untracked 修改，区分用户已有改动与本次变更。直接使用当前分支；不要求新建分支，也不因文件已有改动而一律拒绝协作，但不得覆盖/撤销用户修改。
 
-日常顺序：**doctor → Dashboard 已连接 → resolve → 修改 → check**。
+日常顺序：**doctor → Dashboard 已连接 → work resolve → 修改 → work check --receipt ID**。
 
 先用只读诊断检查实际接入状态（Python 3.10+）：
 
@@ -36,16 +36,26 @@ python3 /path/to/reviewed-FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scri
 确认 Dashboard 后运行（同一 Python 环境需要 `jsonschema>=4.18,<5`）：
 
 ```bash
-python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py resolve --project .
+python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py work resolve --project .
 ```
 
-脚本检查配置、submodule URL/HEAD/gitlink、固定源码能力声明、托管文件、JSON schema 和退出码；需要时独立构建知识库 CLI。v2 resolve/check 自动添加重复 `--profile` flags 或 `--generic-profile`，并核对内核 schemaVersion 与配置 kernelSchemaVersion、返回 profiles 与配置规范化结果一致。使用 JDK 21+ 运行，首次构建可能需要联网；不需要模型 API key，也不使用机器人的 Android SDK。Windows 可用 `py -3` 替换 `python3`。
+work 入口检查配置、submodule URL/HEAD/gitlink、固定源码能力声明、托管文件、JSON schema 和退出码；要求已有匹配的 CLI 发行产物和 build receipt，不自动构建或联网。缺少时先显式准备，确认 Dashboard 连接后再验收/resolve。旧无收据入口保留原有构建行为。v2 resolve/check 自动添加重复 `--profile` flags 或 `--generic-profile`，并核对内核 schemaVersion 与配置 kernelSchemaVersion、返回 profiles 与配置规范化结果一致。使用 JDK 21+ 运行，首次构建可能需要联网；不需要模型 API key，也不使用机器人的 Android SDK。Windows 可用 `py -3` 替换 `python3`。
 
-只依据 `activeRules` 裁决结果工作；`conflicts` 非空、schemaVersion 不支持、脚本报错或退出非 0 时先解决，不继续假装规则已经载入。按规则的实际适用范围编写代码，不强迫所有项目迁移到某个队伍的风格。
+work 输出是独立 `workReceiptSchemaVersion:1` envelope，实际内核原文在 `kernel.output`，其 schemaVersion 仍为配置版本。只依据 `kernel.output.activeRules` 裁决结果工作；`conflicts` 非空、schemaVersion 不支持、脚本报错或退出非 0 时先解决，不继续假装规则已经载入。按规则的实际适用范围编写代码，不强迫所有项目迁移到某个队伍的风格。
+
+## 显式关联一次工作
+
+固定源码已有 doctor 但尚无 work 入口时，用已审阅新 checkout 的绝对入口 `python3 /path/to/reviewed-FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py work resolve --project /path/to/FTC-project`；保留目标 pin，后续沿返回的 nextSteps 使用同一外部入口，不自动升级。
+
+成功 work resolve 返回 UUID 收据和完整 `nextSteps.cwd/argv`，直接使用返回的命令；下方 `RETURNED_UUID` 仅占位，不能照抄或猜测。check 必须显式传该 ID，不自动选择“最近一次”。配置原字节（含格式）、实际 knowledgePath、固定 commit、team/season/profile 或实际 `.yaml/.yml` 输入变化时重新 resolve；包括 Git 忽略的规则。普通机器人代码变更、提交与重复 check 不使收据过期，不设任意时间 TTL。
+
+收据保存在实际 Git 元数据的 `ftckb/receipts/`，不进入工作区 diff；若自定义 gitDir 在工作区内且不位于 `.git` 子树，明确拒绝，不改 ignore 或迁移数据，不消费/改写。mode 省略仍为 normal；test/dev 必须明确传且与 resolve 匹配，不能从收据静默继承。dev check 仍须本次 `--diff FILE`。CLI 的内核输出保留在 envelope，exit1 仍是实际硬违规，exit2 是收据/上下文/接入等错误，exit64 是新入口参数错误；上下文拒绝前若已执行内核，会保留该实际结果，不冒充关联通过。
+
+收据只是本地关联证据，不是签名、身份、审批、语义或真机保证；同一用户可改写并重算摘要。前后快照不保证抵御同权限的中途更改再恢复（ABA）。它不猜配或改写 audit events/reviews。旧 `project.py resolve/check` 默认输出/退出码不变，仍可用于兼容，但不能声称带有工作收据。
 
 ## 工作模式：normal / test / dev
 
-`project.py resolve|check` 与底层 `ftckb` 支持临时 `--work-mode normal|test|dev`，省略等同 `normal`。模式只对当前任务生效，不写入 `.ftckb/project.yaml`，也不改变固定版本、team、season 或 profiles。**只有用户明确说明当前任务是测试代码或 dev 代码时才选择 test/dev；不得根据文件名、路径、分支、依赖或代码外观推断，也不得自行把默认模式改成 test/dev。** 交付时必须写明所用模式、覆盖的文件范围和被排除的项目改动。
+`project.py work resolve|check`、旧兼容入口与底层 `ftckb` 支持临时 `--work-mode normal|test|dev`，省略等同 `normal`。模式只对当前任务生效，不写入 `.ftckb/project.yaml`，也不改变固定版本、team、season 或 profiles。**只有用户明确说明当前任务是测试代码或 dev 代码时才选择 test/dev；不得根据文件名、路径、分支、依赖或代码外观推断，也不得自行把默认模式改成 test/dev。** 交付时必须写明所用模式、覆盖的文件范围和被排除的项目改动。
 
 - **test**：用户明确指定当前编写的是测试代码时，测试代码优先实现用户的测试目的，不因正式命令架构而被迫使用 `CommandBase`，也不需要先提交编码 plan。裁决仍通过 `resolve` 取得：`global.command-responsibilities` 与 `shared.ftclib-command-candidate` 进入 `excludedRules`，原因 `work-mode-test`；命令实时输入、安全清理、`global.test-utility-layout` 的 tests/utils 位置与目标 TeamCode 不使用 JUnit 等其余规则和硬检查全部继续生效。测试代码是逐任务的明确指定，不是全局豁免，不能当作绕过其他规则的理由。若工作区同时有非测试改动，`check --work-mode test` **必须**传仅覆盖本次测试代码的 `--diff FILE`；对其余改动另跑 normal 检查并披露两次检查各自的范围，不得用 test 模式放松整个脏工作区。
 - **dev**：用户明确指定当前部分是 dev 代码（新架构或新 system 的尝试）时，`check` 必须同时提供本次改动的 `--diff FILE`，只评估该补丁；每个 hard 命中都会转成带 ruleId、check、path、line、detail 的 soft 提醒，没有加载/校验/冲突/调用错误时退出码为 0。原有的 soft 保留。必须逐项向用户报告降级提醒，并说明该 diff 覆盖哪些文件、排除了哪些项目改动；用户明确表示可以忽略后才能继续。dev 模式不是“符合正式规则”，也不是机器人验证，不得这样描述。
@@ -55,7 +65,7 @@ python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.
 ## 修改后交付前
 
 ```bash
-python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py check --project .
+python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py work check --project . --receipt RETURNED_UUID
 ```
 
 工作模式经 `--work-mode` 转发，例如 `check --project . --diff change.patch --work-mode dev` 或 `resolve --project . --work-mode test`；默认调用不传该参数，与既有输出兼容。`--work-mode dev` 缺少 `--diff` 时脚本拒绝执行。

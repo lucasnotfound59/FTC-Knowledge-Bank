@@ -7,7 +7,7 @@ description: 将固定版本的 FTC Knowledge Bank 接入现有 FTC Git 项目�
 
 适用于用户要求“把此仓库接入当前 FTC 项目”。这不是全局 Skill 安装，也不把知识库作为机器人 Android 运行依赖。
 
-接入前和日常编码顺序：**doctor → Dashboard 已连接 → resolve → 修改 → check**。先运行已审阅 checkout 的只读入口：
+接入前和日常编码顺序：**doctor → Dashboard 已连接 → work resolve → 修改 → work check --receipt ID**。先运行已审阅 checkout 的只读入口：
 
 ```bash
 python3 /path/to/reviewed-FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py doctor --project /path/to/FTC-project
@@ -42,5 +42,7 @@ python3 /path/to/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/integ
 版本来自所选固定源码中的 `assets/integration.json`，不是运行安装器的当前 checkout。仅支持全 1 或全 2 的版本组合。无 manifest 仅兼容既有 v1 固定安装：重跑保留 v1 配置和 SHA，按该 pin 的 v1 Schema 验证且不传 profile flags；不允许新装 v1、向 v1 传 profile 或自动将 v2 降为 v1。已有 v1 项目使用新版安装器显式 `--ref TAG_OR_SHA` 升至 v2 时，必须明确选 profile/generic。
 
 已安装项目重跑可省略 team/season/ref，默认重用配置中的完整 SHA，不重新追踪 tag。有效 v2 配置在重跑或升级时省略 profile 会保留原选择。升级须明确 `--ref TAG_OR_SHA`；不要执行 `submodule update --remote`。verify 输出协议版本和 v2 原选 profiles；仍须区分安装成功、硬检查通过与真机验证。
+
+接入后的推荐流程使用 `project.py work resolve --project .`，按返回的 `nextSteps` 明确 `work check --receipt UUID`。原 resolve/check 默认行为兼容；工作收据位于 Git metadata，绑定配置原字节和全部实际 YAML 输入，不猜配 audit，不代表身份/语义/真机。work 不自动构建，mode 必须显式匹配。
 
 完整命令、配置格式、恢复和可选 CI：读取上游 `docs/project-integration.md`。目标 Agent 是否自动发现 `.agents/skills` 取决于平台；不支持时让其显式读取目标 Skill，不能承诺给任意 Agent 链接就自动触发。
