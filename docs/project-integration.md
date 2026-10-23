@@ -109,6 +109,18 @@ doctor 只读配置、Git 元数据、源码能力与静态发行产物，不联
 
 新模板仅在显式安装/升级时生成；不要为同步新流程覆盖旧项目的托管文件或改摘要。
 
+## 机器核验一个已有 Dashboard
+
+可选的机器核验入口是 `project.py dashboard verify --project . --connection-file PRIVATE_JSON`；它只对显式已知现有服务做 authenticated GET，核对实际知识输入与审计存储身份，不扫描/启动/关闭实例。私有文件只含本次完整链接的 `url`，POSIX须当前用户所有、无组/其他权限且路径无symlink；token不进argv或仓库。旧pin无入口时用已审阅新checkout的绝对project.py入口，保留目标pin。exit0仍不代表浏览器页面已连接或服务binary pin已证明；旧API/未知store不能全绿。成功返回的workflow-env适用于后续resolve和收据返回的check argv，必须保留同一显式FTCKB_AUDIT_DIR。详见 `docs/dashboard.md`「核验一个已有连接」。
+
+```bash
+python3 /path/to/reviewed-FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py dashboard verify --project /path/to/FTC-project --connection-file /private/path/dashboard.json
+```
+
+`PRIVATE_JSON` 唯一字段格式是 `{"url":"http://127.0.0.1:PORT/#token=TOKEN"}`，PORT/TOKEN必须替换为当前启动私下提供的实际值；不要照抄占位或将实际值写入共享命令历史。仅精确127.0.0.1 HTTP根路径，拒绝proxy/redirect；文件8KiB、响应1MiB、3秒socket I/O超时（不是整个命令总时限）。无法验证隐私边界的平台返回unknown。
+
+输出是独立 `dashboardConnectionSchemaVersion:1`，退出0为本次必需API核验匹配，退出1为失败/未知，退出64为参数错误。`browser.connection=not_checked`、`server.binaryPin=unknown`、`kernel.defaultAudit=not_checked`，不冒充这些阶段通过。expected audit来自本次非空白FTCKB_AUDIT_DIR（相对值按项目根解析，不展开~），否则Python home下显式选定`.ftckb/audit`；这不证明未配置的kernel JVM user.home。成功nextSteps的env应同时应用于resolve和后续check，不能只在verify时设置。
+
 ## 每次编码与验收
 
 完成 doctor 和 Dashboard 连接核验后，从目标根目录运行：

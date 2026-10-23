@@ -55,6 +55,8 @@ python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.
 
 接入后的日常流程：**doctor → Dashboard 已连接 → work resolve → 修改 → work check --receipt ID**。`project.py work resolve --project .` 返回显式 UUID 和完整下一步 `work check --receipt ID`，配置或实际规则变化会拒绝旧收据。收据在 Git metadata，不进入工作区 diff；旧 resolve/check 仍兼容但无关联证明。这些确定性命令在本地运行，不需要额外模型 API key；编码 Agent 自身的登录与费用由其供应商决定。
 
+可选用 `project.py dashboard verify --project . --connection-file PRIVATE_JSON` 只读核验一个显式已有连接的实际库/审计身份；不代替页面确认、不证明服务binary pin、不管理实例。私有凭据与后续显式audit env见[连接核验](docs/dashboard.md#核验一个已有连接)。
+
 需要 Git、Python 3.10+、JDK 21+ 和 jsonschema。安装步骤、依赖配置与版本升级见[接入指南](https://ftckb.lucasxl.com/getting-started/integrate/)。
 
 ## 文档导航

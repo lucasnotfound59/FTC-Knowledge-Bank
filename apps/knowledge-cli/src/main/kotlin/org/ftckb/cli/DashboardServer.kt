@@ -148,6 +148,17 @@ class DashboardServer(
         else -> throw DashboardProblem(400,"malformed_request","Unknown audit scope")
     }
     private fun get(path:String,q:Map<String,String>):Map<String,Any?> =when(path) {
+        "/api/dashboard/identity" -> {
+            queryFields(q,emptySet());val s=workspace.snapshot()
+            val actual=auditStore as? FileAuditStore
+            mapOf("identitySchemaVersion" to 1,
+                "knowledge" to mapOf("root" to s.root.toString(),"version" to s.version,"fileDigests" to s.fileDigests,
+                    "valid" to s.valid,"ruleCount" to s.rules.size),
+                // These paths come from the bound store, including constructor injection.
+                "audit" to mapOf("kind" to if(actual==null) "unknown" else "file",
+                    "root" to actual?.partitionPath?.parent?.toString(),"partition" to actual?.partitionPath?.toString(),
+                    "health" to auditStore.summary().health))
+        }
         "/api/dashboard/summary" -> {
             queryFields(q,emptySet()); val s=workspace.snapshot()
             mapOf("knowledge" to mapOf("root" to s.root.toString(),"version" to s.version,"valid" to s.valid,
@@ -358,7 +369,7 @@ class DashboardServer(
     }
     companion object {
         const val MAX_BODY=1024*1024
-        private val routes=mapOf("summary" to "GET","rules" to "GET","rule" to "GET","resolve" to "POST","preview" to "POST","apply" to "POST","audit" to "GET","audit/detail" to "GET","validate" to "POST","check" to "POST","shutdown" to "POST","reviews" to "GET","reviews/detail" to "GET","reviews/record" to "POST").mapKeys { "/api/dashboard/${it.key}" }
+        private val routes=mapOf("identity" to "GET","summary" to "GET","rules" to "GET","rule" to "GET","resolve" to "POST","preview" to "POST","apply" to "POST","audit" to "GET","audit/detail" to "GET","validate" to "POST","check" to "POST","shutdown" to "POST","reviews" to "GET","reviews/detail" to "GET","reviews/record" to "POST").mapKeys { "/api/dashboard/${it.key}" }
         private fun mutationCommand(action:String?)=when(action) { "create" -> "rule_create"; "approve" -> "rule_approve"; "reject" -> "rule_reject"; else -> "rule_edit" }
     }
 }

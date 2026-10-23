@@ -43,6 +43,8 @@ python3 /path/to/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/integ
 
 已安装项目重跑可省略 team/season/ref，默认重用配置中的完整 SHA，不重新追踪 tag。有效 v2 配置在重跑或升级时省略 profile 会保留原选择。升级须明确 `--ref TAG_OR_SHA`；不要执行 `submodule update --remote`。verify 输出协议版本和 v2 原选 profiles；仍须区分安装成功、硬检查通过与真机验证。
 
+可选的机器核验入口是 `project.py dashboard verify --project . --connection-file PRIVATE_JSON`；它只对显式已知现有服务做 authenticated GET，核对实际知识输入与审计存储身份，不扫描/启动/关闭实例。私有文件只含本次完整链接的 `url`，POSIX须当前用户所有、无组/其他权限且路径无symlink；token不进argv或仓库。旧pin无入口时用已审阅新checkout的绝对project.py入口，保留目标pin。exit0仍不代表浏览器页面已连接或服务binary pin已证明；旧API/未知store不能全绿。成功返回的workflow-env适用于后续resolve和收据返回的check argv，必须保留同一显式FTCKB_AUDIT_DIR。详见 `docs/dashboard.md`「核验一个已有连接」。
+
 接入后的推荐流程使用 `project.py work resolve --project .`，按返回的 `nextSteps` 明确 `work check --receipt UUID`。原 resolve/check 默认行为兼容；工作收据位于 Git metadata，绑定配置原字节和全部实际 YAML 输入，不猜配 audit，不代表身份/语义/真机。work 不自动构建，mode 必须显式匹配。
 
 完整命令、配置格式、恢复和可选 CI：读取上游 `docs/project-integration.md`。目标 Agent 是否自动发现 `.agents/skills` 取决于平台；不支持时让其显式读取目标 Skill，不能承诺给任意 Agent 链接就自动触发。

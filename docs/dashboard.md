@@ -21,6 +21,26 @@ apps/knowledge-cli/build/install/ftckb/bin/ftckb dashboard --knowledge knowledge
 
 已有知识库必须可读取。外部修改导致 YAML 无效时，页面显示当前错误，不能把旧快照当作最新有效结果。页面可见时约每两秒检查更新；失联时保留最后数据并标记过期。
 
+## 核验一个已有连接
+
+项目Agent可选用以下只读入口，减少复用错误知识库或审计分区：
+
+```bash
+python3 /path/to/reviewed-FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py dashboard verify --project /path/to/FTC-project --connection-file /private/path/dashboard.json
+```
+
+先在当前用户私有位置创建文件（POSIX创建前设置`umask 077`，并确认文件为0600或更严格），用编辑器保存唯一字段 `{"url":"http://127.0.0.1:PORT/#token=TOKEN"}`。占位须替换为本次实际启动链接；不要把实际token放argv、仓库、报告或共享日志。文件上限8KiB，拒绝重复/额外字段、symlink、非普通类型、非当前用户及组/其他权限；无法核验所需隐私的平台明确unknown。
+
+核验只GET显式指定的字面127.0.0.1 HTTP根地址，token仅放Authorization header；不走环境代理、不重定向、3秒socket I/O超时（不是整个命令总时限）、响应上限1MiB。不扫描端口、不启动/关闭实例、不自动构建/改pin，也不执行kernel或写审计记录。旧pin缺此脚本时用已审阅新checkout的绝对入口，目标pin不变。
+
+受现有token/Host/Origin保护的`GET /api/dashboard/identity`返回Dashboard API v1内独立`identitySchemaVersion:1`。knowledge的root/version/valid/ruleCount/fileDigests来自同一次源文件快照，映射覆盖所有小写yaml/yml（含ignored输入），只有路径和摘要，没有正文；Python不重写JVM版本算法。audit root/partition/health来自实际绑定的FileAuditStore，含注入对象；其它自定义store为unknown，不能从env补默认目录。identity GET不变更rules/events/reviews，已有summary及kernel JSON v2不变。
+
+独立报告`dashboardConnectionSchemaVersion:1`退出0仅表示本次authenticated API的实际库/存储匹配，退出1包括不匹配/不支持/不可达/失效凭据/隐私未知，退出64为参数错误。仍须打开私下完整链接确认页面已连接；API响应不证明页面状态、服务binary pin或构建来源。旧服务缺identity路由时明确unsupported-api，继续保留该服务，由用户显式选择支持的实例/升级或人工核验，不自动重启。
+
+本次expected audit根由非空白FTCKB_AUDIT_DIR选定（相对值按未来kernel cwd即项目根解析，不展开~），否则本工具显式选择Python home下`.ftckb/audit`；不据此声称无env的JVM user.home已核验。匹配后nextSteps提供workflow-env和准确外部wrapper work resolve argv；同一显式FTCKB_AUDIT_DIR也必须用于随后收据返回的check argv，不凭空生成UUID。普通推荐顺序仍是doctor→Dashboard页面已连接→work resolve→修改→work check。
+
+本地前后快照能发现观察到的漂移，但不是抵御同权限改回原值（ABA）的事务，也不是身份认证、审批、语义或真机安全保证。
+
 ## 规则与候选审批
 
 1. 在「规则管理」中搜索 ID、标题或正文，按状态、来源、策略层级、适用范围及检查类型筛选。详情分别展示 `authority`、`policyLevel`、`applicability`，以及证据、批准记录、检查和源文件；文件夹与 ID 前缀不能代替这些字段。

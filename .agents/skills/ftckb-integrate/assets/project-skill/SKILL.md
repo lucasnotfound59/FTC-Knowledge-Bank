@@ -33,6 +33,14 @@ python3 /path/to/reviewed-FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scri
 
 然后复用或启动与配置实际 knowledge 路径和审计目录一致的 Dashboard；核对 `dashboard=ok`、完整本次链接可访问、页面已连接且规则目录正确。token 链接只私下交给用户，不写仓库/公开日志。旧 pin 无 Dashboard 时报告限制，明确选择升级，不能暗改 pin。doctor 不验证连接，也不代表 CLI 审计已覆盖所有外部操作。详见固定源码的 `docs/dashboard.md`。
 
+浏览器确认步骤保留；需要减少复用错库/错审计分区时，可使用只读机器核验：
+
+```bash
+python3 /path/to/reviewed-FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py dashboard verify --project . --connection-file /private/path/dashboard.json
+```
+
+私有JSON只有 `url` 字段，保存本次完整fragment-token链接；POSIX当前用户所有且无组/其他权限，路径不能是symlink，不能把token放argv或仓库。核验只GET显式127.0.0.1服务，不扫描/启动/kill/构建。API匹配不代替浏览器已连接，不证明binary pin；旧API/未知store明确不能通过。成功nextSteps给workflow-env和实际当前wrapper的work resolve；同一显式FTCKB_AUDIT_DIR也须用于随后收据返回的check argv。默认kernel JVM home仍未核验，不能从Python home推断。旧pin缺入口时用外部新wrapper，不改pin。
+
 确认 Dashboard 后运行（同一 Python 环境需要 `jsonschema>=4.18,<5`）：
 
 ```bash

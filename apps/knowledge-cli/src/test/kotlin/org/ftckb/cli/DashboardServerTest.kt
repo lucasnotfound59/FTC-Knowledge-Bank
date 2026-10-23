@@ -53,6 +53,57 @@ class DashboardServerTest {
             assertEquals(0,json(response)["audit"]["total"].asInt())
         }
     }
+    @Test fun `identity is authenticated read only and reports actual injected store`() {
+        val root=root();val actual=FileAuditStore(temporary.resolve("injected-audit"),root)
+        DashboardServer(DashboardOptions(root),actual,store(null)).start().use { s ->
+            assertEquals(401,request(s,"/api/dashboard/identity",auth=false).statusCode())
+            assertEquals(403,request(s,"/api/dashboard/identity",origin="https://evil.invalid").statusCode())
+            assertEquals(405,request(s,"/api/dashboard/identity","POST",emptyMap<String,String>(),origin=s.origin).statusCode())
+            assertEquals(400,request(s,"/api/dashboard/identity?extra=x").statusCode())
+            Socket("127.0.0.1",URI.create(s.origin).port).use { socket ->
+                socket.getOutputStream().write("GET /api/dashboard/identity HTTP/1.1\r\nHost: evil.invalid\r\nConnection: close\r\n\r\n".toByteArray())
+                assertTrue(socket.getInputStream().bufferedReader().readLine().contains("403"))
+            }
+            val ruleBytes=Files.readAllBytes(root.resolve("rule.yaml"))
+            val before=actual.summary()
+            val response=request(s,"/api/dashboard/identity");assertEquals(200,response.statusCode())
+            val body=json(response)
+            assertEquals(1,body["apiVersion"].asInt());assertEquals(1,body["identitySchemaVersion"].asInt())
+            assertEquals(root.toString(),body["knowledge"]["root"].asText())
+            assertTrue(body["knowledge"]["valid"].asBoolean());assertEquals(1,body["knowledge"]["ruleCount"].asInt())
+            assertEquals(64,body["knowledge"]["fileDigests"]["rule.yaml"].asText().length)
+            assertEquals("file",body["audit"]["kind"].asText())
+            assertEquals(actual.partitionPath.parent.toString(),body["audit"]["root"].asText())
+            assertEquals(actual.partitionPath.toString(),body["audit"]["partition"].asText())
+            assertTrue(body["audit"]["health"]["ok"].asBoolean())
+            assertEquals(before,actual.summary());assertFalse(Files.exists(actual.partitionPath.resolve("events.jsonl")))
+            assertFalse(Files.exists(actual.partitionPath.resolve("reviews.jsonl")))
+            assertArrayEquals(ruleBytes,Files.readAllBytes(root.resolve("rule.yaml")))
+            assertFalse(response.body().contains(s.token));assertFalse(response.body().contains("instruction"))
+        }
+    }
+    @Test fun `identity file digests are from one snapshot including nested unicode inputs`() {
+        val root=root();val nested=Files.createDirectories(root.resolve("guides/目录"))
+        Files.writeString(root.resolve(".gitignore"),"guides/目录/ignored.yml\n")
+        val other=nested.resolve("ignored.yml");Files.writeString(other,rule().replace("shared.demo","shared.other"))
+        server(root).use { s ->
+            val first=json(request(s,"/api/dashboard/identity"))["knowledge"]
+            assertEquals(2,first["fileDigests"].size());assertTrue(first["fileDigests"].has("guides/目录/ignored.yml"))
+            Files.writeString(other,Files.readString(other)+"\n# changed bytes\n")
+            val second=json(request(s,"/api/dashboard/identity"))["knowledge"]
+            assertNotEquals(first["version"],second["version"])
+            assertNotEquals(first["fileDigests"]["guides/目录/ignored.yml"],second["fileDigests"]["guides/目录/ignored.yml"])
+            assertEquals(first["fileDigests"]["rule.yaml"],second["fileDigests"]["rule.yaml"])
+        }
+    }
+    @Test fun `identity never guesses storage identity for a custom audit store`() {
+        val root=root();val custom=object:AuditStore by store(root) {}
+        DashboardServer(DashboardOptions(root),custom,store(null)).start().use { s ->
+            val audit=json(request(s,"/api/dashboard/identity"))["audit"]
+            assertEquals("unknown",audit["kind"].asText());assertTrue(audit["root"].isNull);assertTrue(audit["partition"].isNull)
+            assertTrue(audit["health"]["ok"].asBoolean())
+        }
+    }
     @Test fun `host origin fetch-site methods content type and size are enforced`() {
         server().use { s ->
             assertEquals(403,request(s,"/api/dashboard/summary",origin="https://evil.invalid").statusCode())

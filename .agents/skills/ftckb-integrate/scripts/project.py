@@ -266,6 +266,9 @@ def main(argv=None):
     if argv and argv[0]=="work":
         from work_receipt import main as work_main
         return work_main(argv[1:])
+    if argv and argv[0]=="dashboard":
+        from dashboard_connection import main as dashboard_main
+        return dashboard_main(argv[1:])
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command",choices=["validate","resolve","check"])
     parser.add_argument("--project",required=True)
