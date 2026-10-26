@@ -52,10 +52,14 @@ rookiebot 隐含 simple-opmode，ftclib-command 隐含 command-based；两种架
 3. 没有可复用实例时，在持久终端/后台会话启动并保留会话 ID；不要让单次命令超时杀死服务：
 
    ```bash
-   apps/knowledge-cli/build/install/ftckb/bin/ftckb dashboard --knowledge "$FTCKB_KNOWLEDGE_ROOT" --no-browser
+   python3 .agents/skills/ftckb-integrate/scripts/dashboard_runtime.py \
+     --distribution apps/knowledge-cli/build/install/ftckb \
+     --knowledge "$FTCKB_KNOWLEDGE_ROOT" --no-browser
    ```
 
    默认空闲端口，仅监听 `127.0.0.1`，无需模型 API key；可追加 `--port 8080`。后续工作使用另一会话，任务收尾不自动停止 Dashboard。
+
+   推荐入口要求 Python 3.10+ 和 POSIX（macOS/Linux），从构建完成的完整 distribution 创建私有副本后启动；后续 `installDist` 更新原产物不影响该副本。知识库和审计目录仍使用实际路径。直接 `ftckb dashboard` 保持兼容，但没有此保护；Windows 新保护入口不支持。接入项目优先执行已审阅新版 doctor/prepare 返回的实际 `nextSteps.cwd/argv/env`，外部 helper 可保护目标旧 pin 的 Dashboard 二进制，不改 pin；能力未知、缺 helper 或平台不支持时不猜启动命令。生命周期与限制见[管理台指南](docs/dashboard.md#稳定副本与生命周期)。
 4. 必须确认 `dashboard=ok`、完整 `url=` 可访问、页面已连接且知识库路径与规则列表正确，再进入 validate/resolve/check 和编码流程。将有效链接交给用户；`#token=` 不写入仓库或公开日志，浏览器刷新缺凭据时重开原链接。失败时报告实际错误及未完成的核验，不能将发出启动命令视为成功。
 
 **这是 Agent 工作流程要求，不是 kernel 执行条件。** 本版本 CLI 自行写入共享审计日志，Dashboard 用于读取和展示；Dashboard 未运行不等于 CLI 没有审计。其他版本、未接入进程或不同知识库分区的记录不能据此声称已覆盖。
@@ -96,7 +100,7 @@ ftckb check <repo-root> --knowledge knowledge --team 20827 --season 2025-2026 --
 - `chat` / `eval` / `serve` / `dashboard` / `extract` / `candidates` / `approve` 是给人用的交互模式；机器契约只用 validate/resolve/check。Dashboard HTTP API 与审计事件使用独立版本，不能当作 kernel JSON v2。
 - 契约破坏性变更必须提升 `schemaVersion`；消费方看到 `schemaVersion!=2` 应停止并报错。
 - `resolve`/`check` 的 `--work-mode normal|test|dev` 是逐任务临时参数（省略即 normal，默认 JSON/退出码字节兼容，不写入项目配置）：只有用户明确说明当前是测试代码或 dev 代码才选 `test`/`dev`，不按文件名、路径或依赖推断。`test` 仅把 `global.command-responsibilities` 与 `shared.ftclib-command-candidate` 放入 excludedRules（原因 `work-mode-test`），命令安全与 `global.test-utility-layout`/JUnit 硬检查继续拦截；用户指定的测试代码优先实现测试目的，不需要先提交编码 plan。`dev` 的 `check` 必须同时给 `--diff FILE`，把每个 hard 命中转成带 ruleId/check/path/line/detail 的 soft 并退 0，原有 soft 保留，Agent 必须逐项报告；无效知识、同层级冲突、错误 profile、坏补丁仍是错误，不伪装成通过。显式 test/dev JSON 增加 `workMode` 字段。
-- 文档中的规则数/测试数快照随改动同步更新：当前 48 条规则（42 已批准 + 6 候选）；测试数字必须随实际验收更新，历史测试不视为当前通过；平台范围见 README。
+- 文档中的规则数/测试数快照随改动同步更新：当前 52 条规则（46 已批准 + 6 候选）；测试数字必须随实际验收更新，历史测试不视为当前通过；平台范围见 README。
 - 当前相同赛季/profile 下 20827 与 16093 active IDs 相同；8 条原队伍规则已移到 global，保留 2025-2026 赛季，2 条 candidate 不转正。仍必须传真实队号。
 - 机器可消费工件：`docs/kernel-contract.schema.json`（JSON Schema）与 `fixtures/kernel/*.json`（真实输出示例：validate-ok / resolve-ok / resolve-conflict / resolve-test / check-pass / check-hard / check-dev / error-usage / error-invalid-knowledge）可直接用来对拍你的解析器。
 

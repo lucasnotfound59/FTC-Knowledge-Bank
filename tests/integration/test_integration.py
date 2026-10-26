@@ -848,12 +848,24 @@ class DoctorTest(unittest.TestCase):
     def test_dashboard_requires_clean_pinned_static_dispatch(self):
         write(self.source,"apps/knowledge-cli/src/main/kotlin/org/ftckb/cli/Main.kt",'if (args.firstOrNull()=="dashboard") return runDashboardCommand(args.drop(1),out)')
         write(self.source,"apps/knowledge-cli/src/main/kotlin/org/ftckb/cli/DashboardCommand.kt",'fun runDashboardCommand(args:List<String>) {}')
+        (self.source/BUNDLE/"scripts/dashboard_runtime.py").unlink()
         self.sha=commit(self.source); self.install(ref=self.sha)
+        write(self.target/project.SOURCE,"apps/knowledge-cli/build/install/ftckb/lib/knowledge-cli.jar","fixture")
         payload=doctor.diagnose(self.target)
         self.assertEqual("passed",self.checks(payload)["source.dashboard"]["status"])
         step=next(s for s in payload["nextSteps"] if s["code"]=="dashboard")
-        self.assertEqual(str((self.target/project.SOURCE).resolve()),step["cwd"])
-        self.assertEqual(["dashboard","--knowledge",str((self.target/project.SOURCE/"knowledge").resolve()),"--no-browser"],step["argv"][-4:])
+        self.assertEqual(str(self.target.resolve()),step["cwd"])
+        self.assertEqual(str(Path(doctor.dashboard_runtime.__file__).resolve()),step["argv"][1])
+        self.assertEqual(["--distribution",str((self.target/project.SOURCE/"apps/knowledge-cli/build/install/ftckb").resolve()),"--knowledge",str((self.target/project.SOURCE/"knowledge").resolve()),"--no-browser"],step["argv"][2:])
+        self.assertFalse((self.target/project.SOURCE/".agents/skills/ftckb-integrate/scripts/dashboard_runtime.py").exists())
+        with patch.dict(os.environ,{"FTCKB_AUDIT_DIR":"relative audit"}):
+            relative=next(s for s in doctor.diagnose(self.target)["nextSteps"] if s["code"]=="dashboard")
+        self.assertEqual(str(self.target.resolve()/"relative audit"),relative["env"]["FTCKB_AUDIT_DIR"])
+        with patch.object(doctor,"jdk_status",return_value="passed"),patch.object(doctor.dashboard_runtime,"recommendation",return_value=None):
+            missing=doctor.diagnose(self.target)
+        self.assertTrue(missing["ok"])
+        missing_step=next(s for s in missing["nextSteps"] if s["code"]=="dashboard")
+        self.assertNotIn("argv",missing_step);self.assertEqual("unavailable",missing_step["protection"])
         write(self.target/project.SOURCE,"knowledge/.keep","dirty")
         self.assertFalse(any(s["code"]=="dashboard" for s in doctor.diagnose(self.target)["nextSteps"]))
 
@@ -962,7 +974,7 @@ class DoctorTest(unittest.TestCase):
         (source/"apps/knowledge-cli/build/install/ftckb/lib/knowledge-cli.jar").mkdir(parents=True)
         self.assertEqual("failed",self.checks(doctor.diagnose(self.target))["cli.distribution"]["status"])
 
-    def test_windows_missing_distribution_dashboard_argv_has_expected_bat_path(self):
+    def test_windows_missing_distribution_has_no_protected_dashboard_argv(self):
         write(self.source,"apps/knowledge-cli/src/main/kotlin/org/ftckb/cli/Main.kt",'if (args.firstOrNull()=="dashboard") return runDashboardCommand(args.drop(1),out)')
         write(self.source,"apps/knowledge-cli/src/main/kotlin/org/ftckb/cli/DashboardCommand.kt",'fun runDashboardCommand(args:List<String>) {}')
         self.sha=commit(self.source); self.install(ref=self.sha)
@@ -971,8 +983,8 @@ class DoctorTest(unittest.TestCase):
             payload=doctor.diagnose(self.target)
         self.assertEqual("failed",self.checks(payload)["cli.distribution"]["status"])
         step=next(step for step in payload["nextSteps"] if step["code"]=="dashboard")
-        self.assertEqual(str(doctor.launcher_path((self.target/project.SOURCE).resolve(),windows=True)),step["argv"][0])
-        self.assertNotIn("None",step["argv"])
+        self.assertNotIn("argv",step)
+        self.assertEqual("unavailable",step["protection"])
 
     def test_git_runner_disables_helpers_and_does_not_inherit_git_overrides(self):
         with patch.dict(os.environ,{"GIT_CONFIG_COUNT":"1","GIT_CONFIG_KEY_0":"core.fsmonitor","GIT_CONFIG_VALUE_0":"SECRET"}),patch.object(doctor.subprocess,"run",return_value=subprocess.CompletedProcess([],0,"ok","")) as runner:

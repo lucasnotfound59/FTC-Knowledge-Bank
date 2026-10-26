@@ -32,8 +32,11 @@ internal fun runApprovalCommand(command:String,args:List<String>,out:PrintStream
 }
 
 private fun runCandidates(args:List<String>,out:PrintStream):Int {
+    if ("--details" in args) return runCandidateReviewExport(args,out)
     if (args==listOf("--help")) {
-        out.println("usage: knowledge-cli candidates <knowledge-root> [--json]")
+        out.println("usage: knowledge-cli candidates <knowledge-root> [--details [--id RULE_ID]] [--json]")
+        out.println("default: brief candidate list; --details: complete read-only review; --id requires --details")
+        out.println("details uses one safe snapshot and rejects symbolic links; missing source is exported as null")
         return 0
     }
     val optionArgs=args.drop(1).filterNot { it=="--json" }

@@ -9,6 +9,11 @@ import shutil
 import subprocess
 import sys
 
+try:
+    import dashboard_runtime
+except ImportError:
+    dashboard_runtime=None
+
 from integration_contract import IntegrationError,normalize_profiles,versions
 from project import CONFIG,SOURCE,SKILL,agents_block,digest,no_duplicate_keys,safe_path,source_versions
 
@@ -273,7 +278,14 @@ def diagnose(project):
         step("build","Review the pinned build/toolchain, then build explicitly; doctor has not run it.",source,["gradlew.bat" if os.name=="nt" else "sh"]+([] if os.name=="nt" else ["gradlew"])+[":apps:knowledge-cli:installDist"])
         step("verify-build","After building, first confirm Dashboard connection, then run the pinned installer/verify acceptance workflow to establish its receipt; do not fabricate a receipt.")
     if states["source.dashboard"]=="passed" and knowledge_path:
-        step("dashboard","First reuse a matching Dashboard when available; otherwise start explicitly, then confirm the connected page and audit partition.",source,([str(launcher_path(source))] if os.name=="nt" else ["sh",str(launcher_path(source))])+["dashboard","--knowledge",str(knowledge_path),"--no-browser"])
+        argv=dashboard_runtime.recommendation(source/"apps/knowledge-cli/build/install/ftckb",knowledge_path,platform=os.name) if dashboard_runtime is not None else None
+        if argv is not None:
+            step("dashboard","First reuse a matching Dashboard; otherwise use this reviewed external protected helper, then confirm the connected page and audit partition.",root,argv)
+            out["nextSteps"][-1]["env"]=dashboard_runtime.audit_environment(root)
+            out["nextSteps"][-1]["protection"]="supported"
+        else:
+            step("dashboard","Protected Dashboard startup is unavailable: the reviewed helper is missing or this platform is unsupported. Review a POSIX helper or explicitly use the original unprotected CLI; no protected argv is provided.")
+            out["nextSteps"][-1]["protection"]="unavailable"
     else:
         step("review-dashboard","Review Dashboard support in the pinned source. If absent, explicitly choose an upgrade; doctor never changes the pin.")
     step("workflow","After resolving diagnostic issues: confirm Dashboard connection, run pinned resolve, modify code, then run pinned check and report every soft item. Hardware remains separate.")

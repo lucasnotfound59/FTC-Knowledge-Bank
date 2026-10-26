@@ -10,8 +10,12 @@
 ftckb extract --repo PATH --team 20827 [--season YYYY-YYYY] --provider deepseek \
              [--config PATH] [--knowledge PATH] [--output PATH] [--max-candidates 8]
 
-# 列出候选规则（审批前审查）
+# 列出候选规则简表（旧输出保持不变）
 ftckb candidates <knowledge-root> [--json]
+
+# 完整只读审阅导出，不裁决项目适用性或批准
+ftckb candidates <knowledge-root> --details
+ftckb candidates <knowledge-root> --details --id global.hardware-access-candidate --json
 
 # 审批：candidate → approved（ApprovalPolicy 强校验）
 ftckb approve <knowledge-root> --id team-20827.some-topic --approver NAME \
@@ -24,6 +28,35 @@ ftckb reject <knowledge-root> --id team-20827.some-topic --approver NAME \
 
 `extract --output` 缺省为 `knowledge/teams/<team>/extracted-<yyyyMMdd-HHmmss>.yaml`（与知识根目录同构，
 校验通过后可直接入库）；给 `--knowledge` 则用它做话题去重与 id 防撞。
+
+### 完整候选审阅导出
+
+开始规则工作前，先按[新手入口](getting-started.md)确认实际知识库 Dashboard 已连接，knowledge 路径与审计目录一致。`--details` 为现有 candidates 的独立只读入口：不写规则、approval、锁文件或审计 events/reviews，不调用模型、网络、resolver 或 Standardizer；不验证证据真伪，也不决定某项目的适用性。
+
+首个参数是知识根目录；之后 `--details` 恰好一次，`--id RULE_ID` 和 `--json` 各至多一次，顺序任意。`--id` 只在详细模式可用。重复／未知选项、多余位置参数、缺值、空值、非法 ID 或详细模式中混入 `--help` 均为 usage／64。查看帮助用 `ftckb candidates --help`。
+
+详细 JSON 使用 `format:"ftckb-candidate-review"`、`formatVersion:1`、`command:"candidates"` 和 `ok`，**没有 schemaVersion**，不改变 kernel JSON v2、Dashboard API 或 YAML v4。成功输出包含 `readOnly:true`、`contextEvaluated:false`、`knowledge:{root,version}` 和按 rule.id 排序的 `candidates`。每张卡片包含：
+
+- `rule`：id、topic、title、instruction、rationale、status、authority、policyLevel、applicability、evidence、approval、supersedes、positiveExample、negativeExample、checks、reviewTriggers、checkMode；正文不裁剪，null 与空数组保留。
+- `source`：同一次快照可安全提取来源时为 `{path,fileDigest}`，否则为 null。path 相对知识根目录，fileDigest 是整份来源文件摘要；knowledge.version 是同一字节快照的版本，二者都不是审批授权或未来写入保证。
+
+声明范围照原值导出并排序：空 teams/seasons 表示该维度不限制，空 profiles 表示无架构要求，非空 profiles 为全部要求。不会将 ftclib-command 自动展开为 command-based，也不据此宣称 candidate 已启用。checkMode 仅描述规则若获批并生效后的检查形式。
+
+旧版或非 block YAML 即便可合法解码，也可能没有安全提取的单条 source；保留 null 并继续提供完整语义，不猜路径、不二次读取文件拼摘要。旧 YAML 的 policyLevel 与空 profiles 是解码后的语义值。v1 不导出 ruleYaml、confidence 注释、YAML 排版或其他原文。详细模式继承 KnowledgeWorkspace 的 symbolic link／路径拒绝行为；默认简表沿用旧加载行为。
+
+无 `--json` 时先显示中文只读与范围提示、知识根路径、version 和数量，再逐条显示相同卡片对象的缩进 JSON。`--details --json` 成功与失败均为单行 JSON；默认 `candidates --json` 简表仍为旧 schemaVersion:1，错误仍可能是文本。
+
+| 详细模式结果 | 退出码／error.code |
+| --- | --- |
+| 合法库没有候选 | 0，candidates=[] |
+| ID 不存在／不是 candidate | 2，not-found／not-candidate |
+| 根目录无法读取／路径拒绝 | 2，load-error |
+| 完整库有坏 YAML、重复 ID 或无效规则 | 2，invalid-knowledge；不输出部分卡片 |
+| 最终 UTF-8 stdout（含换行）超过 1 MiB | 2，output-too-large；用 --id 缩小范围，单条过大仍失败 |
+
+输出上限在写 stdout 前检查，不截断卡片；它不限制现有 snapshot 的输入大小、内存或运行时间。导出不会生成时间戳、随机 ID、审批命令、姓名或角色。同根路径与文件字节重复导出得到相同结果。
+
+真实批准仍须负责人明确批准最终正文及范围，并提供姓名和角色声明，使用现有显式审批命令或 Dashboard preview/apply。若导出后文件变化，须重新导出、重审并做当前预览；旧卡片不能保证当前内容未变。
 
 ## 2. 提取流水线（模型提议 + 主机强校验）
 

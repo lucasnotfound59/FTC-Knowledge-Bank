@@ -9,6 +9,18 @@ description: 在已接入 FTC Knowledge Bank 的项目中编写、修改或检�
 
 v2 的 `schemaVersion`、`kernelSchemaVersion`、`integrationVersion` 都为 2，`profiles` 必须是无重复的字符串数组。支持 `rookiebot`、`simple-opmode`、`command-based`、`ftclib-command`；`profiles:[]` 表示用户明确选择 generic，不等同于未配置。`rookiebot` 隐含 `simple-opmode`，`ftclib-command` 隐含 `command-based`，隐含后 simple/command 两类互斥。配置保留原选项，由脚本规范化并传给内核，不由 Agent 自行裁决。
 
+## 命令架构指南发现
+
+只有当前用户/配置已明确选择 `command-based` 或 `ftclib-command`，且任务涉及 Command、Subsystem、scheduler 或生命周期职责时，先读取固定知识库副本中的 `tools/FTC-Knowledge-Bank/knowledge/guides/architecture/command-based.md`，再结合本次 resolve 的实际 `activeRules` 工作。自有或 FTCLib 启发的轻量实现使用用户明确选定的 `command-based`，不因此要求安装 FTCLib；明确采用 FTCLib command 运行时才选择 `ftclib-command`。不从类名、现有依赖或指南内容自动更改 profile。
+
+指南是教学与证据入口，不能把 candidate 或因赛季/profile排除的规则说成已生效；状态和适用范围以当前固定知识、真实上下文的 resolve 为准。旧 pin 若没有该指南，明确报告缺失并遵循显式版本升级流程，不读取浮动 main 冒充当前输入、不自动改 pin。新模板只随未来明确安装/升级生成，不直接覆写已接入机器人项目的 Skill 或绕过 managedFiles hash。
+
+## 首次接入与验收边界
+
+首次接入可由已审阅的新安装器显式 `--prepare-only` 安装并构建，再按实际返回的 `nextSteps` 连接目标 canonical knowledge 和同一显式审计目录的 Dashboard。`stage:prepared` 与准备摘要不表示安装验收、规则检查或机器人通过；dry-run 不产生可用摘要。旧 pin 不支持 Dashboard 时保留 pin、报告能力未知并明确讨论升级，不猜启动命令。
+
+只有实际观察页面已连接后，才向同一已审阅 `verify.py` 提供 `--accept`、真实 `--prepared-context-sha256`、私有 `--connection-file` 与 `--browser-confirmed`。该 flag 是操作者声明；API 匹配也不证明服务 binary pin。accept 不构建，每个内核阶段前后复核准备输入；漂移或审计存储失败时停止后续阶段，保留实际 JSON/exit 与脱敏诊断。普通 TeamCode 修改不会单独使摘要过期；硬违规可表示安装有效但当前 diff 未通过。旧无阶段参数调用保持原行为，不能把旧单步完成当成本次显式连接验收。
+
 ## 开始修改前
 
 记录 `git status --short` 和已有 staged/unstaged/untracked 修改，区分用户已有改动与本次变更。直接使用当前分支；不要求新建分支，也不因文件已有改动而一律拒绝协作，但不得覆盖/撤销用户修改。
@@ -31,7 +43,9 @@ python3 /path/to/reviewed-FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scri
 
 该外部入口只诊断，不改变目标 pin；经元数据核验后才按建议初始化。缺配置时先明确真实 team/season/profile 并走接入流程；不要用示例默认值。后续 resolve/check 仍使用项目固定源码，升级是独立的显式选择。
 
-然后复用或启动与配置实际 knowledge 路径和审计目录一致的 Dashboard；核对 `dashboard=ok`、完整本次链接可访问、页面已连接且规则目录正确。token 链接只私下交给用户，不写仓库/公开日志。旧 pin 无 Dashboard 时报告限制，明确选择升级，不能暗改 pin。doctor 不验证连接，也不代表 CLI 审计已覆盖所有外部操作。详见固定源码的 `docs/dashboard.md`。
+然后先复用与配置实际 knowledge 路径和审计目录一致的 Dashboard；需要新实例时执行已审阅新版 doctor/prepare 返回的实际受保护 `nextSteps.cwd/argv/env`。argv 使用当前已审阅 checkout 中 `dashboard_runtime.py` 的绝对入口，传目标固定源码的完整 distribution 与 canonical knowledge；cwd 为项目根，审计使用同一显式绝对目录。旧 pin 不必有 helper，目标二进制和 pin 不变；能力 unknown、缺 helper 或平台不支持时不猜启动命令、不声称受保护。核对 `dashboard=ok`、完整本次链接可访问、页面已连接且规则目录正确。token 链接只私下交给用户，不写仓库/公开日志。旧 pin 无 Dashboard 时报告限制，明确选择升级，不能暗改 pin。doctor 不验证连接，也不代表 CLI 审计已覆盖所有外部操作。详见固定源码的 `docs/dashboard.md`。
+
+新保护入口要求 Python 3.10+ 和 POSIX（macOS/Linux），从构建完成的完整 distribution 私有副本运行，knowledge/audit 不复制。直接 CLI 保持兼容但无此保护；Windows 新入口不支持，doctor 既有必需检查/退出含义不变。正常结束及处理 SIGINT/SIGTERM 后仅清理本次已退出 child 的目录，SIGKILL/断电可能残留，不自动回收用户实例，正常收尾仍保留所需 Dashboard。
 
 浏览器确认步骤保留；需要减少复用错库/错审计分区时，可使用只读机器核验：
 

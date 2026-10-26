@@ -347,7 +347,19 @@
     return '队伍 ' + (context.team || '—') + ' · ' + (context.season || '—') + ' · ' + profile + ' · ' + (context.workMode || 'normal');
   }
   function reasonLabel(reason) {
-    const names = {'candidate':'候选规则不参与生效','status-candidate':'候选规则不参与生效','not-approved':'未批准','team-mismatch':'队伍不匹配','season-mismatch':'赛季不匹配','profile-mismatch':'profile 不匹配','work-mode-test':'test 模式明确排除'};
+    const names = {
+      status:'状态不是 approved（已批准），不参与本次生效',
+      team:'当前队号不在规则适用范围内',
+      season:'当前赛季不在规则适用范围内',
+      profile:'当前明确选择的 profiles 未满足规则要求',
+      candidate:'候选规则不参与生效',
+      'status-candidate':'候选规则不参与生效',
+      'not-approved':'未批准',
+      'team-mismatch':'队伍不匹配',
+      'season-mismatch':'赛季不匹配',
+      'profile-mismatch':'profile 不匹配',
+      'work-mode-test':'test 模式明确排除'
+    };
     return names[reason] || reason;
   }
   function ruleLink(id) {
@@ -371,13 +383,14 @@
         const row = el('div','result-item');
         if (kind === 'conflict') {
           append(row,el('strong','',item.topic),el('p','','最高有效层级：' + (item.effectiveLevel || '—')));
+          row.append(el('p','','这些规则在最高有效层级并列，该主题未产生生效规则。'));
           list(item.ruleIds).forEach(id => row.append(ruleLink(id)));
           if (item.authorities) row.append(el('p','mono',Object.entries(item.authorities).map(([id,authority]) => id + ': ' + authority).join('\n')));
         } else {
           row.append(ruleLink(item.id || item.ruleId));
           if (kind === 'active') append(row,el('p','',item.title),append(el('div','badge-row'),badge(human(item.authority),'outline'),badge(human(item.policyLevel),'outline')));
           if (kind === 'excluded') row.append(el('p','',list(item.reasons).map(reasonLabel).join(' · ')));
-          if (kind === 'overridden') append(row,el('p','','主题：' + item.topic + ' · 有效层级：' + item.effectiveLevel),el('p','mono','胜出规则：' + list(item.winnerIds).join(', ')));
+          if (kind === 'overridden') append(row,el('p','','主题：' + item.topic + ' · 最高有效层级：' + item.effectiveLevel),el('p','mono','同主题最高有效层级规则：' + list(item.winnerIds).join(', ')));
         }
         group.append(row);
       }); panel.append(group);

@@ -230,20 +230,13 @@ class Parser(argparse.ArgumentParser):
         raise ConnectionProblem("usage")
 
 
-def main(argv=None):
+def verify_connection(project_path,connection_file):
+    args=argparse.Namespace(project=project_path,connection_file=connection_file)
     out=report();states={};first_error=None;before=None;connection=None;server=None
     def check(code,status,message,error=None):
         nonlocal first_error
         states[code]=status;out["checks"].append({"code":code,"status":status,"message":message})
         if error and first_error is None: first_error=error
-    parser=Parser(description=__doc__)
-    parser.add_argument("command",choices=["verify"])
-    parser.add_argument("--project",required=True)
-    parser.add_argument("--connection-file",required=True)
-    try:
-        args=parser.parse_args(argv)
-    except ConnectionProblem:
-        out["error"]={"code":"usage","message":MESSAGES["usage"]};print(json.dumps(out,ensure_ascii=False));return 64
     try:
         before=capture(args.project);out["context"]=before["context"]
         check("local.identity","passed","Configured project identity verified with read-only Git and file inspection.")
@@ -300,4 +293,18 @@ def main(argv=None):
         code=first_error or "integration-invalid"
         out["error"]={"code":code,"message":MESSAGES[code]}
         out["nextSteps"]=[{"code":"review-connection","description":MESSAGES[code]}]
-    print(json.dumps(out,ensure_ascii=False));return 0 if out["ok"] else 1
+    return (0 if out["ok"] else 1),out
+
+
+def main(argv=None):
+    out=report()
+    parser=Parser(description=__doc__)
+    parser.add_argument("command",choices=["verify"])
+    parser.add_argument("--project",required=True)
+    parser.add_argument("--connection-file",required=True)
+    try:
+        args=parser.parse_args(argv)
+    except ConnectionProblem:
+        out["error"]={"code":"usage","message":MESSAGES["usage"]};print(json.dumps(out,ensure_ascii=False));return 64
+    code,payload=verify_connection(args.project,args.connection_file)
+    print(json.dumps(payload,ensure_ascii=False));return code

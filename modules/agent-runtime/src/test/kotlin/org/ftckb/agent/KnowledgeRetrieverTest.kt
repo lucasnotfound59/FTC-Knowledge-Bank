@@ -149,6 +149,18 @@ class KnowledgeRetrieverTest {
         assertEquals("rule conflicts: conflict-topic: official.one,official.two",failure.message)
     }
 
+    @Test
+    fun `real command framework guide is discoverable for representative architecture queries`() {
+        val root=Path.of("..","..","knowledge")
+        val retriever=KnowledgeRetriever(root,"20287","2026-2027",ruleProfiles=setOf("command-based"))
+        listOf("Command-Based","FTCLib","类 FTCLib","自有实现").forEach { query ->
+            val guides=retriever.retrieveGuides(RetrievalIntent(emptySet(),emptySet(),emptySet(),emptySet(),setOf(query)))
+            assertTrue(guides.size<=2,"existing section budget: $query")
+            assertTrue(guides.any { it.path=="guides/architecture/command-based.md" },
+                "query=$query returned="+guides.joinToString { "${it.path}:${it.heading}" })
+        }
+    }
+
     private fun writeKnowledge() {
         val root=tempDir.resolve("knowledge")
         root.resolve("rules.yaml").apply {

@@ -1,25 +1,48 @@
 # 本地知识库管理台
 
+第一次使用可先读[新手指南](getting-started.md)。只想浏览教程不必启动服务；开始规则维护、裁决或按知识库编写代码前，必须复用或启动实际知识库的 Dashboard，并确认页面已连接。
+
 `ftckb dashboard` 管理启动时指定的知识库，提供规则编辑、候选审批、裁决解释、调用审计及逐项复核。它不加载模型配置、不要求模型 API key；`ftckb serve` 是另一个带 Ask/Edit 的聊天服务，仍需要配置模型。
 
 ## 启动与访问
 
-在仓库根目录运行：
+先检查并复用实际知识库和审计目录一致的已有实例。需要新实例时，在仓库根目录显式完成构建，再从完整 distribution 的私有副本启动（Python 3.10+，POSIX macOS/Linux）：
 
 ```bash
 ./gradlew :apps:knowledge-cli:installDist
-apps/knowledge-cli/build/install/ftckb/bin/ftckb dashboard --knowledge knowledge
+python3 .agents/skills/ftckb-integrate/scripts/dashboard_runtime.py \
+  --distribution apps/knowledge-cli/build/install/ftckb --knowledge knowledge
 ```
 
 默认分配空闲端口并尝试打开浏览器。只打印链接、自行打开：
 
 ```bash
-apps/knowledge-cli/build/install/ftckb/bin/ftckb dashboard --knowledge knowledge --port 8080 --no-browser
+python3 .agents/skills/ftckb-integrate/scripts/dashboard_runtime.py \
+  --distribution apps/knowledge-cli/build/install/ftckb \
+  --knowledge knowledge --port 8080 --no-browser
 ```
+
+已接入项目优先执行已审阅新版 doctor/prepare 返回的实际 `nextSteps.cwd/argv/env`。它使用当前已审阅 checkout 中 helper 的绝对路径，distribution 与 canonical knowledge 仍来自目标固定源码，审计环境沿用目标的明确绝对目录；旧 pin 不必包含 helper，也不会被升级。能力未知、缺 helper 或平台不支持时不会提供受保护启动 argv，不能猜命令或声称已有保护。Windows 不支持新入口，原 CLI 仍保持兼容；doctor 既有必需检查和退出含义不因此改变。
 
 监听地址固定为 `127.0.0.1`。终端输出 `dashboard=ok` 及含 `#token=` 的本次启动链接；页面读取 token 后从地址栏移除，只保存在当前页面内存中。数据 API 都要求 token，写操作还校验同源请求。若刷新浏览器后提示缺少凭据，重新打开终端输出的完整链接；页面内的刷新按钮会保留凭据。停止终端中的服务可用 `Ctrl+C`。
 
 已有知识库必须可读取。外部修改导致 YAML 无效时，页面显示当前错误，不能把旧快照当作最新有效结果。页面可见时约每两秒检查更新；失联时保留最后数据并标记过期。
+
+## 页面打不开，但 API 仍正常
+
+API 健康与页面可用要分别确认。曾实际出现 `/api/dashboard/identity` 和规则接口返回 200，但 `/`、`/app.js`、`/styles.css` 返回 500 的情况；此时不能仅凭身份核验成功宣称 Dashboard 已连接。先查看页面与静态资源响应、浏览器错误及服务终端日志，再确认知识库和审计身份。
+
+隔离的真实 Gradle `installDist` 实验已复现：原地更新 distribution 后，旧服务的静态资源返回 500，预热 identity/rules 仍返回 200，首次 resolve 因冷类加载 `NoClassDefFoundError` 失败。这证明了可复现的运行文件替换机制，不能追认历史 60284 故障的唯一根因；仅缓存静态资源不足以覆盖冷类加载。
+
+需要恢复时，先确认实际 knowledge 和 audit，保留已有用户实例；完成构建后通过上述入口显式启动替代实例。恢复后重新确认页面及静态资源可访问、浏览器实际已连接、知识库路径和规则目录正确，并核验实际审计目录；有私有连接文件时更新为已验证的新连接。服务文件副本和 API 返回 200 都不能代替这些确认。含 token 的完整链接继续只私下保存。
+
+## 稳定副本与生命周期
+
+`dashboard_runtime.py` 使用 Python 标准库，核对构建完成的完整 distribution 文件清单和摘要，复制 `bin`、`lib` 等全部普通文件至本次独占的 0700 临时目录，从副本 launcher 启动；拒绝内部链接、特殊文件、缺失 launcher/main JAR 和可观察的复制漂移。它不构建、不联网、不改配置/pin，不复制 knowledge 或 audit，保留调用 cwd 和环境。仅复制主 JAR、静态资源或使用 hardlink/symlink 不能获得同样保护。
+
+保护适用于经此入口启动的正常 FTCKB distribution，避免源产物后续替换或删除破坏运行文件；不证明构建来源、并发构建的全局原子一致性、同权限 ABA 或自定义 launcher/外部 JVM agent 路径。必须等源构建完成再启动；运行中不得删除副本。直接 `ftckb dashboard` 保持原行为，不会透明获得快照保护。
+
+helper 原样继承子进程 stdout/stderr，自身只向 stderr 报告本次快照路径，不提前输出 `dashboard=ok` 或保存 token。子进程正常结束后清理本次私有目录；`Ctrl+C`/SIGINT、SIGTERM 只处理本次 child，确认退出后清理；未确认退出则保留目录并报告。SIGKILL、断电可能留下子进程与目录，没有自动扫描或回收。确需人工清理时，先用本次诊断路径/PID 核对所有权并确认子进程已退出，再只删除该次目录，不能按端口/进程名批量结束用户实例。正常任务收尾仍保留用户需要的 Dashboard。
 
 ## 核验一个已有连接
 
@@ -97,7 +120,8 @@ CLI 的 `rules-sha256:` 摘要标识当次实际加载、解码后的规则集�
 所有入口使用 `FTCKB_AUDIT_DIR` 更换审计根目录。例如：
 
 ```bash
-FTCKB_AUDIT_DIR=/absolute/path/to/ftckb-audit ftckb dashboard --knowledge /absolute/path/to/knowledge
+FTCKB_AUDIT_DIR=/absolute/path/to/ftckb-audit python3 .agents/skills/ftckb-integrate/scripts/dashboard_runtime.py \
+  --distribution apps/knowledge-cli/build/install/ftckb --knowledge /absolute/path/to/knowledge
 FTCKB_AUDIT_DIR=/absolute/path/to/ftckb-audit ftckb validate /absolute/path/to/knowledge --json
 ```
 

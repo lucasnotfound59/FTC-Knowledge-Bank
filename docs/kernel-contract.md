@@ -13,7 +13,7 @@ cd FTC-Knowledge-Bank
 
 消费方固定审阅过的完整 commit，不跟踪 main。仓库 V0.9.0、CLI 2.1.0、YAML v4、kernel JSON v2、项目接入协议 v2 是独立版本轴。YAML 解码兼容 v1-v3，不代表 kernel v1 消费方兼容 v2。旧机器模式见 [v1 schema](kernel-contract.v1.schema.json)；当前 [v2 schema](kernel-contract.schema.json)。`workMode` 是逐次调用的 ephemeral 参数，不属于项目配置或长期 profile。
 
-知识总数 48（42 已批准 + 6 候选）；validate 包含候选计数，resolve 的 activeRules 不包含候选。
+知识总数 52（46 已批准 + 6 候选）；validate 包含候选计数，resolve 的 activeRules 不包含候选。
 
 ## 2. 命令与显式 profile
 
@@ -62,7 +62,7 @@ official 来源必须用 policyLevel=global，但有效层级是 official，永�
 validate 成功：
 
 ```json
-{"schemaVersion":2,"command":"validate","ok":true,"ruleCount":48,"violations":[]}
+{"schemaVersion":2,"command":"validate","ok":true,"ruleCount":52,"violations":[]}
 ```
 
 resolve（无冲突或有冲突）都有 team、season、normalized profiles、activeRules、excludedRules、overriddenRules、conflicts，不使用 error 字段。

@@ -36,9 +36,30 @@ def verify(root):
 
 
 def main(argv=None):
-    parser=argparse.ArgumentParser(description=__doc__)
+    argv=list(sys.argv[1:] if argv is None else argv)
+    flags={"--accept","--prepared-context-sha256","--connection-file","--browser-confirmed"}
+    staged=any(len(key)>2 and any(flag.startswith(key) for flag in flags) for value in argv for key in [value.split("=",1)[0]])
+    if staged:
+        from installation_workflow import Parser,WorkflowError,failure,accept
+        parser=Parser(description=__doc__,allow_abbrev=False)
+    else:
+        parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project",required=True)
-    args=parser.parse_args(argv)
+    parser.add_argument("--accept",action="store_true",help="Accept an explicitly prepared, connected installation without building")
+    parser.add_argument("--prepared-context-sha256")
+    parser.add_argument("--connection-file")
+    parser.add_argument("--browser-confirmed",action="store_true")
+    try:
+        args=parser.parse_args(argv)
+    except Exception:
+        if not staged:raise
+        code,payload=failure("accept","usage");print(json.dumps(payload,ensure_ascii=False));return code
+    if staged:
+        if not args.accept:
+            code,payload=failure("accept","usage")
+        else:
+            code,payload=accept(args.project,args.prepared_context_sha256,args.connection_file,args.browser_confirmed)
+        print(json.dumps(payload,ensure_ascii=False,indent=2));return code
     try:
         code,payload=verify(project_root(args.project))
         print(json.dumps(payload,ensure_ascii=False,indent=2))

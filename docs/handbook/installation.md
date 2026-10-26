@@ -1,6 +1,6 @@
 # 从零安装与第一次运行
 
-当前发布版本为 V0.9.0：CLI 2.1.0、YAML v4、kernel JSON v2 与项目接入协议 v2 保持不变；知识为 48（42 已批准 + 6 候选）。
+当前发布版本为 V0.9.0：CLI 2.1.0、YAML v4、kernel JSON v2 与项目接入协议 v2 保持不变；知识为 52（46 已批准 + 6 候选）。
 
 ### 1. 获取仓库
 
@@ -62,21 +62,21 @@ Windows PowerShell 使用 wrapper 的 `.bat` 文件：
 关键输出会包括：
 
 ```text
-validation=ok rules=48
+validation=ok rules=52
 active official.keep-customizations-in-teamcode
 active shared.dashboard-pin-stable-dependency
 ...
 active shared.pedro-tune-current-robot
 ```
 
-知识总数为 48（42 已批准 + 6 候选）；validate 包含候选计数，6 条 `candidate` 不进入 activeRules。2025-2026 赛季下，20827 与 16093 选择相同 profile 时，active IDs 与数量相同：
+知识总数为 52（46 已批准 + 6 候选）；validate 包含候选计数，6 条 `candidate` 不进入 activeRules。2025-2026 赛季下，20827 与 16093 选择相同 profile 时，active IDs 与数量相同：
 
 | profile 选择 | 两队各自的 active 数量 |
 | --- | --- |
 | generic | 26 |
-| command-based | 29 |
+| command-based | 33 |
 | rookiebot | 38 |
-| ftclib-command | 30 |
+| ftclib-command | 34 |
 
 `--generic-profile` 显式选择空 profile 集，只纳入无架构要求且队号/赛季匹配的已批准规则，不表示启用全部规则。命名选择使用 `--profile command-based` 等，可重复 `--profile NAME`；两种选择不能混用，不从依赖猜测架构。
 
