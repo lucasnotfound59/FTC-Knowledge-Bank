@@ -19,6 +19,7 @@
         <button data-view="rules" class="nav-button"><span aria-hidden="true">≡</span>规则管理</button>
         <button data-view="resolve" class="nav-button"><span aria-hidden="true">⌘</span>归属与裁决</button>
         <button data-view="audit" class="nav-button"><span aria-hidden="true">↳</span>调用审计</button>
+        <button data-view="reviews" class="nav-button"><span aria-hidden="true">✓</span>复核</button>
       </nav>
       <div class="sidebar-bottom"><div class="local-marker"><i></i> LOCAL / 127.0.0.1</div><p>确定性规则裁决<br>每次检测保留实际证据</p><small>软件检查不代表真机通过</small></div>
     </aside>
@@ -33,7 +34,7 @@
           <div class="overview-grid"><section class="panel"><div class="panel-heading"><h2>规则目录</h2><button class="text-button" data-go="rules">管理规则 →</button></div><div id="rule-stats" class="rule-stats"></div><div id="overview-version" class="panel-footer mono"></div></section><section class="panel"><div class="panel-heading"><h2>已记录的 diff 检测</h2><button class="text-button" data-go="audit">查看调用 →</button></div><div id="audit-stats"></div><p class="panel-note">仅统计此知识库已记录的顶层调用；未接入进程、旧版本及绕过 CLI 的行为不可观测。拦截是已检测调用的子集。</p></section></div>
           <section class="panel"><div class="panel-heading"><div><h2>最近调用</h2><p class="muted small">阶段轨迹来自调用当时的记录</p></div><button class="text-button" data-go="audit">完整审计 →</button></div><div id="recent-calls"></div></section>
           <div id="validate-result"></div>
-          <div class="scope-note"><span aria-hidden="true">ⓘ</span><p>裁决成功只表示完成规则选择。soft 需要复核，dev 提醒保留原命中；两者都不表示人工复核已完成。</p></div>
+          <div class="scope-note"><span aria-hidden="true">ⓘ</span><p>裁决成功只表示完成规则选择。soft 需要复核，dev 提醒保留原命中。独立复核声明仅针对指定历史快照，不改变原检测。</p></div>
         </section>
         <section id="view-rules" class="view" hidden>
           <div class="page-heading"><div><div class="eyebrow">RULE CATALOG</div><h1>规则管理</h1><p>来源、策略层级与适用范围分别呈现。</p></div><button id="create-rule" class="button primary">＋ 新增候选规则</button></div>
@@ -45,12 +46,19 @@
           <div class="priority-strip"><span>优先级</span><b>OFFICIAL</b><i>›</i><b>GLOBAL</b><i>›</i><b>LOCAL</b><i>›</i><b>SHARED</b><small>official 来源始终取得最高优先级</small></div>
           <section class="panel context-panel"><div class="panel-heading"><h2>检测上下文</h2><span class="muted small">不会猜测队伍、赛季或架构</span></div><form id="resolve-form"><div id="resolve-context"></div><button class="button primary" type="submit">执行裁决</button></form></section>
           <div id="resolve-result"><div class="empty-state panel"><h2>尚未裁决</h2><p>填写队号、赛季并明确选择 generic 或命名 profile。</p></div></div>
-          <section class="panel patch-panel"><div class="panel-heading"><div><h2>手动检测指定补丁</h2><p class="muted small">只检查下方明确提供的 patch，使用上面的检测上下文。</p></div></div><form id="check-form"><label for="manual-diff">Unified diff</label><textarea id="manual-diff" class="code-editor patch-editor" spellcheck="false" placeholder="粘贴 unified diff；空补丁也是一次明确的检测输入。"></textarea><div class="form-footer"><span class="muted small">dev 会保留每一项降级命中，不能解释为没有违规。</span><button class="button primary" type="submit">检测指定补丁</button></div></form><div id="check-result"></div></section>
+          <section class="panel patch-panel"><div class="panel-heading"><div><h2>手动检测指定补丁</h2><p class="muted small">只检查下方明确提供的 patch，使用上面的检测上下文。</p></div></div><form id="check-form"><div id="recheck-context" class="notice warning" hidden></div><label id="recheck-confirm-label" class="checkbox-label" hidden><input id="recheck-confirm" type="checkbox">已重新提供本次补丁（历史记录不保存补丁正文）</label><label for="manual-diff">Unified diff</label><textarea id="manual-diff" class="code-editor patch-editor" spellcheck="false" placeholder="粘贴 unified diff；空补丁也是一次明确的检测输入。"></textarea><div class="form-footer"><span class="muted small">dev 会保留每一项降级命中，不能解释为没有违规。</span><button class="button primary" type="submit">检测指定补丁</button></div></form><div id="check-result"></div></section>
         </section>
         <section id="view-audit" class="view" hidden>
           <div class="page-heading"><div><div class="eyebrow">INVOCATION LEDGER</div><h1>调用审计</h1><p>保留调用当时的快照，区分拦截、待复核与尚未执行。</p></div><button id="audit-refresh" class="button">刷新记录</button></div>
           <div class="audit-toolbar"><label>记录范围 <select id="audit-scope"><option value="knowledge">当前知识库</option><option value="unscoped">未归属调用（独立分区）</option></select></label><span id="audit-stale" class="badge warning" hidden>有新记录，可刷新</span><span id="audit-total" class="muted small"></span></div><div id="audit-health"></div>
           <div class="split-layout audit-layout"><section class="panel list-panel"><div id="audit-list"></div><div class="pagination"><button id="audit-prev" class="button" disabled>上一页</button><span id="audit-page" class="muted small">第 1 页</span><button id="audit-next" class="button" disabled>下一页</button></div></section><section id="audit-detail" class="panel detail-panel" aria-label="调用详情"><div class="empty-state"><span class="empty-symbol">↳</span><h2>选择一次调用</h2><p>逐阶段检查实际运行状态、命中与原因。</p></div></section></div>
+        </section>
+        <section id="view-reviews" class="view" hidden>
+          <div class="page-heading"><div><div class="eyebrow">SNAPSHOT REVIEW</div><h1>逐项复核</h1><p>为指定检查快照记录声明，保留原始 soft 与 dev 降级提醒。</p></div><button id="reviews-refresh" class="button">刷新复核</button></div>
+          <div class="audit-toolbar"><label>复核范围 <select id="reviews-filter"><option value="pending">待复核</option><option value="all">全部</option><option value="recorded">已记录结论</option></select></label><span id="reviews-count" class="muted small" aria-live="polite"></span></div>
+          <div id="reviews-health" aria-live="polite"></div>
+          <p class="notice">代码修改后重新运行检查，新检查需重新复核。复核只说明有人对指定历史快照作出声明，不证明当前工作区合规或真机安全。</p>
+          <div class="split-layout review-layout"><section class="panel list-panel"><div id="reviews-list"></div><div class="pagination"><button id="reviews-prev" class="button" disabled>上一页</button><span id="reviews-page" class="muted small">第 1 页</span><button id="reviews-next" class="button" disabled>下一页</button></div></section><section id="review-detail" class="panel detail-panel" aria-label="复核详情"><div class="empty-state"><h2>选择一项提醒</h2><p>查看检查快照、复核声明与完整历史。</p></div></section></div>
         </section>
       </main>
       <footer class="workspace-footer"><span>FTC Knowledge Bank</span><span>本地规则管理 · 无模型密钥依赖</span></footer>

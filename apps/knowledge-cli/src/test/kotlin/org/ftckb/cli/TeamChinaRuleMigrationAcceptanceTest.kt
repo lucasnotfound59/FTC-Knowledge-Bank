@@ -14,6 +14,7 @@ class TeamChinaRuleMigrationAcceptanceTest {
     private val javaRoot="TeamCode/src/main/java/org/firstinspires/ftc/teamcode/"
     private val candidates=setOf("global.hardware-access-candidate","global.mechanism-state-machine-candidate")
     private val commands=setOf("global.command-responsibilities","global.command-live-input","global.command-requirements-cleanup")
+    private val approvedCommands=setOf("shared.command-runtime-boundary","shared.command-scheduler-lifecycle","shared.command-default-resumption","shared.command-scheduler-reentrancy")
     private val layoutRule="global.test-utility-layout"
     private val vendorRule="global.vendor-documented-build-dependencies"
     private val migrated=mapOf(
@@ -50,8 +51,8 @@ class TeamChinaRuleMigrationAcceptanceTest {
     @Test
     fun `migration preserves exact counts statuses approvals and season boundaries`() {
         val all=rules()
-        assertEquals(48,all.size)
-        assertEquals(42,all.count { it.status==RuleStatus.APPROVED })
+        assertEquals(52,all.size)
+        assertEquals(46,all.count { it.status==RuleStatus.APPROVED })
         assertEquals(6,all.count { it.status==RuleStatus.CANDIDATE })
         val global=all.filter { it.id.startsWith("global.") }
         assertEquals(migrated.keys+commands+layoutRule+vendorRule,global.map { it.id }.toSet())
@@ -84,9 +85,9 @@ class TeamChinaRuleMigrationAcceptanceTest {
     fun `both teams receive the exact approved profile counts and deltas`() {
         val profiles=listOf(
             emptySet<String>() to 26,
-            setOf("command-based") to 29,
+            setOf("command-based") to 33,
             setOf("rookiebot") to 38,
-            setOf("ftclib-command") to 30
+            setOf("ftclib-command") to 34
         )
         for ((profile,expectedCount) in profiles) {
             val first=resolve(profile,"20827").activeRules.map { it.id }.toSet()
@@ -95,16 +96,16 @@ class TeamChinaRuleMigrationAcceptanceTest {
             assertEquals(first,second,"profiles=$profile")
         }
         val generic=resolve().activeRules.map { it.id }.toSet()
-        assertEquals(commands,resolve(setOf("command-based")).activeRules.map { it.id }.toSet()-generic)
+        assertEquals(commands+approvedCommands,resolve(setOf("command-based")).activeRules.map { it.id }.toSet()-generic)
         assertEquals(12,resolve(setOf("rookiebot")).activeRules.map { it.id }.toSet().minus(generic).size)
-        assertEquals(commands+"shared.ftclib-command-candidate",resolve(setOf("ftclib-command")).activeRules.map { it.id }.toSet()-generic)
+        assertEquals(commands+approvedCommands+"shared.ftclib-command-candidate",resolve(setOf("ftclib-command")).activeRules.map { it.id }.toSet()-generic)
     }
 
     @Test
-    fun `command profile adds exactly three standards without selecting a framework`() {
+    fun `command profile adds exactly seven standards without selecting a framework`() {
         val generic=resolve().activeRules.map { it.id }.toSet()
         val command=resolve(setOf("command-based")).activeRules.map { it.id }.toSet()
-        assertEquals(commands,command-generic)
+        assertEquals(commands+approvedCommands,command-generic)
         assertEquals(emptySet<String>(),generic-command)
         assertFalse("shared.ftclib-command-candidate" in command)
     }
@@ -120,7 +121,7 @@ class TeamChinaRuleMigrationAcceptanceTest {
         assertEquals(rookieIds,rookie.activeRules.map { it.id }.toSet()-generic)
         val ftclib=resolve(setOf("ftclib-command"))
         assertEquals(setOf("ftclib-command","command-based"),ftclib.profiles)
-        assertEquals(commands+"shared.ftclib-command-candidate",ftclib.activeRules.map { it.id }.toSet()-generic)
+        assertEquals(commands+approvedCommands+"shared.ftclib-command-candidate",ftclib.activeRules.map { it.id }.toSet()-generic)
         assertTrue(ftclib.activeRules.none { it.id in rookieIds })
         val changedRookieRules=setOf(
             "shared.rookiebot-java-imports",

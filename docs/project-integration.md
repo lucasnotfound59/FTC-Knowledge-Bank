@@ -1,5 +1,7 @@
 # 把知识库接入 FTC 项目
 
+第一次接触本项目，可先读[新手指南](getting-started.md)，按「首次接入」或「已接入后编码」选择步骤。本文保留安装、版本与验收的完整细节。
+
 安装入口：[`ftckb-integrate` Skill](../.agents/skills/ftckb-integrate/SKILL.md)。这是项目级接入，不是全局插件安装，也不会把知识库 Kotlin 模块加入机器人的 Android Gradle 工程。
 
 ## 队员怎么用，需要 API key 吗？
@@ -29,7 +31,7 @@ python3 -m venv /path/to/ftckb-venv
 
 下文 `python3` 替换为该虚拟环境 Python。Windows 使用环境内 `python.exe`，或 `py -3`。不要向共享配置提交个人 `JAVA_HOME`、`sdk.dir` 或 SDK 绝对路径。这个独立 CLI 构建不需要 Android SDK；机器人编译仍需要队员自己的 Android SDK。
 
-首次安装须指定包含本功能的 tag 或完整 40 位 commit SHA。仓库 V0.9.0、CLI 2.1.0、YAML v4、kernel JSON v2、项目接入协议 v2 是独立版本轴；当前知识总数为 48（42 已批准 + 6 候选）。README 的版本不代表同名 tag 已发布。正式 tag 发布前，请使用包含本 Skill 和脚本的已提交版本；审阅所选 checkout 后用 `git rev-parse HEAD` 获取完整 SHA，不要把旧版本 SHA 或 `main` 传给安装器。
+首次安装须指定包含本功能的 tag 或完整 40 位 commit SHA。仓库 V0.9.0、CLI 2.1.0、YAML v4、kernel JSON v2、项目接入协议 v2 是独立版本轴；当前知识总数为 52（46 已批准 + 6 候选）。README 的版本不代表同名 tag 已发布。正式 tag 发布前，请使用包含本 Skill 和脚本的已提交版本；审阅所选 checkout 后用 `git rev-parse HEAD` 获取完整 SHA，不要把旧版本 SHA 或 `main` 传给安装器。
 
 ## 安装与 dry-run
 
@@ -38,12 +40,12 @@ python3 -m venv /path/to/ftckb-venv
 ```bash
 python3 .agents/skills/ftckb-integrate/scripts/integrate.py \
   --project "/path/to/FTC project" --team 16093 --season 2025-2026 \
-  --ref FULL_COMMIT_SHA --generic-profile --dry-run
+  --ref FULL_COMMIT_SHA --generic-profile --prepare-only --dry-run
 ```
 
 `FULL_COMMIT_SHA` 必须替换为实际完整 SHA，也可传实际存在的 tag。默认来源是官方 GitHub 仓库；测试镜像可显式 `--repository URL`。不接受 branch 名，不把 README 示例队号作为默认值；缺少 team/season 时脚本报错，Agent 应询问。
 
-dry-run 会查询远程或在临时目录获取选定版本，以检查模板与冲突，但**不写目标文件、index、Git 配置，也不构建**。计划说明创建/更新哪些文件和 submodule。去掉 `--dry-run` 执行同一命令：
+dry-run 会查询远程或在临时目录获取选定版本，以检查模板与冲突，但**不写目标文件、index、Git 配置，也不构建**。计划说明创建/更新哪些文件和 submodule。去掉 `--dry-run`、保留 `--prepare-only` 执行同一命令，先准备文件和独立 CLI：
 
 ```text
 目标项目/
@@ -55,6 +57,48 @@ dry-run 会查询远程或在临时目录获取选定版本，以检查模板与
 ```
 
 `git submodule add` 会暂存 `.gitmodules` 和 gitlink；这是明确的 Git 副作用，不是 commit。安装器不自动暂存其余文件，不 commit/push，不创建/切换目标分支，不安装 hooks。已有 `.gitmodules` 用户改动会导致预检停止，避免意外暂存。
+
+## 分阶段准备与验收
+
+首次接入推荐：**dry-run → prepare → 目标实际 Dashboard 页面已连接 → accept**。使用实际 `--help` 已支持以下参数的已审阅 checkout；新入口可以从外部绝对路径调用，不要求目标旧 pin 已包含新脚本，也不暗改目标 pin。模板和内核仍来自选定固定源码，能力不足时明确升级，而不是向旧脚本发送新参数。
+
+`integrate.py --prepare-only` 完成接入文件、固定 submodule 和独立 CLI 构建后停止，不运行 validate/resolve/check，不创建 work receipt，也不启动 Dashboard。与 `--dry-run` 合用时仅返回计划，不构建，不生成真实准备摘要。
+
+准备成功输出独立 `installationWorkflowSchemaVersion:1`，`command="prepare"`、`stage="prepared"`、`ok=true`，同时 `kernelStatus` 和 `acceptanceStatus` 都是 `not_performed`；这不表示 installationOk，也不表示代码检查通过。保存实际 `preparedContextSha256`，按 `nextSteps` 接续：
+
+- `workflow-env.env`：本次实际 `FTCKB_AUDIT_DIR`。Dashboard、连接核验、accept 和后续 work 调用均使用同一显式值。
+- `dashboard.cwd/argv/env`：先复用相同知识与审计身份的实例。需要启动时，执行返回的受保护建议：当前已审阅 checkout 中 `dashboard_runtime.py` 的绝对入口，传入目标固定源码的完整 distribution 和实际 canonical knowledge，cwd 为项目根，使用同一显式绝对 `FTCKB_AUDIT_DIR`。旧 pin 不必有 helper，二进制仍来自旧 pin，不暗中升级。能力 unknown、无 Dashboard、缺 helper 或平台不支持时没有受保护 argv，须核对支持或显式选择升级，不猜命令。打开完整链接确认页面已连接。
+- `connection-input`：要求操作者提供真实私有连接文件，不虚构端口、token 或路径。
+- `accept.entrypoint`、`preparedContextSha256`、`env`：组成后续验收所需的已知输入。尚缺连接文件和页面观察时，它不是一条完整可执行 argv。
+
+连接文件仅含 `{"url":"本次实际完整链接"}`，使用当前用户私有的普通文件，POSIX 权限须为 `0600` 或更严格，拒绝 symlink；不把 token 放 argv、仓库或报告。创建前先设 `umask 077`，用编辑器写入链接。详见[连接核验](dashboard.md#核验一个已有连接)。
+
+确认页面实际连接目标 `context.knowledgePath` 后，用准备输出的 `accept.entrypoint` 和同一 audit env 执行；以下仍是须替换占位的模板：
+
+```bash
+FTCKB_AUDIT_DIR="/actual/audit/root" python3 /path/to/reviewed-FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/verify.py \
+  --project "/path/to/FTC project" --accept \
+  --prepared-context-sha256 RETURNED_64_CHARACTER_SHA256 \
+  --connection-file "/private/path/dashboard.json" --browser-confirmed
+```
+
+`--browser-confirmed` 是操作者已观察页面的声明，不是工具证明或身份认证；没有实际观察就不能设置。accept 不构建、不 fetch、不修改配置/pin/托管文件，先重核准备摘要，再核验 Dashboard 实际知识和审计身份，然后以 normal 执行 validate → resolve → check。每阶段前后重核准备输入，观察到漂移即失败并保留实际已执行结果。服务 binary pin 仍为 unknown，浏览器观察和 API 身份核验不能替代它。
+
+摘要绑定配置原字节、pin/gitlink、托管内容、实际知识输入、CLI 产物以及审计目录。普通 TeamCode diff 不使其失效，accept 检查验收当时的真实 diff。它不包含 token，不是身份签名；不保证抵御同权限中途改回的变化。
+
+| 输出或错误 | 意义与恢复 |
+| --- | --- |
+| `stage="accepted"`、`installationOk=true`、退出 0 | 接入有效，本次 diff 硬检查通过；仍须逐项复核 soft |
+| `installationOk=true`、`projectCheck.ok=false`、退出 1 | 接入有效，当前代码有硬违规；修正后重新检查 |
+| `error.code="usage"`、退出 64 | 缺少真实摘要、连接文件或浏览器确认等必要输入 |
+| `setup_required` 或 `build_failed`、退出 2 | 准备/构建不完整；修好 JDK、缓存、网络或产物后显式重跑 prepare |
+| `preparation_changed`、退出 2 | 观察到准备输入变化；先审阅，再 prepare 获取新摘要 |
+| `connection_failed`、退出 2 | 修复选定 Dashboard、连接文件或同一 audit env，不能先跑内核跳过连接 |
+| `integration_error` 或 `audit_incomplete`、退出 2 | 输入/内核阶段或审计未完整核验，保留已执行结果，不能宣布完整验收 |
+
+输出丢失时可用相同明确参数重跑 prepare；它不追踪 main/tag、不自动覆盖人工修改。accept 的实际内核结果在 `checks.<command>.kernel`，汇总代码结果在 `projectCheck`，原 kernel JSON v2 保留。
+
+无 `--prepare-only` 的旧安装器和无 `--accept` 的 `verify.py --project PATH` 继续原合并安装/构建/验收行为，供已有自动化兼容；它们没有中间连接目标 Dashboard 的窗口，不应描述为首次安装全程已满足前置顺序。新接入优先使用分阶段入口。
 
 ## 配置与重复执行
 
@@ -87,21 +131,74 @@ dry-run 会查询远程或在临时目录获取选定版本，以检查模板与
 
 重跑时可省略 team/season/ref，缺省重用配置中的 SHA，不重新解析 tag。相同输入不会产生新 diff。AGENTS 托管段之外的原文及队伍补充保留；项目补充写在段外，不改生成的 Skill。若生成文件/段落有人工修改、路径冲突、symlink 或 submodule 脏改动，脚本停止而非覆盖。
 
-## 每次编码与验收
+## 只读接入诊断
 
-从目标根目录运行：
+日常顺序：**doctor → Dashboard 已连接 → work resolve → 修改 → work check --receipt ID**。已安装且固定源码包含 doctor 时，从目标 Git 根目录运行：
 
 ```bash
-python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py resolve --project .
-# Agent 根据 activeRules 修改代码
-python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py check --project .
+python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py doctor --project .
 ```
 
-包装器验证固定版本、知识路径、托管内容、schema 和退出码，并验证返回的 normalized profiles 与配置相符；resolve/check 自动附加配置的显式 profile 参数。CLI 尚未构建或版本改变时才重新构建；构建日志走 stderr，kernel JSON 保持 stdout 可解析。
+尚未初始化 submodule 或旧 pin 没有 doctor 时，先取得独立、已审阅的 Knowledge Bank checkout，再用它的绝对脚本入口：
+
+```bash
+python3 /path/to/reviewed-FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py doctor --project /path/to/FTC-project
+```
+
+替换为实际绝对路径。此入口不改变目标 pin，后续 resolve/check 仍使用项目固定源码。doctor 核验 `.gitmodules` 和 gitlink 后才建议初始化；缺配置时先明确真实 team/season/profile 并执行安装，不调用目标尚不存在的脚本。旧版不支持 Dashboard 时报告限制并显式选择升级，不自动跟随 main。
+
+doctor 只读配置、Git 元数据、源码能力与静态发行产物，不联网、不构建、不运行 kernel、不启动 Dashboard、不写 audit、不改配置/pin。它使用单独的 `doctorSchemaVersion:1`（不是 kernel JSON v2），输出 `context/checks/nextSteps`；每项为 `passed/failed/blocked/unknown/not_checked`。必需项均 passed 才退出 0；问题或必需证据不足退出 1；参数错误退出 64，仍返回 JSON。无法验证的 context 为 null；v1 不自动补 generic。`nextSteps` 的 cwd/argv 是数据和建议，不会执行。静态 receipt 只核对记录，不证明所有产物来源或可运行；Dashboard 连接、裁决、diff 与硬件始终 not_checked，不代表通过。
+
+先处理诊断问题，按需要显式构建，然后复用与配置 actual knowledge 路径、审计目录一致的 Dashboard；需要新实例时执行已审阅新版 doctor 返回的实际受保护 `nextSteps.cwd/argv/env`，与 prepare 使用同一 helper 推荐链。核对 `dashboard=ok`、本次完整链接可访问、页面已连接且目录正确；不把 token 链接写入仓库或公开日志。连接后才运行 resolve，修改后运行 check。Dashboard 步骤不等于 CLI 审计的技术前提，覆盖边界见 [Dashboard 文档](dashboard.md)。
+
+新模板仅在显式安装/升级时生成；不要为同步新流程覆盖旧项目的托管文件或改摘要。
+
+受保护启动要求 Python 3.10+ 和 POSIX（macOS/Linux），从构建完成的完整 distribution 私有副本运行，knowledge/audit 仍使用目标实际路径。直接 CLI 保持兼容但无此保护；Windows 新入口明确不支持，doctor 既有必需检查与退出含义保持不变。正常结束及处理 SIGINT/SIGTERM 后仅清理本次已退出 child 的目录，SIGKILL/断电可能残留，不自动回收用户实例；详见[生命周期和限制](dashboard.md#稳定副本与生命周期)。
+
+## 机器核验一个已有 Dashboard
+
+可选的机器核验入口是 `project.py dashboard verify --project . --connection-file PRIVATE_JSON`；它只对显式已知现有服务做 authenticated GET，核对实际知识输入与审计存储身份，不扫描/启动/关闭实例。私有文件只含本次完整链接的 `url`，POSIX须当前用户所有、无组/其他权限且路径无symlink；token不进argv或仓库。旧pin无入口时用已审阅新checkout的绝对project.py入口，保留目标pin。exit0仍不代表浏览器页面已连接或服务binary pin已证明；旧API/未知store不能全绿。成功返回的workflow-env适用于后续resolve和收据返回的check argv，必须保留同一显式FTCKB_AUDIT_DIR。详见 `docs/dashboard.md`「核验一个已有连接」。
+
+```bash
+python3 /path/to/reviewed-FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py dashboard verify --project /path/to/FTC-project --connection-file /private/path/dashboard.json
+```
+
+`PRIVATE_JSON` 唯一字段格式是 `{"url":"http://127.0.0.1:PORT/#token=TOKEN"}`，PORT/TOKEN必须替换为当前启动私下提供的实际值；不要照抄占位或将实际值写入共享命令历史。仅精确127.0.0.1 HTTP根路径，拒绝proxy/redirect；文件8KiB、响应1MiB、3秒socket I/O超时（不是整个命令总时限）。无法验证隐私边界的平台返回unknown。
+
+输出是独立 `dashboardConnectionSchemaVersion:1`，退出0为本次必需API核验匹配，退出1为失败/未知，退出64为参数错误。`browser.connection=not_checked`、`server.binaryPin=unknown`、`kernel.defaultAudit=not_checked`，不冒充这些阶段通过。expected audit来自本次非空白FTCKB_AUDIT_DIR（相对值按项目根解析，不展开~），否则Python home下显式选定`.ftckb/audit`；这不证明未配置的kernel JVM user.home。成功nextSteps的env应同时应用于resolve和后续check，不能只在verify时设置。
+
+## 每次编码与验收
+
+完成 doctor 和 Dashboard 连接核验后，从目标根目录运行：
+
+```bash
+python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py work resolve --project .
+# Agent 根据 activeRules 修改代码
+python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py work check --project . --receipt RETURNED_UUID
+```
+
+`RETURNED_UUID` 是占位，使用成功 resolve 返回的 `nextSteps.cwd/argv` 中的准确 ID；不手填多份 context，也不选最近一次。新 work 入口不构建、不联网，要求已有 CLI 发行和匹配 build receipt；缺失时先显式准备，确认 Dashboard 连接后再运行固定验收/resolve。内核输出位于 `kernel.output`，仍按原 schemaVersion 校验；旧 resolve/check 默认输出和退出码保留，也保留原构建行为，但不具有关联证明。
 
 `resolve|check` 还可用 `--work-mode normal|test|dev` 透传逐任务工作模式，例如用户明确指定测试代码时 `project.py resolve --project . --work-mode test`，或用户明确指定 dev 代码时 `project.py check --project . --diff /tmp/change.patch --work-mode dev`。该参数不写入 `.ftckb/project.yaml`，不改变固定版本、team、season、profiles 或托管文件；省略时保持原命令与输出。`--work-mode dev` 缺少 `--diff` 时包装器拒绝执行。模式不能按文件名、路径或依赖推断，只有用户明确指定才使用；包装器会核对内核响应确实回报了请求的 `workMode`，避免旧内核静默忽略。
 
-完整验收：
+### 工作收据边界
+
+固定源码已有 doctor 但尚无 work 入口时，用已审阅新 checkout 的绝对入口 `python3 /path/to/reviewed-FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py work resolve --project /path/to/FTC-project`；保留目标 pin，后续沿返回的 nextSteps 使用同一外部入口，不自动升级。
+
+work 的独立 envelope/file 为 `workReceiptSchemaVersion:1`；退出0为真实成功且关联验证通过，退出1为真实 check 硬违规，退出2为收据/上下文/接入/运行错误或冲突，退出64为新参数错误。`kernel:{exitCode,output}` 保留真实内核结果，不往 kernel JSON v2 加字段。
+
+收据位于实际 Git directory 的 `ftckb/receipts/<UUID>.json`；若自定义 gitDir 在工作区内且不位于 `.git` 子树，明确拒绝，不修改 ignore 或迁移数据。允许普通 linked worktree 的外部 metadata；收据不进入项目工作区、不自动 commit、不改 audit，不自动选择 latest。它绑定 root/gitDir、配置原字节、team/season、原/规范 profiles、协议、pin、实际 knowledgePath、全部实际小写 `.yaml/.yml` 的路径/内容摘要和本次 mode，含 Git ignored 规则。任何这些输入变化都必须重新 resolve；v1 profiles 仍为 null，不变成 generic。normal 不静默继承 test/dev；dev check 必须提供本次 diff。普通机器人代码修改/提交和重复 check 允许，不设时间 TTL，不消费收据；用户可自行删除旧文件。
+
+调用前后重验上下文，传入diff时也核对其字节；中途变化即返回关联失败，并保留已执行的实际内核事实。收据是本地摘要，不是签名/身份/审批/不可抵赖审计；同用户可重算伪造，前后快照也不是抵御同权限 ABA 的事务。缺失、损坏、symlink 或不匹配时明确重新 resolve，不猜配分开的 audit 调用。compile/deploy/真机仍分别验证。
+
+旧兼容入口仍可显式调用（不创建或使用工作收据）：
+
+```bash
+python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py resolve --project .
+python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py check --project .
+```
+
+旧兼容完整验收（可能构建并立即运行内核；首次接入优先使用上面的分阶段入口）：
 
 ```bash
 python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/verify.py --project .

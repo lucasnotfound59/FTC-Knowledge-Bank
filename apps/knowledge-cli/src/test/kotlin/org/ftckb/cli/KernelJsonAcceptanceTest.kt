@@ -320,7 +320,7 @@ class KernelJsonAcceptanceTest {
         assertEquals(2,validate["schemaVersion"].asInt())
         assertEquals("validate",validate["command"].asText())
         assertTrue(validate["ok"].booleanValue())
-        assertEquals(48,validate["ruleCount"].asInt())
+        assertEquals(52,validate["ruleCount"].asInt())
 
         val resolve=mapper.readTree(Files.readString(base.resolve("resolve-ok.json")))
         assertEquals("resolve",resolve["command"].asText())
@@ -375,6 +375,17 @@ class KernelJsonAcceptanceTest {
                 it["reasons"].any { reason -> reason.asText()=="work-mode-test" }
             }.map { it["ruleId"].asText() }
         )
+
+        setOf(
+            "shared.command-runtime-boundary","shared.command-scheduler-lifecycle",
+            "shared.command-default-resumption","shared.command-scheduler-reentrancy"
+        ).forEach { id ->
+            assertFalse(resolve["activeRules"].any { it["id"].asText()==id },id)
+            val excluded=resolve["excludedRules"].single { it["ruleId"].asText()==id }
+            assertTrue(excluded["reasons"].any { it.asText()=="profile" },id)
+            assertFalse(excluded["reasons"].any { it.asText()=="status" },id)
+            assertTrue(testMode["activeRules"].any { it["id"].asText()==id },id)
+        }
 
         val devMode=mapper.readTree(Files.readString(base.resolve("check-dev.json")))
         assertEquals("dev",devMode["workMode"].asText())

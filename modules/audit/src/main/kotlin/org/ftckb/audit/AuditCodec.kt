@@ -1,5 +1,6 @@
 package org.ftckb.audit
 
+import com.fasterxml.jackson.core.JsonParser
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -10,7 +11,7 @@ import java.util.UUID
 /** The audit format is deliberately independent of kernel JSON. No arbitrary maps are persisted. */
 internal object AuditCodec {
     const val MAX_LINE_BYTES = 4 * 1024 * 1024
-    private val mapper = ObjectMapper().enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+    private val mapper = ObjectMapper().enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION).enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
     private val entrypoints = setOf("cli", "chat", "serve", "dashboard")
     private val commands = setOf("validate", "resolve", "check", "ask", "edit", "undo", "discard", "model", "rule_create", "rule_edit", "rule_approve", "rule_reject")
     private val stages = setOf("parameters", "knowledge_load", "knowledge_validate", "resolve", "diff_read", "standardizer", "path_guard", "branch_guard", "citation_guard", "baseline_guard", "write", "restore", "model")
@@ -40,6 +41,13 @@ internal object AuditCodec {
         }
         val stage = event.stage?.let { s ->
             require(s.name in stages && (s.category == null || s.category in categories))
+            s.codeVersion?.let { version ->
+                require(version.schemaVersion == 1 && version.kind in setOf("worktree", "supplied_patch", "edit_preview"))
+                ReviewCodec.digest(version.inputDigest)
+                version.subjectId?.let(ReviewCodec::digest)
+                version.head?.let { require(Regex("(?:[0-9a-f]{40}|[0-9a-f]{64})").matches(it)) }
+                version.predecessorInvocationId?.let(ReviewCodec::uuid)
+            }
             s.copy(detail = s.detail?.let(::detail), hits = s.hits.take(256).map { h ->
                 h.copy(kind = text(h.kind, 64), ruleId = h.ruleId?.let { text(it, 160) }, check = h.check?.let { text(it, 120) }, path = h.path?.let { text(it, 2048) }, detail = detail(h.detail))
             })
@@ -72,7 +80,10 @@ internal object AuditCodec {
         }
         val rules = n.list("ruleSnapshots").map { AuditRuleSnapshot(it.string("id"), it.string("topic"), it.string("title"), it.string("instruction"), it.string("authority"), it.string("policyLevel"), it.strings("teams"), it.strings("seasons"), it.strings("profiles")) }
         val s = n.get("stage")?.takeUnless { it.isNull }?.let { s ->
-            AuditStage(s.string("name"), enum(s.string("status")), s.nullableString("category"), s.nullableString("detail"), s.list("hits").map { AuditHit(it.string("kind"), it.nullableString("ruleId"), it.nullableString("check"), it.nullableString("path"), it.integer("line"), it.string("detail")) })
+            AuditStage(s.string("name"), enum(s.string("status")), s.nullableString("category"), s.nullableString("detail"), s.list("hits").map { AuditHit(it.string("kind"), it.nullableString("ruleId"), it.nullableString("check"), it.nullableString("path"), it.integer("line"), it.string("detail")) }, s.get("codeVersion")?.takeUnless { it.isNull }?.let { v ->
+                require(v.isObject && v.fieldNames().asSequence().all { it in setOf("kind", "subjectId", "inputDigest", "head", "predecessorInvocationId", "schemaVersion") })
+                AuditCodeVersion(v.string("kind"), v.nullableString("subjectId"), v.string("inputDigest"), v.nullableString("head"), v.nullableString("predecessorInvocationId"), requireNotNull(v.integer("schemaVersion")))
+            })
         }
         return safe(AuditEvent(n.string("invocationId"), enum(n.string("type")), n.string("timestamp"), m, n.nullableString("knowledgeVersion"), rules, s, n.nullableString("status")?.let { enum<AuditRunStatus>(it) }, n.integer("exitCode"), n.number("durationMillis"), n.integer("inputTokens"), n.integer("outputTokens")))
     }

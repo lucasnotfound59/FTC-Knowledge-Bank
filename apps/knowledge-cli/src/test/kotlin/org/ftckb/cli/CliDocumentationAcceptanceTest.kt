@@ -14,6 +14,29 @@ import org.junit.jupiter.api.Test
 
 class CliDocumentationAcceptanceTest {
     @Test
+    fun `dashboard recommendations use protected complete distributions with explicit boundaries`() {
+        val root=Path.of("..","..").normalize()
+        listOf("README.md","AGENTS.md","docs/dashboard.md").forEach { file ->
+            val text=Files.readString(root.resolve(file))
+            listOf("dashboard_runtime.py","--distribution","--knowledge","POSIX").forEach {
+                assertTrue(text.contains(it),"$file: $it")
+            }
+            val commands=text.lineSequence().filter { it.trimStart().startsWith("apps/knowledge-cli/build/install/ftckb/bin/ftckb dashboard") }.toList()
+            assertTrue(commands.isEmpty(),"$file still recommends a mutable launcher")
+        }
+        val guide=Files.readString(root.resolve("docs/dashboard.md"))
+        listOf("SIGKILL","0700","NoClassDefFoundError","60284","不构建","不改配置/pin").forEach {
+            assertTrue(guide.contains(it),it)
+        }
+        listOf(".agents/skills/ftckb-integrate/SKILL.md",
+            ".agents/skills/ftckb-integrate/assets/project-skill/SKILL.md",
+            ".agents/skills/ftckb-integrate/assets/AGENTS.block.md","docs/project-integration.md").forEach { file ->
+            val text=Files.readString(root.resolve(file))
+            listOf("nextSteps","helper","旧 pin").forEach { assertTrue(text.contains(it),"$file: $it") }
+        }
+    }
+
+    @Test
     fun `public entry documentation uses v2 fields and explicit profile commands`() {
         val root=Path.of("..","..").normalize()
         for (file in listOf("docs/cli-agent.md","docs/handbook/installation.md")) {
@@ -40,10 +63,10 @@ class CliDocumentationAcceptanceTest {
     fun `installation profile counts match both teams current resolution`() {
         val root=Path.of("..","..").normalize()
         val text=Files.readString(root.resolve("docs/handbook/installation.md"))
-        assertTrue(text.contains("48（42 已批准 + 6 候选）"))
-        assertTrue(text.contains("validation=ok rules=48"))
+        assertTrue(text.contains("52（46 已批准 + 6 候选）"))
+        assertTrue(text.contains("validation=ok rules=52"))
         val mapper=ObjectMapper()
-        for ((profile,count) in listOf("generic" to 26,"command-based" to 29,"rookiebot" to 38,"ftclib-command" to 30)) {
+        for ((profile,count) in listOf("generic" to 26,"command-based" to 33,"rookiebot" to 38,"ftclib-command" to 34)) {
             assertTrue(text.contains("| $profile | $count |"),profile)
             val selections=if (profile=="generic") listOf("--generic-profile") else listOf("--profile",profile)
             val activeByTeam=listOf("20827","16093").map { team ->
@@ -65,7 +88,7 @@ class CliDocumentationAcceptanceTest {
     fun `release documents publish all version axes and profile aware governance`() {
         val root=Path.of("..","..").normalize()
         val readme=Files.readString(root.resolve("README.md"))
-        listOf("**版本：V0.9.0**","48（42 已批准 + 6 候选）","CLI 2.1.0","YAML v4","kernel JSON v2","项目接入协议 v2").forEach {
+        listOf("**版本：V0.9.0**","52（46 已批准 + 6 候选）","CLI 2.1.0","YAML v4","kernel JSON v2","项目接入协议 v2").forEach {
             assertTrue(readme.contains(it),it)
         }
         listOf("AGENTS.md","docs/kernel-contract.md","docs/handbook/resolution.md").forEach { file ->

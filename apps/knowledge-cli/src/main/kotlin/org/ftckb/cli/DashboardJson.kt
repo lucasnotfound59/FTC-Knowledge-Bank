@@ -46,7 +46,7 @@ internal object DashboardJson {
     fun record(r:AuditRecord):Map<String,Any?> = mapOf(
         "invocationId" to r.invocationId,"startedAt" to r.startedAt,"endedAt" to r.endedAt,
         "metadata" to r.metadata,"knowledgeVersion" to r.knowledgeVersion,"ruleSnapshots" to r.ruleSnapshots,
-        "stages" to r.stages.map { mapOf("name" to it.name,"status" to it.status.name.lowercase(java.util.Locale.ROOT),"category" to it.category,"detail" to it.detail,"hits" to it.hits) },
+        "stages" to r.stages.map { mapOf("name" to it.name,"status" to it.status.name.lowercase(java.util.Locale.ROOT),"category" to it.category,"detail" to it.detail,"hits" to it.hits,"codeVersion" to it.codeVersion) },
         "status" to r.status.name.lowercase(java.util.Locale.ROOT),"exitCode" to r.exitCode,"durationMillis" to r.durationMillis,
         "inputTokens" to r.inputTokens,"outputTokens" to r.outputTokens
     )

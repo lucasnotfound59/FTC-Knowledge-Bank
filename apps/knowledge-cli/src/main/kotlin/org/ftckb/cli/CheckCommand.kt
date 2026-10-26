@@ -3,6 +3,8 @@ package org.ftckb.cli
 import java.io.PrintStream
 import java.nio.file.Files
 import java.nio.file.Path
+import org.ftckb.audit.AuditCodeVersion
+import org.ftckb.audit.ReviewFingerprint
 import org.ftckb.domain.RuleContext
 import org.ftckb.domain.RuleContextException
 import org.ftckb.domain.RuleResolver
@@ -97,8 +99,27 @@ internal fun runCheckCommand(args:List<String>,out:PrintStream,audit:KernelAudit
     }
     audit?.passed("resolve")
     audit?.begin("diff_read")
+    var codeVersion:AuditCodeVersion?=null
+    fun version(block:()->AuditCodeVersion):AuditCodeVersion?=runCatching(block).onFailure { audit?.codeVersionUnavailable() }.getOrNull()
     val changes=try {
-        values["--diff"]?.let { Standardizer.parsePatch(Files.readString(Path.of(it))) } ?: Standardizer.worktreeChanges(repoRoot)
+        values["--diff"]?.let {
+            val patch=Files.readString(Path.of(it))
+            val parsed=Standardizer.parsePatch(patch)
+            codeVersion=version {
+                val identity=runCatching { repoRoot.toRealPath().toString() }.getOrNull()
+                AuditCodeVersion("supplied_patch",identity?.let { source -> ReviewFingerprint.sha256(listOf(source)) },
+                    ReviewFingerprint.sha256(listOf("supplied-patch-v1",identity,patch)))
+            }
+            parsed
+        } ?: Standardizer.captureWorktree(repoRoot).let { capture ->
+            codeVersion=version {
+                require(capture.repositoryIdentity.isNotBlank() && capture.headBefore==capture.headAfter)
+                AuditCodeVersion("worktree",ReviewFingerprint.sha256(listOf(capture.repositoryIdentity)),
+                    ReviewFingerprint.sha256(listOf("worktree-v1",capture.repositoryIdentity,
+                        capture.headBefore,capture.headAfter,capture.patches,capture.contentDigests)),capture.headAfter)
+            }
+            capture.changes
+        }
     } catch (exception:Exception) {
         val detail=exception.message?.lineSequence()?.firstOrNull()?.trim().orEmpty()
         return fail("error reading diff: ${detail.ifEmpty { exception.javaClass.simpleName }}","load-error",2)
@@ -106,7 +127,7 @@ internal fun runCheckCommand(args:List<String>,out:PrintStream,audit:KernelAudit
     audit?.passed("diff_read")
     audit?.begin("standardizer")
     val evaluated=Standardizer.evaluate(resolved.activeRules,changes)
-    audit?.checked(evaluated,workMode==WorkMode.DEV)
+    audit?.checked(evaluated,workMode==WorkMode.DEV,codeVersion)
     // DEV is a per-task downgrade: hard findings stay visible as location-rich soft notices,
     // pre-existing soft notices are retained, and only usage/load/validation/conflict errors
     // still fail. It never claims production-rule compliance.

@@ -154,7 +154,11 @@ class KnowledgeGuideAcceptanceTest {
                 assertTrue(id in guide,"$guidePath must cite $id")
             }
             assertTrue("## 相关规则" in guide,"$guidePath must explain governing rules")
-            assertTrue("## 官方来源" in guide,"$guidePath must list official sources")
+            if(guidePath=="guides/setup/ftclib.md") {
+                assertTrue("## 第一方来源与核验边界" in guide,"FTCLib vendor evidence must not imply FIRST authority")
+            } else {
+                assertTrue("## 官方来源" in guide,"$guidePath must list official sources")
+            }
             assertTrue("安全" in guide,"$guidePath must state safety or misuse boundaries")
         }
 
@@ -183,8 +187,8 @@ class KnowledgeGuideAcceptanceTest {
         assertTrue(loaded.violations.isEmpty(),loaded.violations.joinToString())
         val rookie=loaded.rules.filter { it.id.startsWith("shared.rookiebot-") }
         assertEquals(rookieIds,rookie.map { it.id }.toSet())
-        assertEquals(48,loaded.rules.size)
-        assertEquals(42,loaded.rules.count { it.status==RuleStatus.APPROVED })
+        assertEquals(52,loaded.rules.size)
+        assertEquals(46,loaded.rules.count { it.status==RuleStatus.APPROVED })
         assertEquals(6,loaded.rules.count { it.status==RuleStatus.CANDIDATE })
         rookie.forEach { rule ->
             assertEquals(RuleStatus.APPROVED,rule.status,rule.id)

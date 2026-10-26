@@ -52,7 +52,8 @@
     view:'overview',summary:null,rules:[],rulesVersion:null,selectedRule:null,detail:null,
     recent:[],audit:[],auditScope:'knowledge',auditRevision:null,auditCursor:null,
     auditNext:null,auditStack:[],selectedAudit:null,auditLoaded:false,filters:{},
-    resolveResult:null,checkResult:null,mutation:null,online:false,pollBusy:false
+    resolveResult:null,checkResult:null,mutation:null,online:false,pollBusy:false,
+    reviews:[],reviewsLoaded:false,reviewFilter:'pending',reviewCursor:null,reviewNext:null,reviewStack:[],selectedReview:null,reviewDetail:null,recheck:null
   };
   let toastTimer;
   function toast(message, error = false) {
@@ -108,7 +109,7 @@
     if (ok) $('last-refresh').textContent = '更新于 ' + new Date().toLocaleTimeString('zh-CN',{hour12:false});
   }
   function showView(view) {
-    if (!['overview','rules','resolve','audit'].includes(view)) return;
+    if (!['overview','rules','resolve','audit','reviews'].includes(view)) return;
     state.view = view;
     document.querySelectorAll('.view').forEach(node => { node.hidden = node.id !== 'view-' + view; });
     document.querySelectorAll('[data-view]').forEach(node => {
@@ -117,6 +118,7 @@
     });
     if (view === 'rules') loadRules().catch(error => toast(error.message,true));
     if (view === 'audit' && !state.auditLoaded) loadAudit().catch(error => toast(error.message,true));
+    if (view === 'reviews' && !state.reviewsLoaded) loadReviews().catch(error => toast(error.message,true));
   }
   function stat(value, label, className = '') {
     const node = el('div',className); append(node,el('div','stat-value',value ?? '—'),el('span','stat-label',label)); return node;
@@ -209,6 +211,7 @@
       if (force || auditChanged) {
         const page = await api('audit?limit=5&scope=knowledge'); state.recent = list(page.items); renderRecent();
       }
+      if ((force || auditChanged) && state.view === 'reviews') await loadReviews();
       if ((force || versionChanged || state.rulesVersion !== summary.knowledge.version) && state.view === 'rules') await loadRules(true);
       if (versionChanged && old && state.resolveResult) markResultStale($('resolve-result'));
       if (versionChanged && old && state.checkResult) markResultStale($('check-result'));
@@ -344,7 +347,19 @@
     return '队伍 ' + (context.team || '—') + ' · ' + (context.season || '—') + ' · ' + profile + ' · ' + (context.workMode || 'normal');
   }
   function reasonLabel(reason) {
-    const names = {'candidate':'候选规则不参与生效','status-candidate':'候选规则不参与生效','not-approved':'未批准','team-mismatch':'队伍不匹配','season-mismatch':'赛季不匹配','profile-mismatch':'profile 不匹配','work-mode-test':'test 模式明确排除'};
+    const names = {
+      status:'状态不是 approved（已批准），不参与本次生效',
+      team:'当前队号不在规则适用范围内',
+      season:'当前赛季不在规则适用范围内',
+      profile:'当前明确选择的 profiles 未满足规则要求',
+      candidate:'候选规则不参与生效',
+      'status-candidate':'候选规则不参与生效',
+      'not-approved':'未批准',
+      'team-mismatch':'队伍不匹配',
+      'season-mismatch':'赛季不匹配',
+      'profile-mismatch':'profile 不匹配',
+      'work-mode-test':'test 模式明确排除'
+    };
     return names[reason] || reason;
   }
   function ruleLink(id) {
@@ -368,13 +383,14 @@
         const row = el('div','result-item');
         if (kind === 'conflict') {
           append(row,el('strong','',item.topic),el('p','','最高有效层级：' + (item.effectiveLevel || '—')));
+          row.append(el('p','','这些规则在最高有效层级并列，该主题未产生生效规则。'));
           list(item.ruleIds).forEach(id => row.append(ruleLink(id)));
           if (item.authorities) row.append(el('p','mono',Object.entries(item.authorities).map(([id,authority]) => id + ': ' + authority).join('\n')));
         } else {
           row.append(ruleLink(item.id || item.ruleId));
           if (kind === 'active') append(row,el('p','',item.title),append(el('div','badge-row'),badge(human(item.authority),'outline'),badge(human(item.policyLevel),'outline')));
           if (kind === 'excluded') row.append(el('p','',list(item.reasons).map(reasonLabel).join(' · ')));
-          if (kind === 'overridden') append(row,el('p','','主题：' + item.topic + ' · 有效层级：' + item.effectiveLevel),el('p','mono','胜出规则：' + list(item.winnerIds).join(', ')));
+          if (kind === 'overridden') append(row,el('p','','主题：' + item.topic + ' · 最高有效层级：' + item.effectiveLevel),el('p','mono','同主题最高有效层级规则：' + list(item.winnerIds).join(', ')));
         }
         group.append(row);
       }); panel.append(group);
@@ -405,7 +421,8 @@
     try {
       const context = readContext('resolve');
       await runButton(event.submitter,async () => {
-        const response = await api('check',{context,diff:$('manual-diff').value}); state.checkResult = response;
+        if (state.recheck && !$('recheck-confirm').checked) throw new Error('请重新提供本次补丁，并勾选确认。历史记录不保存补丁正文。');
+        const response = await api('check',{context,diff:$('manual-diff').value,...(state.recheck ? {predecessorInvocationId:state.recheck} : {})}); state.checkResult = response;
         const node = empty($('check-result')), panel = el('div','result-panel');
         const violations = list(response.violations), soft = list(response.soft);
         append(panel,append(el('div','result-heading'),el('h2','','指定补丁检测结果'),badge(response.passed ? (soft.length ? '无硬拦截 · 仍需复核' : '未发现硬违规') : '硬违规拦截',response.passed ? soft.length ? 'warning' : 'success' : 'danger')));
@@ -573,13 +590,13 @@
     });
   }
   const stageOrder = ['parameters','knowledge_load','knowledge_validate','resolve','diff_read','standardizer','path_guard','branch_guard','citation_guard','baseline_guard','write','restore','model'];
-  function stageTrail(record) {
+  function stageTrail(record,reviewItems = []) {
     const trail = el('div','stage-trail');
     const actual = list(record.stages);
     const missing = stageOrder.filter(name => !actual.some(stage => stage.name === name));
     const stages = [...actual,...missing.map(name => ({name,status:'not_run',detail:'没有该阶段的执行证据。',missing:true}))];
     let missingHeading = false;
-    stages.forEach(stage => {
+    stages.forEach((stage,stageIndex) => {
         if (stage.missing && !missingHeading) { trail.append(el('h3','missing-stages-heading','以下阶段未记录执行')); missingHeading = true; }
         const status = lower(stage.status), node = el('div','stage-node ' + status);
         node.append(el('span','stage-indicator',status === 'passed' ? '✓' : status === 'blocked' ? '×' : status === 'not_applicable' ? '–' : '·'));
@@ -588,11 +605,16 @@
         content.append(heading);
         if (stage.category) content.append(append(el('div','badge-row'),statusBadge(stage.category)));
         if (stage.detail) content.append(el('p','',stage.detail));
-        list(stage.hits).forEach(hit => content.append(hitNode(hit,stage.category)));
+        list(stage.hits).forEach(hit => {
+          const hitElement = hitNode(hit,stage.category);
+          const reviewItem = reviewItems.find(item => item.invocationId === record.invocationId && item.stageIndex === stageIndex && ['kind','ruleId','check','path','line','detail'].every(key => (item.hit?.[key] ?? null) === (hit[key] ?? null)));
+          if (reviewItem) { const link = el('button','text-button','记录复核 / 查看历史 →'); link.onclick = () => openReview(reviewItem.itemId).catch(error => toast(error.message,true)); hitElement.append(link,reviewBadges(reviewItem)); }
+          content.append(hitElement);
+        });
         node.append(content); trail.append(node);
     }); return trail;
   }
-  function auditRecordBody(record,children) {
+  function auditRecordBody(record,children,reviewItems = []) {
     const container = el('div'), header = el('div','detail-header');
     append(header,el('div','rule-id',record.invocationId),el('h2','',recordTitle(record)),append(el('div','badge-row'),recordStatus(record),badge('生命周期：' + human(record.status),'outline'),badge('exit ' + (record.exitCode ?? '—'),'outline')));
     container.append(header);
@@ -603,7 +625,7 @@
     if (!record.endedAt) body.append(el('div','notice warning','这次调用尚未留下结束记录，可能仍在运行或进程已中断。不能按通过处理。'));
     if (['undo','discard'].includes(lower(record.metadata?.command))) body.append(el('div','notice','这是恢复事务。查看实际路径、分支及恢复阶段；恢复成功不表示执行了新的编辑 diff 检测。'));
     body.append(section('实际检测轨迹',el('p','muted small','绿色仅表示该阶段通过。缺少执行证据的阶段显示未执行；soft 与 dev 提醒保留独立类别。')));
-    body.append(stageTrail(record));
+    body.append(stageTrail(record,reviewItems));
     const snapshots = el('details','snapshot-details');
     snapshots.append(el('summary','','调用时规则快照 / ' + list(record.ruleSnapshots).length + ' 条'));
     if (!list(record.ruleSnapshots).length) snapshots.append(el('p','muted small','此调用没有记录规则快照。'));
@@ -616,7 +638,7 @@
     list(children).forEach(child => {
       const box = el('details','snapshot-details');
       box.append(el('summary','',recordTitle(child) + ' · ' + human(child.status) + ' · ' + shorten(child.invocationId)));
-      append(box,el('p','mono small muted',formatTime(child.startedAt) + ' · exit ' + (child.exitCode ?? '—')),append(el('div','property-grid'),property('模型',child.metadata?.model),property('耗时',child.durationMillis == null ? '未完成或未记录' : child.durationMillis + ' ms'),property('输入 tokens',child.inputTokens ?? '未记录'),property('输出 tokens',child.outputTokens ?? '未记录')),stageTrail(child)); childSection.append(box);
+      append(box,el('p','mono small muted',formatTime(child.startedAt) + ' · exit ' + (child.exitCode ?? '—')),append(el('div','property-grid'),property('模型',child.metadata?.model),property('耗时',child.durationMillis == null ? '未完成或未记录' : child.durationMillis + ' ms'),property('输入 tokens',child.inputTokens ?? '未记录'),property('输出 tokens',child.outputTokens ?? '未记录')),stageTrail(child,reviewItems)); childSection.append(box);
     }); body.append(childSection); container.append(body); return container;
   }
   async function loadAuditDetail(id,scroll = true) {
@@ -624,9 +646,193 @@
     state.selectedAudit = id; renderAuditList();
     const response = await api('audit/detail?' + new URLSearchParams({id,scope}));
     if (state.selectedAudit !== id || state.auditScope !== scope) return;
-    empty($('audit-detail')).append(auditRecordBody(response.record,response.children));
+    empty($('audit-detail')).append(auditRecordBody(response.record,response.children,list(response.reviewItems)));
     if (scroll && matchMedia('(max-width:650px)').matches) $('audit-detail').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches ? 'auto' : 'smooth',block:'start'});
   }
+  const reviewDecisions = {verified:'已核对',needs_changes:'需修改',not_applicable:'本次不适用'};
+  const reviewVersions = {snapshot:'历史快照',stale:'需重新复核',unknown:'版本未知'};
+  const reviewDrafts = new Map();
+  function reviewDecision(item) { return reviewDecisions[item.latestReview?.decision] || '待复核'; }
+  function reviewBadges(item) {
+    const decision = item.latestReview?.decision;
+    return append(el('div','badge-row'),badge(reviewDecision(item),decision === 'verified' ? 'success' : decision === 'needs_changes' ? 'danger' : decision ? 'info' : 'warning'),badge(reviewVersions[item.versionState] || '版本未知',item.versionState === 'stale' ? 'warning' : 'outline'));
+  }
+  function reviewDraft(item) {
+    if (!reviewDrafts.has(item.itemId)) reviewDrafts.set(item.itemId,{decision:'',reviewer:'',reason:'',links:'',pending:null,preview:null,busy:false,message:''});
+    return reviewDrafts.get(item.itemId);
+  }
+  function reviewHealth(response) {
+    const node = empty($('reviews-health'));
+    [['源审计',response.auditHealth],['复核历史',response.reviewHealth]].forEach(([name,health]) => {
+      if (health && !health.ok) { const box = el('div','notice warning'); append(box,el('strong','',name + '不完整，部分事项可能只读')); appendErrors(box,health.warnings); node.append(box); }
+    });
+    if (response.indexComplete === false) node.append(el('p','notice warning','事项索引尚未完整。版本关联可能未知；当前页不代表全部事项。请继续翻页或稍后刷新。'));
+  }
+  async function loadReviews(reset = false) {
+    if (reset) { state.reviewCursor = null; state.reviewStack = []; }
+    const params = new URLSearchParams({filter:state.reviewFilter,limit:'25'});
+    if (state.reviewCursor) params.set('cursor',state.reviewCursor);
+    const response = await api('reviews?' + params);
+    state.reviews = list(response.items); state.reviewNext = response.nextCursor || null; state.reviewsLoaded = true;
+    reviewHealth(response); renderReviews();
+    $('reviews-prev').disabled = !state.reviewStack.length; $('reviews-next').disabled = !state.reviewNext;
+    $('reviews-page').textContent = '第 ' + (state.reviewStack.length + 1) + ' 页';
+    $('reviews-count').textContent = '本页 ' + state.reviews.length + ' 项 · 仅当前筛选返回范围' + (state.reviewNext ? '，还有后续页' : '');
+  }
+  function renderReviews() {
+    const focusedId = $('reviews-list').contains(document.activeElement) ? document.activeElement.dataset.itemId : null;
+    const node = empty($('reviews-list'));
+    if (!state.reviews.length) node.append(emptyState('本页没有匹配事项',state.reviewNext ? '索引仍有后续范围，请继续下一页。' : '执行包含 soft 或 dev 降级提醒的检查后，在此逐项记录复核。'));
+    state.reviews.forEach(item => {
+      const row = el('button','audit-item' + (state.selectedReview === item.itemId ? ' selected' : ''));
+      row.dataset.itemId = item.itemId; row.setAttribute('aria-pressed',String(state.selectedReview === item.itemId));
+      append(row,el('div','call-title',item.hit?.ruleId || '检查提醒'),el('div','call-meta',formatTime(item.source?.startedAt) + ' · ' + shorten(item.invocationId)),append(el('div','badge-row'),badge(lower(item.hit?.kind) === 'dev_downgrade' ? 'dev 降级提醒' : lower(item.hit?.kind) === 'soft' ? 'soft 提醒' : '原提醒类型未知','warning'),badge('原检测阶段：' + human(item.originalStatus),'outline')),reviewBadges(item),el('p','muted small',contextLabel(item.source?.metadata?.context)));
+      if (!item.canReview) row.append(el('p','danger-text small','只读：' + (item.disabledReason || '来源不可校验')));
+      row.onclick = () => openReview(item.itemId).catch(error => toast(error.message,true)); node.append(row);
+      if (focusedId === item.itemId) row.focus({preventScroll:true});
+    });
+  }
+  async function openReview(id, scroll = true) {
+    state.selectedReview = id; showView('reviews'); renderReviews();
+    try {
+      const response = await api('reviews/detail?itemId=' + encodeURIComponent(id));
+      if (state.selectedReview !== id) return;
+      state.reviewDetail = response; renderReviewDetail();
+      if (scroll && matchMedia('(max-width:650px)').matches) $('review-detail').scrollIntoView({block:'start',behavior:'auto'});
+    } catch (error) {
+      if (state.selectedReview === id) {
+        const draft = reviewDrafts.get(id);
+        if (draft) { draft.message = '读取失败，草稿仍保留：' + error.message; if (state.reviewDetail?.item?.itemId === id) renderReviewDetail(); }
+        else empty($('review-detail')).append(errorNotice(error,'复核详情读取失败'));
+      }
+      throw error;
+    }
+  }
+  function safeEvidenceUrl(value) {
+    if (typeof value !== 'string' || value.length > 2048 || /[\u0000-\u0020\u007f]/.test(value)) return null;
+    try {
+      const url = new URL(value);
+      if (!['http:','https:'].includes(url.protocol) || !url.hostname || url.username || url.password) return null;
+      const sensitive = /^(token|api_key|access_token|password|authorization)$/i;
+      const fragment = url.hash.slice(1).replace(/^\?/, '');
+      if ([...url.searchParams.keys(),...new URLSearchParams(fragment).keys()].some(key => sensitive.test(key))) return null;
+      return url.href;
+    } catch (_error) { return null; }
+  }
+  function reviewLinks(urls) {
+    const node = el('div','review-links');
+    if (!list(urls).length) node.append(el('p','muted small','未提供链接'));
+    list(urls).forEach(value => {
+      const href = safeEvidenceUrl(value);
+      if (href) { const link = el('a','',value); link.href = href; link.target = '_blank'; link.rel = 'noopener noreferrer'; node.append(link); }
+      else node.append(el('p','muted small','链接不可打开：' + value));
+    }); return node;
+  }
+  function reviewRecord(record) {
+    const node = el('div','review-record');
+    append(node,append(el('div','badge-row'),badge(reviewDecisions[record.decision] || record.decision,'outline'),badge('revision ' + record.revision,'outline')),el('p','small',record.reviewer + ' · ' + formatTime(record.createdAt)),el('p','prose',record.reason),reviewLinks(record.evidenceUrls));
+    if (record.sanitized) node.append(el('p','notice warning','保存内容已遮盖疑似敏感值；这里显示服务端最终保存内容。'));
+    return node;
+  }
+  function reviewPayload(item,draft) {
+    const reviewer = draft.reviewer.trim(), reason = draft.reason.trim();
+    if (!reviewDecisions[draft.decision]) throw new Error('请选择本次复核结论。');
+    if (!reviewer || reviewer.length > 120) throw new Error('复核人必填，最多 120 字符。');
+    if (!reason || reason.length > 4000) throw new Error('复核理由必填，最多 4000 字符。');
+    if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(reviewer + reason)) throw new Error('复核人或理由包含不允许的控制字符。');
+    const evidenceUrls = draft.links.split('\n').map(value => value.trim()).filter(Boolean);
+    if (evidenceUrls.length > 8) throw new Error('证据链接最多 8 条，每行一条。');
+    if (evidenceUrls.some(value => !safeEvidenceUrl(value))) throw new Error('链接必须是完整 http(s) 地址，不能含账号密码、控制字符或敏感凭据参数。');
+    return {itemId:item.itemId,invocationId:item.invocationId,sourceDigest:item.sourceDigest,expectedRevision:item.latestReview?.revision || 0,decision:draft.decision,reviewer,reason,evidenceUrls};
+  }
+  function renderReviewDetail() {
+    const response = state.reviewDetail, item = response?.item;
+    if (!item || state.selectedReview !== item.itemId) return;
+    const draft = reviewDraft(item), node = empty($('review-detail'));
+    if (response.auditHealth || response.reviewHealth || response.indexComplete !== undefined) reviewHealth(response);
+    const header = el('div','detail-header');
+    append(header,el('div','rule-id',item.itemId),el('h2','',item.hit?.ruleId || '检查提醒'),append(el('div','badge-row'),badge(lower(item.hit?.kind) === 'dev_downgrade' ? 'dev 降级提醒' : lower(item.hit?.kind) === 'soft' ? 'soft 提醒' : '原提醒类型未知','warning'),badge('原检测阶段：' + human(item.originalStatus),'outline'),badge('exit ' + (item.source?.exitCode ?? '—'),'outline')),reviewBadges(item)); node.append(header);
+    const body = el('div','detail-body'); node.append(body);
+    append(body,section('原检测',item.hit ? hitNode(item.hit,'soft') : el('p','notice warning','来源检查已缺失，无法确认原命中类型与位置。')),el('p','muted small',contextLabel(item.source?.metadata?.context)));
+    if (lower(item.hit?.kind) === 'soft' && !item.hit?.path) body.append(el('p','notice','规则级提醒；原检测未提供精确位置。'));
+    if (lower(item.hit?.kind) === 'dev_downgrade') body.append(el('p','notice warning','dev 降级提醒始终保留其原检查类型与位置，复核不会解除硬检查语义。'));
+    body.append(section('检查版本',append(el('div','property-grid'),property('检查时间',formatTime(item.source?.startedAt)),property('输入类型',item.codeVersion?.kind || '未记录'),property('输入摘要',item.codeVersion?.inputDigest,true),property('知识版本',item.source?.knowledgeVersion,true))));
+    if (item.versionState === 'unknown') body.append(el('p','notice warning',item.latestReview ? '历史复核，版本未知。此声明不计为当前代码已核对。' : '版本未知；可以对可校验的历史提醒作出声明，但不能作为当前代码结论。'));
+    if (item.versionState === 'stale') body.append(el('p','notice warning','后续检查输入或知识版本已变化，需要重新复核。旧声明只属于原快照。'));
+    const auditLink = el('button','text-button','查看原调用 →'); auditLink.type = 'button'; auditLink.onclick = () => openAudit({invocationId:item.invocationId}); body.append(auditLink);
+    if (item.codeVersion?.kind === 'supplied_patch' && lower(item.source?.metadata?.entrypoint) === 'dashboard') {
+      const recheck = el('button','text-button','重新检查此补丁 →'); recheck.type = 'button'; recheck.onclick = () => prepareRecheck(item); body.append(recheck);
+    }
+    body.append(section('最近声明',item.latestReview ? reviewRecord(item.latestReview) : el('p','muted small','尚未记录复核声明')));
+    const history = el('details','snapshot-details'); history.append(el('summary','','复核历史 / ' + list(response.history).length + ' 条'));
+    list(response.history).forEach(record => history.append(reviewRecord(record))); body.append(history);
+    if (!item.canReview) body.append(el('p','notice danger','当前只读：' + (item.disabledReason || '来源不可校验') + '。已有历史与草稿仍保留。' + (item.canRetry === true ? '若刚才保存未确认，可重试同一声明；新声明暂不可写。' : '')));
+    const form = el('form','review-form'); form.setAttribute('aria-label','记录独立复核声明');
+    const decisionLabel = el('label','','本次结论'), decision = el('select'); decision.id = 'review-decision'; decision.required = true; decision.append(new Option('请选择结论',''));
+    Object.entries(reviewDecisions).forEach(([value,label]) => decision.append(new Option(label,value))); decision.value = draft.decision; decisionLabel.append(decision);
+    const reviewerLabel = el('label','','复核人（身份声明，最多 120 字符）'), reviewer = el('input'); reviewer.id = 'review-reviewer'; reviewer.maxLength = 120; reviewer.required = true; reviewer.autocomplete = 'off'; reviewer.value = draft.reviewer; reviewerLabel.append(reviewer);
+    const reasonLabel = el('label','','复核理由（必填，最多 4000 字符）'), reason = el('textarea'); reason.id = 'review-reason'; reason.maxLength = 4000; reason.required = true; reason.rows = 5; reason.value = draft.reason; reasonLabel.append(reason);
+    const linksLabel = el('label','','证据链接（可选，最多 8 条；每行一条，每条最多 2048 字符）'), links = el('textarea'); links.id = 'review-links'; links.maxLength = 16391; links.rows = 3; links.value = draft.links; links.placeholder = 'https://…'; linksLabel.append(links);
+    const status = el('div','review-status'); status.id = 'review-status'; status.setAttribute('role','status'); status.setAttribute('aria-live','polite'); status.textContent = draft.message;
+    const preview = el('div','review-preview'); preview.id = 'review-preview'; preview.setAttribute('aria-live','polite');
+    const previewButton = el('button','button','预览复核声明'); previewButton.type = 'submit';
+    const save = el('button','button primary','保存复核'); save.id = 'review-save'; save.type = 'button';
+    append(form,decisionLabel,reviewerLabel,reasonLabel,linksLabel,el('p','muted small','身份仅为操作者声明。链接不会被抓取；未提供链接会如实记录。修改结论会追加历史，不覆盖原记录。'),status,preview,append(el('div','review-form-actions'),previewButton,save)); body.append(section('记录本次复核',form));
+    const controls = [decision,reviewer,reason,links]; controls.forEach(control => { control.disabled = draft.busy; });
+    function updatePreview() {
+      empty(preview);
+      if (draft.preview) {
+        append(preview,el('h3','','保存前核对完整声明'),el('p','small','目标事项：' + item.itemId),el('p','small','预期 revision：' + draft.preview.expectedRevision),el('p','small','结论：' + reviewDecisions[draft.preview.decision]),el('p','prose','复核人：' + draft.preview.reviewer),el('p','prose','理由：' + draft.preview.reason),reviewLinks(draft.preview.evidenceUrls));
+      }
+      const canSubmit = item.canReview || (item.canRetry === true && draft.pending !== null);
+      save.disabled = !draft.preview || !canSubmit || draft.busy; previewButton.disabled = draft.busy || !canSubmit;
+    }
+    controls.forEach(control => { control.oninput = control.onchange = () => {
+      Object.assign(draft,{decision:decision.value,reviewer:reviewer.value,reason:reason.value,links:links.value,preview:null,pending:null,message:'草稿已修改，尚未保存。'}); status.textContent = draft.message; updatePreview();
+    }; });
+    form.onsubmit = event => { event.preventDefault(); try { draft.preview = draft.pending ? Object.fromEntries(Object.entries(draft.pending).filter(([key]) => key !== 'reviewId')) : reviewPayload(item,draft); draft.message = '请核对下方完整声明，再保存复核。'; status.textContent = draft.message; updatePreview(); } catch (error) { status.textContent = error.message; } };
+    save.onclick = () => saveReview(item,draft); updatePreview();
+  }
+  async function saveReview(item,draft) {
+    if ((!item.canReview && !(item.canRetry === true && draft.pending !== null)) || !draft.preview || draft.busy) return;
+    // Keep the exact UUID and payload after transport/storage failures. Edits invalidate both.
+    if (!draft.pending) draft.pending = {reviewId:crypto.randomUUID(),...draft.preview};
+    draft.busy = true; draft.message = '正在保存，收到持久化确认前不视为已保存。'; renderReviewDetail();
+    try {
+      const response = await api('reviews/record',draft.pending);
+      const record = response.record;
+      if (!record) throw new Error('服务端未返回持久化记录，请保留草稿后重试。');
+      Object.assign(draft,{decision:record.decision,reviewer:record.reviewer,reason:record.reason,links:list(record.evidenceUrls).join('\n'),preview:null,pending:null,message:'复核已保存（revision ' + record.revision + '）' + (record.sanitized ? '；疑似敏感值已遮盖，显示最终保存内容。' : '。')});
+      if (state.reviewDetail?.item?.itemId === item.itemId) {
+        state.reviewDetail = {item:response.item || {...item,latestReview:record},history:[...list(state.reviewDetail.history).filter(old => old.reviewId !== record.reviewId),record]};
+      }
+      try { await loadReviews(); } catch (error) { draft.message += ' 列表刷新失败：' + error.message; }
+    } catch (error) {
+      draft.message = '尚未确认保存，草稿已保留：' + error.message;
+      if (error.httpStatus === 409) {
+        draft.pending = null; draft.preview = null;
+        try {
+          const latest = await api('reviews/detail?itemId=' + encodeURIComponent(item.itemId));
+          if (state.selectedReview === item.itemId) state.reviewDetail = latest;
+          draft.message = '复核记录或来源已变化，已读取最新历史；草稿未改变。请核对后重新预览并保存。';
+        } catch (refreshError) { draft.message += ' 最新历史读取失败：' + refreshError.message; }
+      }
+    } finally { draft.busy = false; if (state.selectedReview === item.itemId) renderReviewDetail(); }
+  }
+  function prepareRecheck(item) {
+    const context = item.source?.metadata?.context;
+    state.recheck = item.invocationId; showView('resolve');
+    if (context) {
+      $('resolve-team').value = context.team || ''; $('resolve-season').value = context.season || '';
+      const profiles = list(context.profiles), profile = ['ftclib-command','rookiebot','command-based','simple-opmode'].find(value => profiles.includes(value));
+      $('resolve-profile').value = profiles.length ? profile || '' : 'generic'; $('resolve-mode').value = context.workMode || 'normal';
+    }
+    const notice = empty($('recheck-context')); notice.hidden = false;
+    append(notice,el('p','','关联前次调用 ' + item.invocationId + '。历史不保存补丁正文，请重新提供本次补丁，并核对上下文。当前编辑区保留你已填写的内容。'));
+    const cancel = el('button','text-button','取消关联，作为独立补丁检测'); cancel.type = 'button'; cancel.onclick = () => { state.recheck = null; notice.hidden = true; $('recheck-confirm-label').hidden = true; }; notice.append(cancel);
+    $('recheck-confirm').checked = false; $('recheck-confirm-label').hidden = false; $('manual-diff').focus();
+  }
+
   function bind() {
     document.querySelectorAll('[data-view]').forEach(button => { button.onclick = () => showView(button.dataset.view); });
     document.querySelectorAll('[data-go]').forEach(button => { button.onclick = () => showView(button.dataset.go); });
@@ -649,6 +855,10 @@
     $('preview-with-context').onchange = () => { $('preview-context').hidden = !$('preview-with-context').checked; };
     $('apply-preview').onclick = applyMutation;
     $('approver-role').onchange = () => { $('approver-team').required = $('approver-role').value === 'team_software_lead'; };
+    $('reviews-refresh').onclick = async () => { try { await loadReviews(true); if (state.selectedReview) await openReview(state.selectedReview,false); } catch (error) { toast(error.message,true); } };
+    $('reviews-filter').onchange = () => { state.reviewFilter = $('reviews-filter').value; loadReviews(true).catch(error => toast(error.message,true)); };
+    $('reviews-prev').onclick = async () => { const cursor = state.reviewCursor; state.reviewCursor = state.reviewStack.pop() ?? null; try { await loadReviews(); } catch (error) { state.reviewStack.push(state.reviewCursor); state.reviewCursor = cursor; toast(error.message,true); } };
+    $('reviews-next').onclick = async () => { if (!state.reviewNext) return; const cursor = state.reviewCursor; state.reviewStack.push(cursor); state.reviewCursor = state.reviewNext; try { await loadReviews(); } catch (error) { state.reviewStack.pop(); state.reviewCursor = cursor; toast(error.message,true); } };
     $('audit-refresh').onclick = () => loadAudit(true).catch(error => toast(error.message,true));
     $('audit-scope').onchange = () => {
       state.auditScope = $('audit-scope').value; state.auditLoaded = false; state.selectedAudit = null;

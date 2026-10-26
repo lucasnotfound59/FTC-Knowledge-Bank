@@ -190,6 +190,9 @@ def integrate(args):
         if "profiles" in config:
             plan["profiles"]=config["profiles"]
         if args.dry_run:
+            if getattr(args,"prepare_only",False):
+                from installation_workflow import planned
+                return planned(root,plan)
             return 0,plan
         validator(source)  # Dependency/schema preflight, before changing the target.
         print(json.dumps({"plan":plan},ensure_ascii=False),file=sys.stderr)
@@ -204,12 +207,21 @@ def integrate(args):
         if not old or old["source"]["commit"]!=commit:
             git(root,"add","--",SOURCE)
         write_files(root,files,before)
+    if getattr(args,"prepare_only",False):
+        from installation_workflow import prepare
+        return prepare(root)
     from verify import verify
     return verify(root)
 
 
 def main(argv=None):
-    parser=argparse.ArgumentParser(description=__doc__)
+    argv=list(sys.argv[1:] if argv is None else argv)
+    staged=any(len(key)>2 and "--prepare-only".startswith(key) for value in argv for key in [value.split("=",1)[0]])
+    if staged:
+        from installation_workflow import Parser,WorkflowError,failure
+        parser=Parser(description=__doc__,allow_abbrev=False)
+    else:
+        parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project",required=True)
     parser.add_argument("--team")
     parser.add_argument("--season")
@@ -219,12 +231,19 @@ def main(argv=None):
     profiles.add_argument("--profile",action="append",help="Explicit project profile; repeat to select several compatible profiles")
     profiles.add_argument("--generic-profile",action="store_true",help="Explicitly select no project profiles")
     parser.add_argument("--dry-run",action="store_true")
-    args=parser.parse_args(argv)
+    parser.add_argument("--prepare-only",action="store_true",help="Install/build only, then connect the actual Dashboard before explicit acceptance")
+    try:
+        args=parser.parse_args(argv)
+    except Exception as error:
+        if not staged:raise
+        code,payload=failure("prepare","usage");print(json.dumps(payload,ensure_ascii=False));return code
     try:
         code,payload=integrate(args)
         print(json.dumps(payload,ensure_ascii=False,indent=2))
         return code
     except (IntegrationError,OSError,ValueError) as error:
+        if staged:
+            code,payload=failure("prepare","integration_error");print(json.dumps(payload,ensure_ascii=False));return code
         print(json.dumps({"installationOk":False,"error":str(error),
                           "recovery":"No user files were reset. Inspect git status; build failures can be retried with the same command."},ensure_ascii=False))
         return 2

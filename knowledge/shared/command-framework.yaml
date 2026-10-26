@@ -1,0 +1,157 @@
+# Proposed engineering policies; no approval is implied by the vendor evidence.
+schemaVersion: 4
+rules:
+  - id: shared.command-runtime-boundary
+    topic: command-runtime-boundary
+    title: 明确 Command-Based 运行时归属并复用项目接口
+    instruction: >-
+      在已选择 Command-Based 架构且本次涉及命令结构时，先确认项目使用自有 Command/Subsystem/scheduler 还是指定版本的 FTCLib 运行时，并复用项目现有接口。
+      类 FTCLib 的自有实现不因此需要添加 FTCLib 依赖或照搬其包名、singleton、CommandOpMode 基类或 DSL；使用 FTCLib 时按所选精确版本的 API 和生命周期集成，不让两套 scheduler 同时拥有同一命令或机构。
+      本条不要求普通或测试 OpMode 改用命令架构，也不扩大其他已批准规则的适用范围。
+    rationale: >-
+      FTCLib 固定源码展示了一种运行时和 OpMode 适配方式，不是所有队伍实现必须复制的接口。运行时归属及避免双重资源拥有是拟议共享工程约定，不是 FIRST 官方要求。
+    status: approved
+    approval:
+      approver: "lucas"
+      role: overall_software_lead
+      approvedAt: 2026-10-23T07:52:40.778561Z
+    authority: shared
+    policyLevel: shared
+    applicability:
+      teams: []
+      seasons: []
+      profiles: [command-based]
+    evidence:
+      - type: git
+        repository: FTCLib/FTCLib
+        commit: 98e921bf9eac506c2bbe80a0cddf51ae33f1cbb6
+        file: core/src/main/java/com/arcrobotics/ftclib/command/CommandOpMode.java
+        symbol: runOpMode
+    reviewTriggers:
+      - paths: ["TeamCode/src/main/java/**/*.java"]
+        addedLinePatterns:
+          - '\b(?:CommandScheduler|CommandOpMode|Subsystem|SubsystemBase|CommandBase)\b'
+          - '\b(?:extends|implements)\s+Command\b'
+          - '\.(?:schedule|setDefaultCommand|registerSubsystem)\s*\('
+
+  - id: shared.command-scheduler-lifecycle
+    topic: command-scheduler-lifecycle
+    title: 明确调度生命周期与逐项安全清理
+    instruction: >-
+      对已采用命令调度的 OpMode，明确唯一生命周期 owner、INIT 装配、START 后周期调度和 STOP 边界；INIT 中如需周期行为，必须明确允许的动作及安全约束。
+      正常结束、中断及初始化/执行异常都应尝试停止接收新调度、取消活动命令并逐项将已拥有机构置于适合机构的安全输出，确保某项 cleanup 抛错仍尝试其他独立项，保留原始故障及清理失败诊断，停止后的旧实例不得再次驱动输出。
+      必须核对所用运行时实际保证：FTCLib v2.1.1 的 CommandOpMode 正常循环结束后调用 reset，但 scheduler.reset 仅清 singleton，不等于 cancel/end，也没有 finally 异常清理保证。需要补足时在项目既有生命周期适配层处理，不默认修改 vendor 源码或更换 OpMode 基类；本条不要求未采用命令机制的测试 OpMode 采用架构。
+    rationale: >-
+      固定 FTCLib 源码支持生命周期调用顺序和 reset 的有限含义；异常路径全量清理、保留原故障及旧实例失效是本库拟议的更强工程政策，不能声称 vendor 已实现。安全输出必须按机构评估，不能一律假定断电或零值安全。
+    status: approved
+    approval:
+      approver: "lucas"
+      role: overall_software_lead
+      approvedAt: 2026-10-23T07:52:41.004194Z
+    authority: shared
+    policyLevel: shared
+    applicability:
+      teams: []
+      seasons: []
+      profiles: [command-based]
+    evidence:
+      - type: git
+        repository: FTCLib/FTCLib
+        commit: 98e921bf9eac506c2bbe80a0cddf51ae33f1cbb6
+        file: core/src/main/java/com/arcrobotics/ftclib/command/CommandOpMode.java
+        symbol: runOpMode
+      - type: git
+        repository: FTCLib/FTCLib
+        commit: 98e921bf9eac506c2bbe80a0cddf51ae33f1cbb6
+        file: core/src/main/java/com/arcrobotics/ftclib/command/CommandScheduler.java
+        symbol: reset
+    reviewTriggers:
+      - paths: ["TeamCode/src/main/java/**/*.java"]
+        addedLinePatterns:
+          - '\b(?:CommandScheduler|CommandOpMode)\b'
+          - '\b(?:scheduler|commandScheduler)\s*\.\s*(?:run|reset|cancelAll|shutdown|close)\s*\('
+      - paths: ["TeamCode/src/main/java/**/*Scheduler.java", "TeamCode/src/main/java/**/*CommandOpMode.java"]
+        addedLinePatterns: []
+
+  - id: shared.command-default-resumption
+    topic: command-default-resumption
+    title: 明确 default command 的资源门控与恢复语义
+    instruction: >-
+      已采用 default command 时，声明其全部 requirements，明确被占用命令抢占、结束/中断后的恢复时机以及安全输出；连续操控在每次执行读取实时输入，而非构造时快照。
+      对自有 scheduler，default 仅在其全部 requirements 空闲时恢复，不因某个注册资源空闲而抢占其他仍被使用的资源。
+      对 FTCLib 等 vendor 运行时，先核对固定版本的实际 default 语义：FTCLib v2.1.1 只检查注册 subsystem 是否空闲，随后 schedule(default) 仍可能抢占其他 requirements 上可中断的命令。使用者应优先让 default 只占其注册资源，或在应用层明确协调多资源 default，不能假定库自带全资源空闲门控，也不默认要求修改 vendor 源码。
+      本条仅约束已存在或正在实现的 default 机制，不强制普通或测试 OpMode 引入 default 或特定基类。
+    rationale: >-
+      固定源码 setDefaultCommand 校验注册资源且 default 不应结束，run 和 schedule 展示其实际恢复/抢占方式。自有 scheduler 的全资源空闲门控是拟议工程约定，强于 vendor 默认实现；实时输入及安全输出需语义复核，关键词不能证明正确。
+    status: approved
+    approval:
+      approver: "lucas"
+      role: overall_software_lead
+      approvedAt: 2026-10-23T07:52:41.214310Z
+    authority: shared
+    policyLevel: shared
+    applicability:
+      teams: []
+      seasons: []
+      profiles: [command-based]
+    evidence:
+      - type: git
+        repository: FTCLib/FTCLib
+        commit: 98e921bf9eac506c2bbe80a0cddf51ae33f1cbb6
+        file: core/src/main/java/com/arcrobotics/ftclib/command/CommandScheduler.java
+        symbol: setDefaultCommand
+      - type: git
+        repository: FTCLib/FTCLib
+        commit: 98e921bf9eac506c2bbe80a0cddf51ae33f1cbb6
+        file: core/src/main/java/com/arcrobotics/ftclib/command/CommandScheduler.java
+        symbol: run
+      - type: git
+        repository: FTCLib/FTCLib
+        commit: 98e921bf9eac506c2bbe80a0cddf51ae33f1cbb6
+        file: core/src/main/java/com/arcrobotics/ftclib/command/CommandScheduler.java
+        symbol: schedule
+    reviewTriggers:
+      - paths: ["TeamCode/src/main/java/**/*.java"]
+        addedLinePatterns:
+          - '\b(?:setDefaultCommand|defaultCommand|getDefaultCommand|addRequirements|getRequirements|DoubleSupplier)\b'
+      - paths: ["TeamCode/src/main/java/**/*Scheduler.java"]
+        addedLinePatterns: []
+
+  - id: shared.command-scheduler-reentrancy
+    topic: command-scheduler-reentrancy
+    title: 自有 scheduler 的重入、初始化失败与结束幂等
+    instruction: >-
+      仅在实现或修改自有 scheduler 时，明确 initialize/execute/isFinished/end 等 callback 内 schedule/cancel 的生效顺序，使用延迟队列、快照或等价设计避免遍历集合时被 callback 修改。
+      initialize 失败时不得留下活动登记或资源占用，并尝试失败命令已触及机构的安全清理；同一次命令执行最多结束一次，callback 重入及停止期间排队的操作不得复活已停止运行时。
+      通过可观察事件轨迹验证重入、冲突、初始化失败和多个 cleanup 抛错的行为。采用 FTCLib 运行时而未修改其实现时，本条不要求重写 vendor scheduler；普通或测试 OpMode 也不因此必须采用命令架构。
+    rationale: >-
+      FTCLib 固定源码 m_inRunLoop、m_toSchedule、m_toCancel 展示部分周期 callback 的延迟处理，但不提供所有 callback 重入或异常安全保证。全 callback 时序、失败资源释放、结束幂等和清理隔离是拟议自有运行时工程政策，不能从 vendor 的局部队列推定已实现。
+    status: approved
+    approval:
+      approver: "lucas"
+      role: overall_software_lead
+      approvedAt: 2026-10-23T07:52:41.423209Z
+    authority: shared
+    policyLevel: shared
+    applicability:
+      teams: []
+      seasons: []
+      profiles: [command-based]
+    evidence:
+      - type: git
+        repository: FTCLib/FTCLib
+        commit: 98e921bf9eac506c2bbe80a0cddf51ae33f1cbb6
+        file: core/src/main/java/com/arcrobotics/ftclib/command/CommandScheduler.java
+        symbol: run
+      - type: git
+        repository: FTCLib/FTCLib
+        commit: 98e921bf9eac506c2bbe80a0cddf51ae33f1cbb6
+        file: core/src/main/java/com/arcrobotics/ftclib/command/CommandScheduler.java
+        symbol: initCommand
+    reviewTriggers:
+      - paths: ["TeamCode/src/main/java/**/*Scheduler.java"]
+        addedLinePatterns: []
+      - paths: ["TeamCode/src/main/java/**/*.java"]
+        addedLinePatterns:
+          - '\b(?:m_inRunLoop|m_toSchedule|m_toCancel|pendingSchedules|pendingCancels)\b'
+          - '\b(?:class|interface)\s+\w*Scheduler\b'

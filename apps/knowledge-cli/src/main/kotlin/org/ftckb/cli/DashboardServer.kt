@@ -25,9 +25,11 @@ class DashboardServer(
     private val options:DashboardOptions,
     private val auditStore:AuditStore=dashboardAuditStore(options.knowledge),
     private val unscopedStore:AuditStore=dashboardAuditStore(null),
+    reviewStore:ReviewStore?=null,
     private val diagnostics:(String)->Unit={ System.err.println(it) }
 ):AutoCloseable {
     private val workspace=KnowledgeWorkspace(options.knowledge)
+    private val reviewService=DashboardReviews(auditStore,reviewStore ?: FileReviewStore((auditStore as? FileAuditStore)?.partitionPath?.parent ?: defaultAuditDirectory(),options.knowledge,diagnostics))
     init {
         require(options.port in 0..65535)
         require(Files.isDirectory(options.knowledge) && Files.isReadable(options.knowledge)) { "Knowledge directory is unavailable" }
@@ -77,7 +79,7 @@ class DashboardServer(
                         contentType?.size!=1 || !contentType.single().substringBefore(';').trim().equals("application/json",true) -> DashboardProblem(400,"malformed_request","POST requires application/json")
                         else -> null
                     }
-                    if (bodyProblem==null) try { body=readBody(x) } catch (p:DashboardProblem) { bodyProblem=p }
+                    if (bodyProblem==null) try { body=readBody(x,if (path=="/api/dashboard/reviews/record") 64*1024 else MAX_BODY) } catch (p:DashboardProblem) { bodyProblem=p }
                     val command=when(path.substringAfterLast('/')) {
                         "preview" -> mutationCommand(body?.get("action")?.takeIf { it.isTextual }?.asText())
                         "apply" -> synchronized(mutationLock) { previews[body?.get("previewId")?.asText()]?.preview?.action?.name?.lowercase(java.util.Locale.ROOT)?.let(::mutationCommand) } ?: "rule_edit"
@@ -85,6 +87,8 @@ class DashboardServer(
                     }
                     val payload=if (path.endsWith("/shutdown")) {
                         bodyProblem?.let { throw it }; DashboardJson.fields(body!!,emptySet()); emptyMap()
+                    } else if (path=="/api/dashboard/reviews/record") {
+                        bodyProblem?.let { throw it }; reviewService.record(body!!)
                     } else audited(command,body) { trace ->
                         bodyProblem?.let { throw it }
                         post(path,body!!,trace)
@@ -115,11 +119,11 @@ class DashboardServer(
         val values=x.requestHeaders["Authorization"] ?: return false
         return values.size==1 && MessageDigest.isEqual(values.single().toByteArray(StandardCharsets.UTF_8),("Bearer $token").toByteArray(StandardCharsets.UTF_8))
     }
-    private fun readBody(x:HttpExchange):JsonNode {
+    private fun readBody(x:HttpExchange,maxBytes:Int=MAX_BODY):JsonNode {
         val length=x.requestHeaders.getFirst("Content-Length")
-        if (length!=null && (length.toLongOrNull()==null || length.toLong()>MAX_BODY)) throw DashboardProblem(400,"body_too_large","Body exceeds 1 MiB")
-        val bytes=x.requestBody.readNBytes(MAX_BODY+1)
-        if (bytes.size>MAX_BODY) throw DashboardProblem(400,"body_too_large","Body exceeds 1 MiB")
+        if (length!=null && (length.toLongOrNull()==null || length.toLong()>maxBytes)) throw DashboardProblem(400,"body_too_large","Body exceeds permitted size")
+        val bytes=x.requestBody.readNBytes(maxBytes+1)
+        if (bytes.size>maxBytes) throw DashboardProblem(400,"body_too_large","Body exceeds permitted size")
         return try {
             DashboardJson.mapper.readTree(bytes)?.also { if (!it.isObject) throw IllegalArgumentException() }
                 ?: throw IllegalArgumentException()
@@ -144,6 +148,17 @@ class DashboardServer(
         else -> throw DashboardProblem(400,"malformed_request","Unknown audit scope")
     }
     private fun get(path:String,q:Map<String,String>):Map<String,Any?> =when(path) {
+        "/api/dashboard/identity" -> {
+            queryFields(q,emptySet());val s=workspace.snapshot()
+            val actual=auditStore as? FileAuditStore
+            mapOf("identitySchemaVersion" to 1,
+                "knowledge" to mapOf("root" to s.root.toString(),"version" to s.version,"fileDigests" to s.fileDigests,
+                    "valid" to s.valid,"ruleCount" to s.rules.size),
+                // These paths come from the bound store, including constructor injection.
+                "audit" to mapOf("kind" to if(actual==null) "unknown" else "file",
+                    "root" to actual?.partitionPath?.parent?.toString(),"partition" to actual?.partitionPath?.toString(),
+                    "health" to auditStore.summary().health))
+        }
         "/api/dashboard/summary" -> {
             queryFields(q,emptySet()); val s=workspace.snapshot()
             mapOf("knowledge" to mapOf("root" to s.root.toString(),"version" to s.version,"valid" to s.valid,
@@ -170,7 +185,15 @@ class DashboardServer(
         "/api/dashboard/audit/detail" -> {
             queryFields(q,setOf("id","scope")); val id=q["id"] ?: throw DashboardProblem(400,"malformed_request","Missing id")
             val store=selectedStore(q); val r=store.find(id) ?: throw DashboardProblem(404,"not_found","Audit record not found")
-            mapOf("record" to DashboardJson.record(r),"children" to store.children(id).map(DashboardJson::record))
+            mapOf("record" to DashboardJson.record(r),"children" to store.children(id).map(DashboardJson::record),"reviewItems" to if (store===auditStore) reviewService.forRecord(r) else emptyList<Any>())
+        }
+        "/api/dashboard/reviews" -> {
+            queryFields(q,setOf("cursor","limit","filter"))
+            val limit=q["limit"]?.toIntOrNull() ?: if (q.containsKey("limit")) throw DashboardProblem(400,"malformed_request","Invalid limit") else 50
+            reviewService.page(q["cursor"],limit,q["filter"] ?: "pending")
+        }
+        "/api/dashboard/reviews/detail" -> {
+            queryFields(q,setOf("itemId")); reviewService.detail(q["itemId"] ?: throw DashboardProblem(400,"malformed_request","Missing itemId"))
         }
         else -> throw DashboardProblem(404,"not_found","Unknown route")
     }
@@ -192,12 +215,16 @@ class DashboardServer(
             mapOf("version" to s.version,"valid" to s.valid,"violations" to s.violations,"loadErrors" to s.loadErrors,"invocationId" to t.id)
         }
         "/api/dashboard/check" -> {
-            DashboardJson.fields(b,setOf("context","diff")); val context=DashboardJson.context(b.path("context"))
+            DashboardJson.fields(b,setOf("context","diff","predecessorInvocationId")); val context=DashboardJson.context(b.path("context"))
+            val predecessor=if (b.has("predecessorInvocationId")) DashboardJson.text(b,"predecessorInvocationId") else null
+            val previousVersion=predecessor?.let { reviewService.predecessor(it,AuditContext(context.team,context.season,context.profiles?.sorted(),context.workMode.id)) }
             val diff=b.get("diff")?.takeIf { it.isTextual }?.asText() ?: throw DashboardProblem(400,"malformed_request","diff string is required")
             t.parameters(); val s=checkedSnapshot(t); val r=resolve(s,context,t)
             t.current="diff_read"
             val changes=try { Standardizer.parsePatch(diff) } catch (_:Exception) { throw DashboardProblem(400,"invalid_diff","Malformed supplied patch") }
             t.stage("diff_read",AuditStageStatus.PASSED); t.current="standardizer"
+            val codeVersion=AuditCodeVersion("supplied_patch",previousVersion?.subjectId ?: ReviewFingerprint.sha256(listOf("dashboard-patch-subject-v1",t.id)),
+                ReviewFingerprint.sha256(listOf("supplied-patch-v1",diff)),predecessorInvocationId=predecessor)
             val evaluated=Standardizer.evaluate(r.activeRules,changes)
             val dev=context.workMode==WorkMode.DEV
             val violations=if (dev) emptyList() else evaluated.violations
@@ -211,7 +238,7 @@ class DashboardServer(
             val hits=evaluated.violations.map { AuditHit(if (dev) "dev_downgrade" else "hard",it.ruleId,it.check,it.path,it.line,it.detail) }+
                 evaluated.soft.map { AuditHit("soft",it.first,null,null,null,it.second) }
             t.stage("standardizer",if (violations.isEmpty()) AuditStageStatus.PASSED else AuditStageStatus.BLOCKED,
-                when { violations.isNotEmpty() -> "hard"; dev && evaluated.violations.isNotEmpty() -> "dev_downgrade"; soft.isNotEmpty() -> "soft"; else -> null },hits)
+                when { violations.isNotEmpty() -> "hard"; dev && evaluated.violations.isNotEmpty() -> "dev_downgrade"; soft.isNotEmpty() -> "soft"; else -> null },hits,codeVersion=codeVersion)
             t.exit=if (violations.isEmpty()) 0 else 1
             mapOf("version" to s.version,"passed" to violations.isEmpty(),"violations" to violations,"soft" to soft,"invocationId" to t.id)
         }
@@ -312,8 +339,8 @@ class DashboardServer(
             append(AuditEvent(id,AuditEventType.SNAPSHOT,Instant.now().toString(),knowledgeVersion=version,
                 ruleSnapshots=rules.sortedBy { it.id }.take(512).map { AuditRuleSnapshot(it.id,it.topic,it.title.take(512),it.instruction.take(4096),it.authority.name.lowercase(java.util.Locale.ROOT),it.policyLevel.name.lowercase(java.util.Locale.ROOT),it.applicability.teams.sorted(),it.applicability.seasons.sorted(),it.applicability.profiles.sorted()) }))
         }
-        fun stage(name:String,status:AuditStageStatus,category:String?=null,hits:List<AuditHit> = emptyList(),detail:String?=null) {
-            append(AuditEvent(id,AuditEventType.STAGE,Instant.now().toString(),stage=AuditStage(name,status,category,detail=detail,hits=hits)))
+        fun stage(name:String,status:AuditStageStatus,category:String?=null,hits:List<AuditHit> = emptyList(),detail:String?=null,codeVersion:AuditCodeVersion?=null) {
+            append(AuditEvent(id,AuditEventType.STAGE,Instant.now().toString(),stage=AuditStage(name,status,category,detail=detail,hits=hits,codeVersion=codeVersion)))
         }
         fun finish()=append(AuditEvent(id,AuditEventType.FINISHED,Instant.now().toString(),status=status,exitCode=exit,durationMillis=(System.nanoTime()-start)/1_000_000))
         private fun append(event:AuditEvent) { if (!auditStore.append(event)) diagnostics("dashboard: audit storage unavailable") }
@@ -342,7 +369,7 @@ class DashboardServer(
     }
     companion object {
         const val MAX_BODY=1024*1024
-        private val routes=mapOf("summary" to "GET","rules" to "GET","rule" to "GET","resolve" to "POST","preview" to "POST","apply" to "POST","audit" to "GET","audit/detail" to "GET","validate" to "POST","check" to "POST","shutdown" to "POST").mapKeys { "/api/dashboard/${it.key}" }
+        private val routes=mapOf("identity" to "GET","summary" to "GET","rules" to "GET","rule" to "GET","resolve" to "POST","preview" to "POST","apply" to "POST","audit" to "GET","audit/detail" to "GET","validate" to "POST","check" to "POST","shutdown" to "POST","reviews" to "GET","reviews/detail" to "GET","reviews/record" to "POST").mapKeys { "/api/dashboard/${it.key}" }
         private fun mutationCommand(action:String?)=when(action) { "create" -> "rule_create"; "approve" -> "rule_approve"; "reject" -> "rule_reject"; else -> "rule_edit" }
     }
 }

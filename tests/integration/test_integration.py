@@ -1,5 +1,6 @@
 """Offline integration tests: real Git repositories, isolated build/kernel fixtures."""
 import contextlib
+import concurrent.futures
 import io
 import json
 import os
@@ -8,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -18,6 +20,8 @@ sys.path.insert(0,str(ROOT/BUNDLE/"scripts"))
 import integrate
 import project
 import verify
+import project_doctor as doctor
+import work_receipt as work
 
 
 class IntegrationContractTest(unittest.TestCase):
@@ -713,6 +717,614 @@ class IntegrationTest(unittest.TestCase):
         code,payload=project.kernel(self.target/project.SOURCE,config,"check",self.target)
         self.assertEqual(1,code,payload)
         self.assertIn("official.keep-customizations-in-teamcode",[v["ruleId"] for v in payload["violations"]])
+
+
+class DoctorTest(unittest.TestCase):
+    setUp=IntegrationTest.setUp
+    args=IntegrationTest.args
+    install=IntegrationTest.install
+    legacy_install=IntegrationTest.legacy_install
+
+    def checks(self,payload):
+        return {item["code"]:item for item in payload["checks"]}
+
+    def config(self,**changes):
+        path=self.target/project.CONFIG
+        value=json.loads(path.read_text()); value.update(changes)
+        path.write_text(json.dumps(value))
+        return value
+
+    def call(self,*args):
+        return subprocess.run([sys.executable,str(ROOT/BUNDLE/"scripts/project.py"),"doctor",*map(str,args)],
+                              capture_output=True,text=True,timeout=20)
+
+    def test_missing_config_is_classified_and_contract_is_stable(self):
+        before=snapshot(self.target)
+        result=self.call("--project",self.target)
+        self.assertEqual(1,result.returncode,result.stderr)
+        payload=json.loads(result.stdout)
+        self.assertEqual(1,payload["doctorSchemaVersion"])
+        self.assertEqual("doctor",payload["command"])
+        self.assertNotIn("schemaVersion",payload)
+        self.assertIn("missing",self.checks(payload)["config.read"]["message"])
+        self.assertEqual("blocked",self.checks(payload)["source.pin"]["status"])
+        self.assertTrue(all(item["status"] in {"passed","failed","blocked","unknown","not_checked"} for item in payload["checks"]))
+        self.assertFalse(any("argv" in item for item in payload["nextSteps"]))
+        self.assertEqual(before,snapshot(self.target))
+
+    def test_bad_and_duplicate_json_are_malformed(self):
+        for value in ('{bad','{"team":"secret","team":"other"}','[]'):
+            with self.subTest(value=value):
+                write(self.target,project.CONFIG,value)
+                payload=doctor.diagnose(self.target)
+                self.assertIn("malformed",self.checks(payload)["config.read"]["message"])
+                self.assertNotIn("secret",json.dumps(payload))
+
+    def test_four_independent_errors_are_aggregated_without_secrets(self):
+        self.install()
+        value=self.config(team="https://user:password@example.invalid/#token=SECRET",season="2025-2028",profiles=["SECRET"])
+        value["source"].update(commit="SECRET",repository="https://SECRET.invalid",ref="SECRET")
+        write(self.target,project.CONFIG,json.dumps(value))
+        payload=doctor.diagnose(self.target); checks=self.checks(payload)
+        for code in ("config.team","config.season","config.profiles","config.commit"):
+            self.assertEqual("failed",checks[code]["status"],code)
+        self.assertNotIn("SECRET",json.dumps(payload))
+        self.assertIsNone(payload["context"]["team"])
+        self.assertFalse(any("argv" in step for step in payload["nextSteps"]))
+
+    def test_v2_context_keeps_selection_and_expands_profiles(self):
+        for selected,expected in (([],[]),(["rookiebot"],["rookiebot","simple-opmode"]),(["ftclib-command"],["command-based","ftclib-command"])):
+            with self.subTest(selected=selected):
+                self.install(profile=selected or None,generic_profile=not selected)
+                payload=doctor.diagnose(self.target)
+                self.assertEqual(selected,payload["context"]["profiles"])
+                self.assertEqual(expected,payload["context"]["normalizedProfiles"])
+                self.assertEqual("passed",self.checks(payload)["source.pin"]["status"])
+
+    def test_v1_does_not_invent_generic_profiles(self):
+        self.legacy_install()
+        payload=doctor.diagnose(self.target)
+        self.assertIsNone(payload["context"]["profiles"])
+        self.assertIsNone(payload["context"]["normalizedProfiles"])
+        self.assertEqual(1,payload["context"]["protocol"]["schemaVersion"])
+
+    def test_invalid_root_nonroot_and_unborn_are_failures(self):
+        unborn=self.base/"unborn"; initialize(unborn)
+        for path in (self.base/"absent",self.target/"TeamCode",unborn):
+            with self.subTest(path=path):
+                self.assertEqual("failed",self.checks(doctor.diagnose(path))["project.git-root"]["status"])
+
+    def test_uninitialized_submodule_has_exact_safe_next_step(self):
+        self.install(); commit(self.target)
+        clone=self.base/"clone"; command("git","clone","--quiet",self.target,clone)
+        payload=doctor.diagnose(clone)
+        self.assertEqual("failed",self.checks(payload)["source.initialized"]["status"])
+        step=next(s for s in payload["nextSteps"] if s["code"]=="initialize")
+        self.assertEqual(str(clone.resolve()),step["cwd"])
+        self.assertEqual(["git","submodule","update","--init","--",project.SOURCE],step["argv"])
+        git(clone,"config","--file",".gitmodules","submodule.ftckb.url","mismatch")
+        self.assertFalse(any(s["code"]=="initialize" for s in doctor.diagnose(clone)["nextSteps"]))
+
+    def test_dirty_pin_and_gitlink_checks_remain_independent(self):
+        self.install()
+        write(self.target/project.SOURCE,"knowledge/.keep","dirty")
+        value=self.config(); value["source"]["commit"]="0"*40
+        write(self.target,project.CONFIG,json.dumps(value))
+        checks=self.checks(doctor.diagnose(self.target))
+        for code in ("source.clean","source.pin","source.gitlink"):
+            self.assertEqual("failed",checks[code]["status"])
+
+    def test_managed_presence_survives_bad_receipt_and_symlinks_are_rejected(self):
+        self.install(); self.config(managedFiles={})
+        (self.target/project.SKILL).unlink()
+        (self.target/project.SKILL).symlink_to(self.source/BUNDLE/"SKILL.md")
+        checks=self.checks(doctor.diagnose(self.target))
+        self.assertEqual("failed",checks["managed.skill"]["status"])
+        self.assertEqual("passed",checks["managed.agents"]["status"])
+        self.assertEqual("blocked",checks["managed.agents-digest"]["status"])
+
+    def test_managed_hashes_and_markers_report_separately(self):
+        self.install()
+        write(self.target,project.SKILL,"modified")
+        write(self.target,"AGENTS.md",project.BEGIN+project.BEGIN+project.END)
+        checks=self.checks(doctor.diagnose(self.target))
+        self.assertEqual("failed",checks["managed.skill-digest"]["status"])
+        self.assertEqual("failed",checks["managed.agents"]["status"])
+
+    def test_distribution_receipt_and_provenance_are_distinct(self):
+        self.install(); source=self.target/project.SOURCE
+        checks=self.checks(doctor.diagnose(self.target))
+        self.assertEqual("failed",checks["cli.distribution"]["status"])
+        write(source,"apps/knowledge-cli/build/install/ftckb/lib/fixture.jar","static fixture")
+        self.assertEqual("failed",self.checks(doctor.diagnose(self.target))["cli.distribution"]["status"])
+        write(source,"apps/knowledge-cli/build/install/ftckb/lib/knowledge-cli.jar","main entry fixture")
+        checks=self.checks(doctor.diagnose(self.target))
+        self.assertEqual("passed",checks["cli.distribution"]["status"])
+        self.assertEqual("passed",checks["cli.receipt"]["status"])
+        self.assertEqual("unknown",checks["cli.provenance"]["status"])
+        (source/"apps/knowledge-cli/build/ftckb-integration-commit").unlink()
+        self.assertEqual("failed",self.checks(doctor.diagnose(self.target))["cli.receipt"]["status"])
+
+    def test_dashboard_requires_clean_pinned_static_dispatch(self):
+        write(self.source,"apps/knowledge-cli/src/main/kotlin/org/ftckb/cli/Main.kt",'if (args.firstOrNull()=="dashboard") return runDashboardCommand(args.drop(1),out)')
+        write(self.source,"apps/knowledge-cli/src/main/kotlin/org/ftckb/cli/DashboardCommand.kt",'fun runDashboardCommand(args:List<String>) {}')
+        (self.source/BUNDLE/"scripts/dashboard_runtime.py").unlink()
+        self.sha=commit(self.source); self.install(ref=self.sha)
+        write(self.target/project.SOURCE,"apps/knowledge-cli/build/install/ftckb/lib/knowledge-cli.jar","fixture")
+        payload=doctor.diagnose(self.target)
+        self.assertEqual("passed",self.checks(payload)["source.dashboard"]["status"])
+        step=next(s for s in payload["nextSteps"] if s["code"]=="dashboard")
+        self.assertEqual(str(self.target.resolve()),step["cwd"])
+        self.assertEqual(str(Path(doctor.dashboard_runtime.__file__).resolve()),step["argv"][1])
+        self.assertEqual(["--distribution",str((self.target/project.SOURCE/"apps/knowledge-cli/build/install/ftckb").resolve()),"--knowledge",str((self.target/project.SOURCE/"knowledge").resolve()),"--no-browser"],step["argv"][2:])
+        self.assertFalse((self.target/project.SOURCE/".agents/skills/ftckb-integrate/scripts/dashboard_runtime.py").exists())
+        with patch.dict(os.environ,{"FTCKB_AUDIT_DIR":"relative audit"}):
+            relative=next(s for s in doctor.diagnose(self.target)["nextSteps"] if s["code"]=="dashboard")
+        self.assertEqual(str(self.target.resolve()/"relative audit"),relative["env"]["FTCKB_AUDIT_DIR"])
+        with patch.object(doctor,"jdk_status",return_value="passed"),patch.object(doctor.dashboard_runtime,"recommendation",return_value=None):
+            missing=doctor.diagnose(self.target)
+        self.assertTrue(missing["ok"])
+        missing_step=next(s for s in missing["nextSteps"] if s["code"]=="dashboard")
+        self.assertNotIn("argv",missing_step);self.assertEqual("unavailable",missing_step["protection"])
+        write(self.target/project.SOURCE,"knowledge/.keep","dirty")
+        self.assertFalse(any(s["code"]=="dashboard" for s in doctor.diagnose(self.target)["nextSteps"]))
+
+    def test_unknown_dashboard_has_no_guessed_command(self):
+        self.install(); payload=doctor.diagnose(self.target)
+        self.assertEqual("unknown",self.checks(payload)["source.dashboard"]["status"])
+        self.assertFalse(any(s["code"]=="dashboard" for s in payload["nextSteps"]))
+
+    def test_usage_errors_are_json_exit_64(self):
+        for args in ([],["--project",str(self.target),"--secret-url=SECRET"],["--project"]):
+            result=self.call(*args)
+            self.assertEqual(64,result.returncode)
+            payload=json.loads(result.stdout)
+            self.assertEqual("usage",payload["error"]["code"])
+            self.assertNotIn("SECRET",result.stdout+result.stderr)
+
+    def test_safe_git_timeouts_and_stderr_are_not_echoed(self):
+        for effect in (subprocess.TimeoutExpired(["git"],1,stderr="SECRET"),OSError("SECRET")):
+            with self.subTest(effect=effect),patch.object(doctor.subprocess,"run",side_effect=effect):
+                payload=doctor.diagnose(self.target)
+                self.assertEqual("failed",self.checks(payload)["project.git-root"]["status"])
+                self.assertNotIn("SECRET",json.dumps(payload))
+        with patch.object(doctor.subprocess,"run",return_value=subprocess.CompletedProcess([],1,"","SECRET")):
+            with self.assertRaises(doctor.ProbeError):
+                doctor.git(self.target,"rev-parse","HEAD")
+        with self.assertRaises(doctor.ProbeError):
+            doctor.git(self.target,"fetch")
+
+    def test_readonly_including_git_and_no_fsmonitor_build_or_kernel(self):
+        self.install()
+        sentinel=self.base/"executed"
+        script=self.base/"fsmonitor"
+        script.write_text('#!/bin/sh\ntouch "'+str(sentinel)+'"\n'); script.chmod(0o755)
+        git(self.target,"config","core.fsmonitor",str(script))
+        git(self.target/project.SOURCE,"config","core.fsmonitor",str(script))
+        for relative in ("gradlew","apps/knowledge-cli/build/install/ftckb/bin/ftckb"):
+            write(self.target/project.SOURCE,relative,'#!/bin/sh\ntouch "'+str(sentinel)+'"\n')
+        before=snapshot(self.target)
+        with patch.object(project,"build_cli",side_effect=AssertionError("build")),patch.object(project,"kernel",side_effect=AssertionError("kernel")):
+            payload=doctor.diagnose(self.target)
+        self.assertEqual(before,snapshot(self.target))
+        self.assertFalse(sentinel.exists())
+        self.assertEqual("not_checked",self.checks(payload)["kernel.resolve"]["status"])
+
+    def test_complete_static_fixture_can_pass_without_claiming_runtime(self):
+        self.install()
+        write(self.target/project.SOURCE,"apps/knowledge-cli/build/install/ftckb/lib/knowledge-cli.jar","fixture only")
+        with patch.object(doctor,"jdk_status",return_value="passed"):
+            payload=doctor.diagnose(self.target)
+        self.assertTrue(payload["ok"])
+        self.assertEqual("unknown",self.checks(payload)["cli.provenance"]["status"])
+        self.assertEqual("not_checked",self.checks(payload)["dashboard.connection"]["status"])
+        output=io.StringIO()
+        with patch.object(doctor,"diagnose",return_value=payload),contextlib.redirect_stdout(output):
+            self.assertEqual(0,project.main(["doctor","--project",str(self.target)]))
+        self.assertTrue(json.loads(output.getvalue())["ok"])
+
+    def test_jdk_queries_both_versions_and_drops_agent_options(self):
+        results=[subprocess.CompletedProcess([],0,"",'java version "25"'),
+                 subprocess.CompletedProcess([],0,"javac 8","")]
+        with patch.object(doctor,"executable",side_effect=lambda name,*args:"/tools/"+name),patch.object(doctor.subprocess,"run",side_effect=results) as runner,patch.dict(os.environ,{"JAVA_TOOL_OPTIONS":"SECRET"}):
+            self.assertEqual("unknown",doctor.jdk_status())
+            self.assertEqual([["/tools/java","-version"],["/tools/javac","-version"]],[call.args[0] for call in runner.call_args_list])
+            self.assertNotIn("JAVA_TOOL_OPTIONS",runner.call_args.kwargs["env"])
+
+    def test_java_home_is_authoritative_and_target_tools_are_never_executed(self):
+        marker=self.base/"tool-executed"
+        for tool in ("java","javac","git"):
+            path=self.target/"bin"/tool
+            write(self.target,"bin/"+tool,'#!/bin/sh\nprintf x > "'+str(marker)+'"\necho tool-ran\n')
+            path.chmod(0o755)
+        with patch.dict(os.environ,{"PATH":str(self.target/"bin"),"JAVA_HOME":str(self.base/"missing-jdk")}):
+            self.assertEqual("unknown",doctor.jdk_status(self.target))
+            with self.assertRaises(doctor.ProbeError):
+                doctor.git(self.target,"rev-parse","HEAD")
+        with patch.dict(os.environ,{"PATH":str(self.target/"bin"),"JAVA_HOME":""}):
+            self.assertEqual("unknown",doctor.jdk_status(self.target))
+        with patch.dict(os.environ,{"JAVA_HOME":str(self.target)}):
+            self.assertEqual("unknown",doctor.jdk_status(self.target))
+        self.assertFalse(marker.exists())
+
+    def test_failed_git_root_never_executes_target_java(self):
+        marker=self.base/"java-executed"
+        other=self.base/"not-git"; other.mkdir()
+        for target in (other,self.target):
+            for name in ("git","java","javac"):
+                tool=target/"bin"/name
+                write(target,"bin/"+name,'#!/bin/sh\nprintf x > "'+str(marker)+'"\nexit 1\n')
+                tool.chmod(0o755)
+            with patch.dict(os.environ,{"PATH":str(target/"bin"),"JAVA_HOME":""}):
+                payload=doctor.diagnose(target)
+            self.assertEqual("failed",self.checks(payload)["project.git-root"]["status"])
+            self.assertEqual("blocked",self.checks(payload)["environment.jdk"]["status"])
+        self.assertFalse(marker.exists())
+
+    def test_git_tool_symlink_into_target_is_rejected(self):
+        tool=self.target/"bin/git"
+        write(self.target,"bin/git","#!/bin/sh\nexit 0\n"); tool.chmod(0o755)
+        alias=self.base/"tool-alias"; alias.mkdir(); (alias/"git").symlink_to(tool)
+        with patch.dict(os.environ,{"PATH":str(alias)}):
+            with self.assertRaises(doctor.ProbeError):
+                doctor.git(self.target,"rev-parse","HEAD")
+
+    def test_jar_directory_is_not_a_distribution(self):
+        self.install(); source=self.target/project.SOURCE
+        (source/"apps/knowledge-cli/build/install/ftckb/lib/knowledge-cli.jar").mkdir(parents=True)
+        self.assertEqual("failed",self.checks(doctor.diagnose(self.target))["cli.distribution"]["status"])
+
+    def test_windows_missing_distribution_has_no_protected_dashboard_argv(self):
+        write(self.source,"apps/knowledge-cli/src/main/kotlin/org/ftckb/cli/Main.kt",'if (args.firstOrNull()=="dashboard") return runDashboardCommand(args.drop(1),out)')
+        write(self.source,"apps/knowledge-cli/src/main/kotlin/org/ftckb/cli/DashboardCommand.kt",'fun runDashboardCommand(args:List<String>) {}')
+        self.sha=commit(self.source); self.install(ref=self.sha)
+        windows=SimpleNamespace(name="nt",environ=os.environ,access=os.access,X_OK=os.X_OK,devnull=os.devnull)
+        with patch.object(doctor,"os",windows):
+            payload=doctor.diagnose(self.target)
+        self.assertEqual("failed",self.checks(payload)["cli.distribution"]["status"])
+        step=next(step for step in payload["nextSteps"] if step["code"]=="dashboard")
+        self.assertNotIn("argv",step)
+        self.assertEqual("unavailable",step["protection"])
+
+    def test_git_runner_disables_helpers_and_does_not_inherit_git_overrides(self):
+        with patch.dict(os.environ,{"GIT_CONFIG_COUNT":"1","GIT_CONFIG_KEY_0":"core.fsmonitor","GIT_CONFIG_VALUE_0":"SECRET"}),patch.object(doctor.subprocess,"run",return_value=subprocess.CompletedProcess([],0,"ok","")) as runner:
+            doctor.git(self.target,"rev-parse","HEAD")
+            args=runner.call_args.args[0]; opts=runner.call_args.kwargs
+            self.assertIn("core.fsmonitor=false",args)
+            self.assertIn("--no-optional-locks",args)
+            self.assertNotIn("GIT_CONFIG_COUNT",opts["env"])
+            self.assertEqual("",opts["env"]["GIT_ALLOW_PROTOCOL"])
+            self.assertEqual(doctor.TIMEOUT,opts["timeout"])
+
+    def test_templates_have_doctor_dashboard_resolve_order(self):
+        for relative in ("assets/project-skill/SKILL.md","assets/AGENTS.block.md"):
+            text=(ROOT/BUNDLE/relative).read_text()
+            self.assertIn("doctor → Dashboard 已连接 → work resolve → 修改 → work check --receipt ID",text)
+
+
+class WorkReceiptTest(unittest.TestCase):
+    setUp=IntegrationTest.setUp
+    args=IntegrationTest.args
+    legacy_install=IntegrationTest.legacy_install
+
+    def install(self,**kwargs):
+        result=IntegrationTest.install(self,**kwargs)
+        write(self.target/project.SOURCE,"apps/knowledge-cli/build/install/ftckb/lib/knowledge-cli.jar","fixture main jar")
+        return result
+
+    def call(self,*args):
+        return subprocess.run([sys.executable,str(ROOT/BUNDLE/"scripts/project.py"),"work",*map(str,args)],
+                              capture_output=True,text=True,timeout=30)
+
+    config=DoctorTest.config
+
+    def invoke(self,*args):
+        stream=io.StringIO()
+        with contextlib.redirect_stdout(stream):
+            code=project.main(["work",*args,"--project",str(self.target)])
+        return code,json.loads(stream.getvalue())
+
+    def resolve(self,mode="normal"):
+        code,payload=self.invoke("resolve","--work-mode",mode)
+        self.assertEqual(0,code,payload)
+        return payload
+
+    def receipt_path(self,identifier):
+        return Path(git(self.target,"rev-parse","--absolute-git-dir"))/"ftckb/receipts"/(identifier+".json")
+
+    def test_work_resolve_creates_explicit_receipt(self):
+        self.install()
+        result=self.call("resolve","--project",self.target)
+        self.assertEqual(0,result.returncode,result.stderr+result.stdout)
+        payload=json.loads(result.stdout)
+        self.assertEqual(1,payload["workReceiptSchemaVersion"])
+        self.assertEqual("work-resolve",payload["command"])
+        self.assertEqual("created",payload["receipt"]["status"])
+        self.assertEqual("resolve",payload["kernel"]["output"]["command"])
+
+    def test_code_changes_and_repeat_checks_keep_same_receipt(self):
+        self.install(); resolved=self.resolve(); identifier=resolved["receipt"]["id"]
+        path=self.receipt_path(identifier); original=path.read_bytes()
+        before_status=git(self.target,"status","--porcelain")
+        write(self.target,"TeamCode/New.java","class New {}\n")
+        for _ in range(2):
+            code,payload=self.invoke("check","--receipt",identifier)
+            self.assertEqual(0,code,payload)
+            self.assertEqual("matched",payload["receipt"]["status"])
+            self.assertEqual(resolved["receipt"]["resolveOutputDigest"],payload["receipt"]["resolveOutputDigest"])
+        self.assertEqual(original,path.read_bytes())
+        self.assertNotIn("receipts",git(self.target,"status","--porcelain"))
+        self.assertNotIn("receipts",before_status)
+        self.assertEqual(0o600,path.stat().st_mode&0o777)
+        self.assertEqual(0o700,path.parent.stat().st_mode&0o777)
+
+    def test_independent_resolves_create_distinct_ids_and_complete_next_step(self):
+        self.install(); first=self.resolve(); second=self.resolve()
+        self.assertNotEqual(first["receipt"]["id"],second["receipt"]["id"])
+        self.assertTrue(self.receipt_path(first["receipt"]["id"]).is_file())
+        argv=second["nextSteps"][0]["argv"]
+        self.assertIn(str((ROOT/BUNDLE/"scripts/project.py").resolve()),argv)
+        self.assertEqual(second["receipt"]["id"],argv[argv.index("--receipt")+1])
+        self.assertNotIn("latest",list(self.receipt_path(first["receipt"]["id"]).parent.iterdir()))
+
+    def test_parallel_resolves_publish_two_complete_independent_files(self):
+        self.install()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            results=list(pool.map(lambda _:self.call("resolve","--project",self.target),range(2)))
+        values=[json.loads(result.stdout) for result in results]
+        self.assertTrue(all(result.returncode==0 for result in results),values)
+        ids={value["receipt"]["id"] for value in values}
+        self.assertEqual(2,len(ids))
+        for identifier in ids:
+            value=json.loads(self.receipt_path(identifier).read_text())
+            self.assertEqual(identifier,work.validate_receipt(value,identifier)["id"])
+
+    def test_relocated_project_cannot_reuse_original_context(self):
+        self.install(); identifier=self.resolve()["receipt"]["id"]
+        clone=self.base/"relocated"; shutil.copytree(self.target,clone)
+        stream=io.StringIO()
+        with patch.object(project,"kernel",side_effect=AssertionError("kernel")),contextlib.redirect_stdout(stream):
+            code=project.main(["work","check","--project",str(clone),"--receipt",identifier])
+        self.assertEqual(2,code)
+        self.assertIn("projectRoot",json.loads(stream.getvalue())["error"]["changedFields"])
+
+    def test_configuration_byte_or_context_changes_reject_before_kernel(self):
+        self.install(); original=(self.target/project.CONFIG).read_bytes()
+        identifier=self.resolve()["receipt"]["id"]
+        changes=[{"team":"20827"},{"season":"2026-2027"},{"profiles":["rookiebot"]},None]
+        for values in changes:
+            (self.target/project.CONFIG).write_bytes(original)
+            if values is None:
+                with (self.target/project.CONFIG).open("ab") as stream: stream.write(b" ")
+            else:
+                self.config(**values)
+            with self.subTest(values=values),patch.object(project,"kernel",side_effect=AssertionError("kernel must not run")):
+                code,payload=self.invoke("check","--receipt",identifier)
+                self.assertEqual(2,code)
+                self.assertEqual("context-changed",payload["error"]["code"])
+                self.assertIn("configSha256",payload["error"]["changedFields"])
+                self.assertIsNone(payload["kernel"])
+
+    def test_invalid_protocol_pin_and_source_path_reject_safely(self):
+        self.install(); raw=(self.target/project.CONFIG).read_bytes()
+        identifier=self.resolve()["receipt"]["id"]
+        for values in ({"schemaVersion":1},{"source":{"path":"../SECRET"}}, {"source":{"commit":"0"*40}}):
+            value=json.loads(raw)
+            if "source" in values: value["source"].update(values["source"])
+            else: value.update(values)
+            write(self.target,project.CONFIG,json.dumps(value))
+            with self.subTest(values=values),patch.object(project,"kernel",side_effect=AssertionError("kernel")):
+                code,payload=self.invoke("check","--receipt",identifier)
+                self.assertEqual(2,code)
+                self.assertIsNone(payload["kernel"])
+                self.assertNotIn("SECRET",json.dumps(payload))
+
+    def test_ignored_yaml_add_change_delete_invalidates_actual_input_digest(self):
+        self.install(); source=self.target/project.SOURCE
+        exclude=Path(git(source,"rev-parse","--absolute-git-dir"))/"info/exclude"
+        with exclude.open("a") as stream: stream.write("\nknowledge/ignored.yaml\n")
+        path=source/"knowledge/ignored.yaml"
+        identifier=self.resolve()["receipt"]["id"]
+        for contents in ("[]\n","# changed\n[]\n"):
+            path.write_text(contents)
+            with patch.object(project,"kernel",side_effect=AssertionError("kernel")):
+                code,payload=self.invoke("check","--receipt",identifier)
+                self.assertEqual(2,code)
+                self.assertEqual(["knowledgeDigest"],payload["error"]["changedFields"])
+        current=self.resolve()["receipt"]["id"]; path.unlink()
+        code,payload=self.invoke("check","--receipt",current)
+        self.assertEqual(2,code)
+        self.assertEqual(["knowledgeDigest"],payload["error"]["changedFields"])
+
+    def test_knowledge_symlink_and_special_file_are_rejected(self):
+        self.install(); source=self.target/project.SOURCE
+        exclude=Path(git(source,"rev-parse","--absolute-git-dir"))/"info/exclude"
+        with exclude.open("a") as stream: stream.write("\nknowledge/unsafe*\n")
+        identifier=self.resolve()["receipt"]["id"]
+        unsafe=source/"knowledge/unsafe.yaml"; unsafe.symlink_to(self.target/project.CONFIG)
+        code,payload=self.invoke("check","--receipt",identifier)
+        self.assertEqual(2,code); self.assertEqual("knowledge-unsafe",payload["error"]["code"])
+        unsafe.unlink()
+        if hasattr(os,"mkfifo"):
+            os.mkfifo(unsafe)
+            code,payload=self.invoke("check","--receipt",identifier)
+            self.assertEqual(2,code); self.assertEqual("knowledge-unsafe",payload["error"]["code"])
+
+    def test_explicit_modes_do_not_silently_inherit_and_dev_requires_diff(self):
+        self.install()
+        identifier=self.resolve("test")["receipt"]["id"]
+        code,payload=self.invoke("check","--receipt",identifier)
+        self.assertEqual(2,code); self.assertEqual(["workMode"],payload["error"]["changedFields"])
+        self.assertEqual(0,self.invoke("check","--receipt",identifier,"--work-mode","test")[0])
+        dev=self.resolve("dev"); identifier=dev["receipt"]["id"]
+        self.assertIn("dev",dev["nextSteps"][0]["argv"])
+        self.assertEqual(64,self.invoke("check","--receipt",identifier,"--work-mode","dev")[0])
+        diff=self.base/"change.patch"; diff.write_text("fixture diff")
+        self.assertEqual(0,self.invoke("check","--receipt",identifier,"--work-mode","dev","--diff",str(diff))[0])
+
+    def test_named_profiles_and_v1_context_are_preserved(self):
+        self.install(profile=["rookiebot"],generic_profile=False)
+        identifier=self.resolve()["receipt"]["id"]
+        value=json.loads(self.receipt_path(identifier).read_text())
+        self.assertEqual(["rookiebot"],value["context"]["profiles"])
+        self.assertEqual(["rookiebot","simple-opmode"],value["context"]["normalizedProfiles"])
+
+    def test_existing_v1_context_does_not_invent_generic(self):
+        self.legacy_install(); config=project.load_config(self.target); source=self.target/project.SOURCE
+        with tempfile.TemporaryFile(mode="w+") as logs,contextlib.redirect_stderr(logs):
+            project.build_cli(source,config["source"]["commit"])
+        write(source,"apps/knowledge-cli/build/install/ftckb/lib/knowledge-cli.jar","fixture")
+        identifier=self.resolve()["receipt"]["id"]
+        value=json.loads(self.receipt_path(identifier).read_text())
+        self.assertIsNone(value["context"]["profiles"])
+        self.assertEqual(0,self.invoke("check","--receipt",identifier)[0])
+
+    def test_options_before_subcommand_report_actual_command(self):
+        self.install(); identifier=self.resolve()["receipt"]["id"]
+        result=self.call("--project",self.target,"check","--receipt",identifier)
+        self.assertEqual(0,result.returncode,result.stdout+result.stderr)
+        self.assertEqual("work-check",json.loads(result.stdout)["command"])
+
+    def test_usage_missing_bad_or_path_receipt_id_is_safe_json(self):
+        for args in ([],["check","--project",str(self.target)],["check","--project",str(self.target),"--receipt","../SECRET"],
+                     ["resolve","--project",str(self.target),"--unknown=SECRET"]):
+            result=self.call(*args); self.assertEqual(64,result.returncode)
+            payload=json.loads(result.stdout)
+            self.assertEqual("usage",payload["error"]["code"])
+            self.assertNotIn("SECRET",result.stdout+result.stderr)
+
+    def test_missing_damaged_oversized_duplicate_or_unsupported_receipts(self):
+        self.install(); identifier=self.resolve()["receipt"]["id"]; path=self.receipt_path(identifier); original=path.read_bytes()
+        for data in (b"{bad",b'{"id":"a","id":"b"}',b"x"*70000,original.replace(b'"workReceiptSchemaVersion":1',b'"workReceiptSchemaVersion":99')):
+            path.write_bytes(data)
+            with self.subTest(data=data[:30]),patch.object(project,"kernel",side_effect=AssertionError("kernel")):
+                code,payload=self.invoke("check","--receipt",identifier)
+                self.assertEqual(2,code); self.assertEqual("receipt-invalid",payload["error"]["code"])
+        path.unlink()
+        self.assertEqual("receipt-invalid",self.invoke("check","--receipt",identifier)[1]["error"]["code"])
+
+    def test_tampered_rehashed_fields_are_validated_not_used_as_paths(self):
+        self.install(); identifier=self.resolve()["receipt"]["id"]; path=self.receipt_path(identifier)
+        value=json.loads(path.read_text()); value["context"]["knowledgePath"]="SECRET"
+        value["integrityDigest"]=work.sha(work.canonical({k:v for k,v in value.items() if k!="integrityDigest"}))
+        path.write_bytes(work.canonical(value))
+        code,payload=self.invoke("check","--receipt",identifier)
+        self.assertEqual(2,code); self.assertEqual("receipt-invalid",payload["error"]["code"])
+        self.assertNotIn("SECRET",json.dumps(payload))
+
+    def test_storage_directory_and_receipt_symlinks_are_not_followed(self):
+        self.install(); gitdir=Path(git(self.target,"rev-parse","--absolute-git-dir")); outside=self.base/"outside"; outside.mkdir()
+        (gitdir/"ftckb").symlink_to(outside,target_is_directory=True)
+        code,payload=self.invoke("resolve")
+        self.assertEqual(2,code); self.assertEqual("storage-unsafe",payload["error"]["code"])
+        self.assertEqual([],list(outside.iterdir()))
+        (gitdir/"ftckb").unlink(); identifier=self.resolve()["receipt"]["id"]; path=self.receipt_path(identifier)
+        other=outside/"SECRET"; other.write_bytes(path.read_bytes()); path.unlink(); path.symlink_to(other)
+        self.assertEqual("receipt-invalid",self.invoke("check","--receipt",identifier)[1]["error"]["code"])
+
+    def test_atomic_publish_and_fsync_failure_leave_no_accepted_file(self):
+        self.install(); self.resolve(); folder=self.receipt_path("unused").parent
+        before=snapshot(folder)
+        with patch.object(work.os,"link",side_effect=OSError("SECRET")):
+            code,payload=self.invoke("resolve")
+        self.assertEqual(2,code); self.assertEqual(before,snapshot(folder)); self.assertNotIn("SECRET",json.dumps(payload))
+        real_fsync=os.fsync
+        def fail_directory(fd):
+            if __import__("stat").S_ISDIR(os.fstat(fd).st_mode): raise OSError("directory sync")
+            return real_fsync(fd)
+        with patch.object(work.os,"fsync",side_effect=fail_directory):
+            self.assertEqual(2,self.invoke("resolve")[0])
+        self.assertEqual(before,snapshot(folder))
+
+    def test_custom_git_directory_visible_in_worktree_is_rejected(self):
+        self.install()
+        command("git","-C",self.target,"init","--separate-git-dir",self.target/"meta")
+        before=snapshot(self.target/"meta")
+        code,payload=self.invoke("resolve")
+        self.assertEqual(2,code); self.assertEqual("storage-unsafe",payload["error"]["code"])
+        self.assertFalse((self.target/"meta/ftckb/receipts").exists())
+        self.assertEqual(before,snapshot(self.target/"meta"))
+
+    def test_linked_worktree_uses_its_own_external_git_metadata(self):
+        self.install(); commit(self.target,"published integration fixture")
+        linked=self.base/"linked worktree"
+        git(self.target,"worktree","add","--detach",str(linked),"HEAD")
+        git(linked,"submodule","update","--init","--",project.SOURCE)
+        shutil.copytree(self.target/project.SOURCE/"apps/knowledge-cli/build",linked/project.SOURCE/"apps/knowledge-cli/build")
+        before=git(linked,"status","--porcelain")
+        stream=io.StringIO()
+        with contextlib.redirect_stdout(stream):
+            code=project.main(["work","resolve","--project",str(linked)])
+        payload=json.loads(stream.getvalue()); self.assertEqual(0,code,payload)
+        gitdir=Path(git(linked,"rev-parse","--absolute-git-dir"))
+        receipt=gitdir/"ftckb/receipts"/(payload["receipt"]["id"]+".json")
+        self.assertTrue(receipt.is_file())
+        self.assertFalse(receipt.resolve().is_relative_to(linked.resolve()))
+        self.assertEqual(before,git(linked,"status","--porcelain"))
+        self.assertFalse((self.target/".git/ftckb/receipts").exists())
+
+    def test_existing_uuid_is_not_overwritten(self):
+        self.install(); identifier=self.resolve()["receipt"]["id"]; path=self.receipt_path(identifier); before=path.read_bytes()
+        with patch.object(work.uuid,"uuid4",return_value=work.uuid.UUID(identifier)):
+            self.assertEqual(2,self.invoke("resolve")[0])
+        self.assertEqual(before,path.read_bytes())
+        self.assertFalse(list(path.parent.glob("*.tmp")))
+
+    def test_nonregular_receipt_is_rejected_without_blocking(self):
+        if not hasattr(os,"mkfifo"): self.skipTest("POSIX FIFO required")
+        self.install(); identifier=self.resolve()["receipt"]["id"]; path=self.receipt_path(identifier); path.unlink(); os.mkfifo(path)
+        result=self.call("check","--project",self.target,"--receipt",identifier)
+        self.assertEqual(2,result.returncode)
+        self.assertEqual("receipt-invalid",json.loads(result.stdout)["error"]["code"])
+
+    def test_resolve_and_check_context_drift_preserve_actual_kernel_fact(self):
+        self.install(); kernel=project.kernel
+        def drift(*args,**kwargs):
+            result=kernel(*args,**kwargs)
+            with (self.target/project.CONFIG).open("ab") as stream: stream.write(b" ")
+            return result
+        with patch.object(project,"kernel",side_effect=drift):
+            code,payload=self.invoke("resolve")
+        self.assertEqual(2,code); self.assertIsNotNone(payload["kernel"]); self.assertIsNone(payload["receipt"])
+        identifier=self.resolve()["receipt"]["id"]
+        with patch.object(project,"kernel",side_effect=drift):
+            code,payload=self.invoke("check","--receipt",identifier)
+        self.assertEqual(2,code); self.assertEqual("rejected",payload["receipt"]["status"])
+        self.assertEqual(0,payload["kernel"]["exitCode"])
+
+    def test_diff_change_during_check_is_rejected(self):
+        self.install(); identifier=self.resolve()["receipt"]["id"]; diff=self.base/"change.patch"; diff.write_text("before")
+        kernel=project.kernel
+        def drift(*args,**kwargs):
+            result=kernel(*args,**kwargs); diff.unlink(); return result
+        with patch.object(project,"kernel",side_effect=drift):
+            code,payload=self.invoke("check","--receipt",identifier,"--diff",str(diff))
+        self.assertEqual(2,code); self.assertEqual(["diffSha256"],payload["error"]["changedFields"])
+        self.assertIsNotNone(payload["kernel"])
+
+    def test_hard_check_exit_one_and_soft_are_embedded_unchanged(self):
+        self.install(); identifier=self.resolve()["receipt"]["id"]
+        write(self.target,"build.common.gradle","fixture forbidden")
+        code,payload=self.invoke("check","--receipt",identifier)
+        self.assertEqual(1,code); self.assertFalse(payload["ok"])
+        self.assertEqual("matched",payload["receipt"]["status"])
+        self.assertTrue(payload["kernel"]["output"]["violations"])
+        self.assertTrue(payload["kernel"]["output"]["soft"])
+
+    def test_unprepared_distribution_does_not_build(self):
+        self.install(); (self.target/project.SOURCE/"apps/knowledge-cli/build/install/ftckb/bin/ftckb").unlink()
+        with patch.object(project,"build_cli",side_effect=AssertionError("build")),patch.object(project,"kernel",side_effect=AssertionError("kernel")):
+            code,payload=self.invoke("resolve")
+        self.assertEqual(2,code); self.assertEqual("setup-required",payload["error"]["code"])
+
+    def test_old_default_wrapper_payload_and_receipt_storage_are_unchanged(self):
+        self.install(); source=self.target/project.SOURCE; config=project.load_config(self.target)
+        for command_name in ("resolve","check"):
+            expected_code,expected=project.kernel(source,config,command_name,self.target)
+            output=io.StringIO()
+            with contextlib.redirect_stdout(output): code=project.main([command_name,"--project",str(self.target)])
+            self.assertEqual(expected_code,code); self.assertEqual(expected,json.loads(output.getvalue()))
+        self.assertFalse((Path(git(self.target,"rev-parse","--absolute-git-dir"))/"ftckb/receipts").exists())
 
 
 if __name__=="__main__":

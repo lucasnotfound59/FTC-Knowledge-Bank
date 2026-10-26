@@ -4,7 +4,17 @@
 
 面向 FTC 队伍与编码 Agent 的工程知识库：把有来源、经审批的规范接入开发流程，在写码前取得规则，完成后检查改动。
 
-**[完整文档 → ftckb.lucasxl.com](https://ftckb.lucasxl.com)**
+**第一次使用：[本地新手指南](docs/getting-started.md)** · [完整文档站](https://ftckb.lucasxl.com)
+
+新手指南按「浏览教程 / 首次接入 / 已接入后编码 / 遇到错误」分流，解释 profile、固定版本与每一步的完成条件。
+
+已接入目标项目先从其 Git 根目录运行只读诊断：
+
+```bash
+python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py doctor --project .
+```
+
+未初始化或旧 pin 没有 doctor 时，使用独立已审阅 checkout 的绝对入口，`--project` 指向目标；不会改变目标 pin，后续裁决仍用固定源码。doctor 的独立 JSON/退出码及恢复示例见[项目接入](docs/project-integration.md#只读接入诊断)。它不构建、联网、启动服务或执行内核；接入检查不代表规则、代码、构建来源或真机通过。
 
 ## 必做：先启动并确认 Dashboard
 
@@ -24,15 +34,19 @@
 3. **没有已有实例时启动。** 在持久终端会话中运行：
 
    ```bash
-   apps/knowledge-cli/build/install/ftckb/bin/ftckb dashboard --knowledge "$FTCKB_KNOWLEDGE_ROOT" --no-browser
+   python3 .agents/skills/ftckb-integrate/scripts/dashboard_runtime.py \
+     --distribution apps/knowledge-cli/build/install/ftckb \
+     --knowledge "$FTCKB_KNOWLEDGE_ROOT" --no-browser
    ```
 
    无需模型 API key，仅监听 `127.0.0.1`，默认空闲端口；可加 `--port 8080`。去掉 `--no-browser` 可自动尝试打开浏览器。
+
+   推荐入口要求 Python 3.10+ 和 POSIX（macOS/Linux），从构建完成的完整 distribution 创建私有副本后启动；后续 `installDist` 更新原产物不影响该副本。知识库和审计目录仍使用实际路径。直接 `ftckb dashboard` 保持兼容，但没有此保护；Windows 新保护入口不支持。接入项目优先执行已审阅新版 doctor/prepare 返回的实际 `nextSteps.cwd/argv/env`，外部 helper 可保护目标旧 pin 的 Dashboard 二进制，不改 pin；能力未知、缺 helper 或平台不支持时不猜启动命令。生命周期与限制见[管理台指南](docs/dashboard.md#稳定副本与生命周期)。
 4. **核验并保持运行。** 看到 `dashboard=ok` 后打开完整 `url=` 链接，确认页面已连接、知识库路径正确且规则已加载，再开始规则/代码流程。`#token=` 是会话凭据，不写入仓库或公开日志；页面移除片段后，浏览器刷新如缺凭据就重新打开原链接。失败须如实报告，不能声称已启动。后续工作用另一会话，保留管理台进程，任务收尾不自动关闭。
 
-管理台提供规则搜索与编辑、候选批准/拒绝、指定队伍/赛季/profile 的裁决解释，以及本版本记录的调用审计。规则修改先预览差异并校验完整知识库，再保存；修改已批准规则的实质内容或归属会转回候选并清除旧批准记录。审批校验的是声明的角色与队伍，不是身份认证。
+管理台提供规则搜索与编辑、候选批准/拒绝、指定队伍/赛季/profile 的裁决解释，以及本版本记录的调用审计与 soft/dev 逐项复核。规则修改先预览差异并校验完整知识库，再保存；修改已批准规则的实质内容或归属会转回候选并清除旧批准记录。审批校验的是声明的角色与队伍，不是身份认证。
 
-审计默认保存到 `~/.ftckb/audit`，用 `FTCKB_AUDIT_DIR` 可更换目录；需要共享记录的 CLI 和管理台进程应使用相同审计目录和知识库规范路径。**CLI 独立写入审计日志，Dashboard 读取这些共享日志；启动 Dashboard 是本项目要求的工作步骤，不是 CLI 记录审计的技术前提。** 旧固定 commit 副本不会自动获得审计或编辑前检查，未接入的外部 Agent 行为也不可观测。使用流程与覆盖边界见[本地管理台指南](docs/dashboard.md)。
+审计默认保存到 `~/.ftckb/audit`，用 `FTCKB_AUDIT_DIR` 可更换目录；需要共享记录的 CLI 和管理台进程应使用相同审计目录和知识库规范路径。**CLI 独立写入审计日志，Dashboard 读取这些共享日志；启动 Dashboard 是本项目要求的工作步骤，不是 CLI 记录审计的技术前提。** 旧固定 commit 副本不会自动获得审计或编辑前检查，未接入的外部 Agent 行为也不可观测。复核声明独立追加到同分区 `reviews.jsonl`，可选已核对/需修改/本次不适用，必须填写理由与复核人；身份为声明，证据链接不会抓取。声明只说明指定历史快照有人声明复核，原检测仍保留，不代表当前代码或真机通过。缺版本时保留未知，后续可比较检查变化后须重新复核；外部代码修改后必须重新运行检查，历史补丁正文不保存。使用流程与覆盖边界见[本地管理台指南](docs/dashboard.md)。
 
 ## 快速接入
 
@@ -45,16 +59,20 @@
 开始规则或代码工作前，按 README 和 AGENTS.md 启动或复用实际知识库的 Dashboard，确认可用并保持运行。
 ```
 
-接入后的日常流程：**启动或复用 Dashboard 并确认连接 → `resolve` → 按规则写代码 → `check`**。这些确定性命令在本地运行，不需要额外模型 API key；编码 Agent 自身的登录与费用由其供应商决定。
+接入后的日常流程：**doctor → Dashboard 已连接 → work resolve → 修改 → work check --receipt ID**。`project.py work resolve --project .` 返回显式 UUID 和完整下一步 `work check --receipt ID`，配置或实际规则变化会拒绝旧收据。收据在 Git metadata，不进入工作区 diff；旧 resolve/check 仍兼容但无关联证明。这些确定性命令在本地运行，不需要额外模型 API key；编码 Agent 自身的登录与费用由其供应商决定。
+
+可选用 `project.py dashboard verify --project . --connection-file PRIVATE_JSON` 只读核验一个显式已有连接的实际库/审计身份；不代替页面确认、不证明服务binary pin、不管理实例。私有凭据与后续显式audit env见[连接核验](docs/dashboard.md#核验一个已有连接)。
 
 需要 Git、Python 3.10+、JDK 21+ 和 jsonschema。安装步骤、依赖配置与版本升级见[接入指南](https://ftckb.lucasxl.com/getting-started/integrate/)。
 
 ## 文档导航
 
+命令架构入口：[Command-Based：FTCLib、类 FTCLib 与自有实现](knowledge/guides/architecture/command-based.md)。自有框架选 `command-based`，实际使用 FTCLib command 运行时及其 API 选 `ftclib-command`；专区四条新规则已批准，适用于 command-based（含 ftclib-command 继承），触发时只产生条件式 soft；项目实际生效结果以 resolve 为准。
+
 | 栏目 | 内容 |
 | --- | --- |
 | [项目介绍](https://ftckb.lucasxl.com/introduction/) | 目标、适用人群与能力边界 |
-| [快速开始](https://ftckb.lucasxl.com/getting-started/) | 安装、第一次校验与项目接入 |
+| [本地新手指南](docs/getting-started.md) · [在线快速开始](https://ftckb.lucasxl.com/getting-started/) | 按目的选择步骤、第一次接入与编码闭环 |
 | [核心概念](https://ftckb.lucasxl.com/concepts/rules/) | 规则、证据、队伍与赛季、审批与裁决 |
 | [使用指南](https://ftckb.lucasxl.com/guides/cli/) | CLI、聊天编辑、本地网页与 Android Studio |
 | [Agent 接入](https://ftckb.lucasxl.com/agent/workflow/) | 编码流程、固定版本、验收与升级 |
@@ -65,7 +83,7 @@
 
 已实现规则裁决、diff 检查、项目级接入、候选提取与审批、Ask/Edit、本地聊天网页、独立知识库管理台及 Android Studio 插件。Run 模式、官方文档联网检索和 Control Hub 自动部署尚未实现。静态检查不替代真机验证。
 
-当前规则总数为 48（42 已批准 + 6 候选）。裁决器、CLI、运行时和固定版本接入均传递显式 profile；20827／16093 的 8 条规则已迁移到 global，保留 2025-2026 赛季与 2 条 candidate，并增加 3 条 command-based 规则。`global.test-utility-layout` 与 `global.vendor-documented-build-dependencies` 是独立的跨赛季 global 规则。相同赛季和 profile 下两队当前 active IDs 相同；这不是忽略队号的理由。
+当前规则总数为 52（46 已批准 + 6 候选）。裁决器、CLI、运行时和固定版本接入均传递显式 profile；20827／16093 的 8 条规则已迁移到 global，保留 2025-2026 赛季与 2 条 candidate，并增加 3 条 command-based 规则。`global.test-utility-layout` 与 `global.vendor-documented-build-dependencies` 是独立的跨赛季 global 规则。相同赛季和 profile 下两队当前 active IDs 相同；这不是忽略队号的理由。
 
 版本轴分别是：仓库 V0.9.0、CLI 2.1.0、YAML v4、kernel JSON v2、项目接入协议 v2。来源 `authority` 与策略 `policyLevel` 分离，有效优先级为 `OFFICIAL > GLOBAL > LOCAL > SHARED`。候选不生效；同主题最高有效层级的多规则冲突必须先由维护者解决。
 

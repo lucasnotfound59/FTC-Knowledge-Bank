@@ -19,9 +19,10 @@ BEGIN="<!-- BEGIN FTC-KNOWLEDGE-BANK -->"
 END="<!-- END FTC-KNOWLEDGE-BANK -->"
 
 
-def run(args,cwd=None,check=True):
-    result=subprocess.run([str(x) for x in args],cwd=cwd,capture_output=True,text=True,
-                          encoding="utf-8",errors="replace")
+def run(args,cwd=None,check=True,env=None):
+    options={"cwd":cwd,"capture_output":True,"text":True,"encoding":"utf-8","errors":"replace"}
+    if env is not None:options["env"]=os.environ|env
+    result=subprocess.run([str(x) for x in args],**options)
     if check and result.returncode:
         raise IntegrationError(f"{args[0]} failed ({result.returncode}): {result.stderr.strip() or result.stdout.strip()}")
     return result
@@ -210,7 +211,7 @@ def build_cli(source,commit):
     stamp.write_text(commit+"\n",encoding="utf-8")
 
 
-def kernel(source,config,command,root,diff=None,work_mode="normal"):
+def kernel(source,config,command,root,diff=None,work_mode="normal",env=None,diagnostic_sink=None,observation_sink=None):
     protocol=versions(config)
     args=launcher(source)+[command]
     if command=="validate":
@@ -229,7 +230,11 @@ def kernel(source,config,command,root,diff=None,work_mode="normal"):
     # stored project configuration, and normal calls omit the flag for compatibility.
     if work_mode!="normal":
         args+=["--work-mode",work_mode]
-    result=run(args+["--json"],cwd=root,check=False)
+    options={"cwd":root,"check":False}
+    if env is not None:options["env"]=env
+    result=run(args+["--json"],**options)
+    if observation_sink is not None:observation_sink({"completed":True,"exitCode":result.returncode})
+    if diagnostic_sink is not None:diagnostic_sink(result.stderr)
     try:
         payload=json.loads(result.stdout)
     except ValueError as error:
@@ -259,6 +264,16 @@ def kernel(source,config,command,root,diff=None,work_mode="normal"):
 
 
 def main(argv=None):
+    argv=list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0]=="doctor":
+        from project_doctor import main as doctor_main
+        return doctor_main(argv[1:])
+    if argv and argv[0]=="work":
+        from work_receipt import main as work_main
+        return work_main(argv[1:])
+    if argv and argv[0]=="dashboard":
+        from dashboard_connection import main as dashboard_main
+        return dashboard_main(argv[1:])
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command",choices=["validate","resolve","check"])
     parser.add_argument("--project",required=True)
