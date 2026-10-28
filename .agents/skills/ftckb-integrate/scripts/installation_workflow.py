@@ -1,4 +1,4 @@
-"""Explicit installation preparation and connection-gated acceptance."""
+"""Explicit installation preparation and CLI acceptance; optional human connection verification."""
 import argparse
 import contextlib
 import hashlib
@@ -11,10 +11,6 @@ import sys
 import tempfile
 
 import dashboard_connection
-try:
-    import dashboard_runtime
-except ImportError:
-    dashboard_runtime=None
 from dashboard_connection import ConnectionProblem
 import project
 from integration_contract import IntegrationError,versions
@@ -23,7 +19,7 @@ from project_doctor import ProbeError,git,launcher_path
 FILE_LIMIT=512
 BYTE_LIMIT=256*1024*1024
 MESSAGES={
-    "usage":"Prepare explicitly, then use --accept with the returned --prepared-context-sha256, a real --connection-file and --browser-confirmed after observing the page.",
+    "usage":"Prepare explicitly, then use --accept with the returned --prepared-context-sha256. Optional human verification requires both --connection-file and --browser-confirmed after observing the page.",
     "setup_required":"The pinned CLI distribution is incomplete or its build receipt does not match; review and rerun preparation after repairing the build.",
     "preparation_changed":"Prepared inputs changed; review the changes and explicitly prepare again before accepting.",
     "connection_failed":"The selected existing Dashboard did not match; repair its connection or audit environment before accepting.",
@@ -159,33 +155,12 @@ def prepare(root):
         return 2,out
 
 
-def dashboard_capability(source):
-    try:
-        main=project.safe_path(source,"apps/knowledge-cli/src/main/kotlin/org/ftckb/cli/Main.kt")
-        command=project.safe_path(source,"apps/knowledge-cli/src/main/kotlin/org/ftckb/cli/DashboardCommand.kt")
-        if (main.is_file() and command.is_file() and
-            'if (args.firstOrNull()=="dashboard") return runDashboardCommand(args.drop(1),out)' in main.read_text(encoding="utf-8") and
-            'fun runDashboardCommand(' in command.read_text(encoding="utf-8")):
-            return "passed"
-    except (IntegrationError,OSError,ValueError):pass
-    return "unknown"
-
-
 def prepare_steps(root,source,context,digest,env):
-    dashboard={"code":"dashboard","capability":dashboard_capability(source),"description":"Review Dashboard support in this pinned source. If unknown or absent, explicitly review an upgrade; preparation never changes the pin."}
-    if dashboard["capability"]=="passed":
-        argv=dashboard_runtime.recommendation(source/"apps/knowledge-cli/build/install/ftckb",context["knowledgePath"],platform=os.name) if dashboard_runtime is not None else None
-        dashboard["protection"]="supported" if argv is not None else "unavailable"
-        if argv is not None:
-            dashboard.update(description="First reuse an instance matching this exact knowledge/audit identity; otherwise start this pinned distribution through the reviewed external protected helper and observe its page.",
-                             cwd=str(root),argv=argv,env=env)
-        else:
-            dashboard["description"]="Protected Dashboard startup is unavailable: the reviewed helper is missing or this platform is unsupported. Review a POSIX helper or explicitly use the original unprotected CLI; no protected argv is provided."
-    return [{"code":"workflow-env","description":"Use this explicit audit environment for the Dashboard, connection verification, acceptance and later rule work.","env":env},
-            dashboard,
-            {"code":"connection-input","description":"Create a current-user private connection JSON with the actual existing service url; no connection path, port or token has been guessed."},
-            {"code":"accept","description":"After actually observing the connected page, call the reviewed verify.py with --accept, this prepared-context hash, your actual --connection-file, and --browser-confirmed.",
-             "entrypoint":str(Path(__file__).with_name("verify.py").resolve()),"preparedContextSha256":digest,"env":env}]
+    entrypoint=str(Path(__file__).with_name("verify.py").resolve())
+    return [{"code":"workflow-env","description":"Use this explicit audit environment for CLI acceptance and later rule work; humans may later view the same audit directory.","env":env},
+            {"code":"accept","description":"Accept the prepared installation through the CLI. Dashboard is optional and is not started or queried.",
+             "entrypoint":entrypoint,"preparedContextSha256":digest,"cwd":str(root),
+             "argv":[sys.executable,entrypoint,"--project",str(root),"--accept","--prepared-context-sha256",digest],"env":env}]
 
 
 def classify_diagnostics(text):
@@ -202,19 +177,22 @@ def classify_diagnostics(text):
     return {"auditStatus":audit,"items":items[:3],"truncated":len(text)>4096}
 
 
-def accept(root,prepared_digest,connection_file,browser_confirmed):
-    out=envelope("accept");out.update(installationOk=False,browserConfirmation="declared" if browser_confirmed else "not_declared",serviceBinaryPin="unknown",auditStatus="not_reported")
+def accept(root,prepared_digest,connection_file=None,browser_confirmed=False):
+    out=envelope("accept");out.update(installationOk=False,dashboardVerification="requested" if connection_file is not None or browser_confirmed else "not_requested",browserConfirmation="declared" if browser_confirmed else "not_declared",serviceBinaryPin="unknown",auditStatus="not_reported")
     try:
-        require(browser_confirmed and isinstance(prepared_digest,str) and re.fullmatch(r"[0-9a-f]{64}",prepared_digest) and bool(connection_file),"usage")
+        require(isinstance(prepared_digest,str) and re.fullmatch(r"[0-9a-f]{64}",prepared_digest),"usage")
+        require((connection_file is not None)==bool(browser_confirmed) and (connection_file is None or bool(connection_file)),"usage")
         out["stage"]="prepared-context"
         try:actual,context,config,source=preparation_snapshot(root)
         except (WorkflowError,ConnectionProblem,IntegrationError,ProbeError,OSError,ValueError,TypeError,RecursionError):raise WorkflowError("setup_required") from None
         out.update(context=context,preparedContextSha256=actual)
         require(actual==prepared_digest,"preparation_changed")
-        out["stage"]="connection"
-        connection_code,connection_result=dashboard_connection.verify_connection(root,connection_file)
-        out["connection"]=connection_result
-        require(connection_code==0,"connection_failed")
+        if connection_file is not None:
+            out["stage"]="connection"
+            connection_code,connection_result=dashboard_connection.verify_connection(root,connection_file)
+            out["connection"]=connection_result
+            require(connection_code==0,"connection_failed")
+            out["dashboardVerification"]="performed"
         out["acceptanceStatus"]="running"
         env={"FTCKB_AUDIT_DIR":context["expectedAuditRoot"]}
         for command in ("validate","resolve","check"):

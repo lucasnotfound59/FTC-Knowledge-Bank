@@ -17,7 +17,7 @@ rookiebot 隐含 simple-opmode，ftclib-command 隐含 command-based；两种架
 ## 一句话
 
 本仓库 = FTC 知识库 + 确定性“策略裁决器 + 规范器”CLI（`ftckb`）+ 本地聊天/网页 Agent。
-你（Agent）必须先启动或复用实际知识库的 Dashboard 并确认连接，再开始规则或代码工作。
+AI 编码直接使用 CLI：resolve → 修改 → check；不自动启动、连接或操作 Dashboard。Dashboard 供人按需查看规则和已有审计。
 不要自己读规则文本做裁决 —— 写码前调用 `ftckb resolve --json` 拿确定性规则，
 提交前调用 `ftckb check` 对自己的 diff 执法，让所有 Agent 写出同一标准的代码。
 
@@ -36,7 +36,9 @@ rookiebot 隐含 simple-opmode，ftclib-command 隐含 command-based；两种架
 
 （`build/` 不入库，新环境必须重新构建；本机已有且对应当前源码的产物可复用，源码更新后重新构建。）
 
-### 2. 必须启动或复用 Dashboard，并确认可用
+### 2. 人需要时再打开 Dashboard（AI 无此前置）
+
+仅在人明确要求使用管理台时执行以下步骤。正常 AI 接入与编码直接继续第 3 步，不探测或启动服务。
 
 1. 先检查已有终端/管理台，确认知识库路径与审计目录一致；有可用实例就复用，不重复启动或关闭用户已有实例。
 2. 在 Knowledge Bank 仓库根目录执行。已接入项目须用配置中的实际知识库路径替换 `knowledge`；产物缺失或源码更新时先构建：
@@ -59,10 +61,10 @@ rookiebot 隐含 simple-opmode，ftclib-command 隐含 command-based；两种架
 
    默认空闲端口，仅监听 `127.0.0.1`，无需模型 API key；可追加 `--port 8080`。后续工作使用另一会话，任务收尾不自动停止 Dashboard。
 
-   推荐入口要求 Python 3.10+ 和 POSIX（macOS/Linux），从构建完成的完整 distribution 创建私有副本后启动；后续 `installDist` 更新原产物不影响该副本。知识库和审计目录仍使用实际路径。直接 `ftckb dashboard` 保持兼容，但没有此保护；Windows 新保护入口不支持。接入项目优先执行已审阅新版 doctor/prepare 返回的实际 `nextSteps.cwd/argv/env`，外部 helper 可保护目标旧 pin 的 Dashboard 二进制，不改 pin；能力未知、缺 helper 或平台不支持时不猜启动命令。生命周期与限制见[管理台指南](docs/dashboard.md#稳定副本与生命周期)。
-4. 必须确认 `dashboard=ok`、完整 `url=` 可访问、页面已连接且知识库路径与规则列表正确，再进入 validate/resolve/check 和编码流程。将有效链接交给用户；`#token=` 不写入仓库或公开日志，浏览器刷新缺凭据时重开原链接。失败时报告实际错误及未完成的核验，不能将发出启动命令视为成功。
+   推荐入口要求 Python 3.10+ 和 POSIX（macOS/Linux），从构建完成的完整 distribution 创建私有副本后启动；后续 `installDist` 更新原产物不影响该副本。知识库和审计目录仍使用实际路径。直接 `ftckb dashboard` 保持兼容，但没有此保护；Windows 新保护入口不支持。人要求在接入项目打开管理台时，使用已审阅 checkout 的 `dashboard_runtime.py` helper，显式传目标固定 distribution、实际 knowledge 和同一审计环境；旧 pin 不必含 helper，不改 pin。缺 helper 或平台不支持时不声称受保护。默认 doctor/prepare 的 `nextSteps` 只引导 CLI 工作。生命周期与限制见[管理台指南](docs/dashboard.md#稳定副本与生命周期)。
+4. 对人请求的 Dashboard 核验，确认 `dashboard=ok`、完整 `url=` 可访问、页面已连接且知识库路径与规则列表正确。将有效链接交给用户；`#token=` 不写入仓库或公开日志，浏览器刷新缺凭据时重开原链接。失败时报告实际错误及未完成的核验，不能将发出启动命令视为成功。
 
-**这是 Agent 工作流程要求，不是 kernel 执行条件。** 本版本 CLI 自行写入共享审计日志，Dashboard 用于读取和展示；Dashboard 未运行不等于 CLI 没有审计。其他版本、未接入进程或不同知识库分区的记录不能据此声称已覆盖。
+**Dashboard 是可选的人类入口，不是 AI 工作流程或 kernel 执行条件。** 本版本 CLI 自行写入共享审计日志，Dashboard 用于读取和展示；Dashboard 未运行不等于 CLI 没有审计。其他版本、未接入进程或不同知识库分区的记录不能据此声称已覆盖。
 
 ### 3. 契约调用（稳定、版本化、确定性）
 

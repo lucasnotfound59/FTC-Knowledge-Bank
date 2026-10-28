@@ -845,34 +845,21 @@ class DoctorTest(unittest.TestCase):
         (source/"apps/knowledge-cli/build/ftckb-integration-commit").unlink()
         self.assertEqual("failed",self.checks(doctor.diagnose(self.target))["cli.receipt"]["status"])
 
-    def test_dashboard_requires_clean_pinned_static_dispatch(self):
-        write(self.source,"apps/knowledge-cli/src/main/kotlin/org/ftckb/cli/Main.kt",'if (args.firstOrNull()=="dashboard") return runDashboardCommand(args.drop(1),out)')
-        write(self.source,"apps/knowledge-cli/src/main/kotlin/org/ftckb/cli/DashboardCommand.kt",'fun runDashboardCommand(args:List<String>) {}')
-        (self.source/BUNDLE/"scripts/dashboard_runtime.py").unlink()
-        self.sha=commit(self.source); self.install(ref=self.sha)
-        write(self.target/project.SOURCE,"apps/knowledge-cli/build/install/ftckb/lib/knowledge-cli.jar","fixture")
-        payload=doctor.diagnose(self.target)
-        self.assertEqual("passed",self.checks(payload)["source.dashboard"]["status"])
-        step=next(s for s in payload["nextSteps"] if s["code"]=="dashboard")
-        self.assertEqual(str(self.target.resolve()),step["cwd"])
-        self.assertEqual(str(Path(doctor.dashboard_runtime.__file__).resolve()),step["argv"][1])
-        self.assertEqual(["--distribution",str((self.target/project.SOURCE/"apps/knowledge-cli/build/install/ftckb").resolve()),"--knowledge",str((self.target/project.SOURCE/"knowledge").resolve()),"--no-browser"],step["argv"][2:])
-        self.assertFalse((self.target/project.SOURCE/".agents/skills/ftckb-integrate/scripts/dashboard_runtime.py").exists())
-        with patch.dict(os.environ,{"FTCKB_AUDIT_DIR":"relative audit"}):
-            relative=next(s for s in doctor.diagnose(self.target)["nextSteps"] if s["code"]=="dashboard")
-        self.assertEqual(str(self.target.resolve()/"relative audit"),relative["env"]["FTCKB_AUDIT_DIR"])
-        with patch.object(doctor,"jdk_status",return_value="passed"),patch.object(doctor.dashboard_runtime,"recommendation",return_value=None):
-            missing=doctor.diagnose(self.target)
-        self.assertTrue(missing["ok"])
-        missing_step=next(s for s in missing["nextSteps"] if s["code"]=="dashboard")
-        self.assertNotIn("argv",missing_step);self.assertEqual("unavailable",missing_step["protection"])
-        write(self.target/project.SOURCE,"knowledge/.keep","dirty")
-        self.assertFalse(any(s["code"]=="dashboard" for s in doctor.diagnose(self.target)["nextSteps"]))
-
-    def test_unknown_dashboard_has_no_guessed_command(self):
-        self.install(); payload=doctor.diagnose(self.target)
-        self.assertEqual("unknown",self.checks(payload)["source.dashboard"]["status"])
-        self.assertFalse(any(s["code"]=="dashboard" for s in payload["nextSteps"]))
+    def test_default_doctor_does_not_inspect_or_recommend_dashboard(self):
+        self.install()
+        original=doctor.safe_path
+        def guarded(source,relative):
+            if relative.endswith(("Main.kt","DashboardCommand.kt")):
+                raise AssertionError("Dashboard capability must not be inspected")
+            return original(source,relative)
+        with patch.object(doctor,"safe_path",side_effect=guarded):
+            payload=doctor.diagnose(self.target)
+        self.assertEqual("not_checked",self.checks(payload)["source.dashboard"]["status"])
+        self.assertEqual("not_checked",self.checks(payload)["dashboard.connection"]["status"])
+        self.assertFalse(any("dashboard" in step["code"] for step in payload["nextSteps"]))
+        workflow=next(step for step in payload["nextSteps"] if step["code"]=="workflow")
+        self.assertIn("work resolve",workflow["message"])
+        self.assertIn("returned receipt",workflow["message"])
 
     def test_usage_errors_are_json_exit_64(self):
         for args in ([],["--project",str(self.target),"--secret-url=SECRET"],["--project"]):
@@ -982,9 +969,7 @@ class DoctorTest(unittest.TestCase):
         with patch.object(doctor,"os",windows):
             payload=doctor.diagnose(self.target)
         self.assertEqual("failed",self.checks(payload)["cli.distribution"]["status"])
-        step=next(step for step in payload["nextSteps"] if step["code"]=="dashboard")
-        self.assertNotIn("argv",step)
-        self.assertEqual("unavailable",step["protection"])
+        self.assertFalse(any("dashboard" in step["code"] for step in payload["nextSteps"]))
 
     def test_git_runner_disables_helpers_and_does_not_inherit_git_overrides(self):
         with patch.dict(os.environ,{"GIT_CONFIG_COUNT":"1","GIT_CONFIG_KEY_0":"core.fsmonitor","GIT_CONFIG_VALUE_0":"SECRET"}),patch.object(doctor.subprocess,"run",return_value=subprocess.CompletedProcess([],0,"ok","")) as runner:
@@ -996,10 +981,11 @@ class DoctorTest(unittest.TestCase):
             self.assertEqual("",opts["env"]["GIT_ALLOW_PROTOCOL"])
             self.assertEqual(doctor.TIMEOUT,opts["timeout"])
 
-    def test_templates_have_doctor_dashboard_resolve_order(self):
+    def test_templates_have_cli_only_doctor_resolve_order(self):
         for relative in ("assets/project-skill/SKILL.md","assets/AGENTS.block.md"):
             text=(ROOT/BUNDLE/relative).read_text()
-            self.assertIn("doctor → Dashboard 已连接 → work resolve → 修改 → work check --receipt ID",text)
+            self.assertIn("doctor → work resolve → 修改 → work check --receipt ID",text)
+            self.assertNotIn("doctor → Dashboard 已连接",text)
 
 
 class WorkReceiptTest(unittest.TestCase):
@@ -1316,6 +1302,57 @@ class WorkReceiptTest(unittest.TestCase):
         with patch.object(project,"build_cli",side_effect=AssertionError("build")),patch.object(project,"kernel",side_effect=AssertionError("kernel")):
             code,payload=self.invoke("resolve")
         self.assertEqual(2,code); self.assertEqual("setup-required",payload["error"]["code"])
+
+    def test_work_diagnostics_are_safe_visible_and_preserve_kernel_and_receipt_semantics(self):
+        self.install();original=project.run
+        diagnostics=(
+            ("ftckb audit: storage unavailable; invocation audit is incomplete\nSECRET", "incomplete", "audit-incomplete"),
+            ("ftckb audit: checked input version unavailable", "unknown", "version-unknown"),
+            ("SECRET other diagnostic #token=PRIVATE", "unknown", "diagnostic-unknown"))
+        for diagnostic,status,item_code in diagnostics:
+            def injected(*args,**kwargs):
+                result=original(*args,**kwargs)
+                if "--json" in args[0]:result.stderr=diagnostic
+                return result
+            with patch.object(project,"run",side_effect=injected):
+                code,resolved=self.invoke("resolve")
+                identifier=resolved["receipt"]["id"]
+                path=self.receipt_path(identifier);stored=path.read_bytes()
+                checked_code,checked=self.invoke("check","--receipt",identifier)
+            self.assertEqual(0,code,resolved);self.assertEqual(0,checked_code,checked)
+            self.assertEqual("created",resolved["receipt"]["status"])
+            self.assertEqual("matched",checked["receipt"]["status"])
+            self.assertEqual(stored,path.read_bytes())
+            for payload in (resolved,checked):
+                self.assertTrue(payload["ok"])
+                self.assertEqual(status,payload["auditStatus"])
+                self.assertEqual(item_code,payload["diagnostics"]["items"][0]["code"])
+                self.assertEqual(0,payload["kernel"]["exitCode"])
+                self.assertNotIn("SECRET",json.dumps(payload));self.assertNotIn("PRIVATE",json.dumps(payload))
+
+    def test_work_audit_diagnostics_do_not_hide_hard_check_exit(self):
+        self.install();identifier=self.resolve()["receipt"]["id"]
+        write(self.target,"build.common.gradle","fixture hard violation")
+        original=project.run
+        def injected(*args,**kwargs):
+            result=original(*args,**kwargs)
+            if "--json" in args[0]:result.stderr="ftckb audit: storage write failed; invocation audit is incomplete"
+            return result
+        with patch.object(project,"run",side_effect=injected):
+            code,payload=self.invoke("check","--receipt",identifier)
+        self.assertEqual(1,code,payload);self.assertFalse(payload["ok"])
+        self.assertEqual(1,payload["kernel"]["exitCode"])
+        self.assertTrue(payload["kernel"]["output"]["violations"])
+        self.assertEqual("matched",payload["receipt"]["status"])
+        self.assertEqual("incomplete",payload["auditStatus"])
+
+    def test_quiet_work_output_does_not_claim_audit_health(self):
+        self.install();resolved=self.resolve()
+        code,checked=self.invoke("check","--receipt",resolved["receipt"]["id"])
+        self.assertEqual(0,code,checked)
+        for payload in (resolved,checked):
+            self.assertNotIn("auditStatus",payload)
+            self.assertNotIn("diagnostics",payload)
 
     def test_old_default_wrapper_payload_and_receipt_storage_are_unchanged(self):
         self.install(); source=self.target/project.SOURCE; config=project.load_config(self.target)

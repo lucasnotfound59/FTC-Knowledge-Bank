@@ -37,6 +37,22 @@ class CliDocumentationAcceptanceTest {
     }
 
     @Test
+    fun `AI workflow documentation uses CLI acceptance and optional human dashboard`() {
+        val root=Path.of("..","..").normalize()
+        listOf("README.md","AGENTS.md","docs/getting-started.md","docs/project-integration.md",
+            ".agents/skills/ftckb-integrate/SKILL.md",
+            ".agents/skills/ftckb-integrate/assets/project-skill/SKILL.md",
+            ".agents/skills/ftckb-integrate/assets/AGENTS.block.md").forEach { file ->
+            val text=Files.readString(root.resolve(file))
+            assertTrue(text.contains("CLI"),file)
+            assertTrue(text.contains("人"),file)
+            assertFalse(text.contains("doctor → Dashboard 已连接"),file)
+            assertFalse(text.contains("prepare → 目标实际 Dashboard 页面已连接"),file)
+            assertFalse(text.contains("必须启动或复用当前知识库的 Dashboard"),file)
+        }
+    }
+
+    @Test
     fun `public entry documentation uses v2 fields and explicit profile commands`() {
         val root=Path.of("..","..").normalize()
         for (file in listOf("docs/cli-agent.md","docs/handbook/installation.md")) {
@@ -88,7 +104,7 @@ class CliDocumentationAcceptanceTest {
     fun `release documents publish all version axes and profile aware governance`() {
         val root=Path.of("..","..").normalize()
         val readme=Files.readString(root.resolve("README.md"))
-        listOf("**版本：V0.9.0**","52（46 已批准 + 6 候选）","CLI 2.1.0","YAML v4","kernel JSON v2","项目接入协议 v2").forEach {
+        listOf("**版本：V1.5.0**","52（46 已批准 + 6 候选）","CLI 2.1.0","YAML v4","kernel JSON v2","项目接入协议 v2").forEach {
             assertTrue(readme.contains(it),it)
         }
         listOf("AGENTS.md","docs/kernel-contract.md","docs/handbook/resolution.md").forEach { file ->

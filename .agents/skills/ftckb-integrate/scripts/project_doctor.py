@@ -9,11 +9,6 @@ import shutil
 import subprocess
 import sys
 
-try:
-    import dashboard_runtime
-except ImportError:
-    dashboard_runtime=None
-
 from integration_contract import IntegrationError,normalize_profiles,versions
 from project import CONFIG,SOURCE,SKILL,agents_block,digest,no_duplicate_keys,safe_path,source_versions
 
@@ -247,25 +242,8 @@ def diagnose(project):
         require(stamp.is_file()); require(stamp.read_text(encoding="utf-8").strip()==pin)
     probe("cli.receipt",receipt,("cli.distribution","config.commit"))
     add("cli.provenance","unknown","Static files and a matching receipt cannot prove build provenance or runtime behavior.",mandatory=False)
-    # Source evidence only: a literal command dispatch plus its implementation.
-    def dashboard():
-        main=safe_path(source,"apps/knowledge-cli/src/main/kotlin/org/ftckb/cli/Main.kt")
-        command=safe_path(source,"apps/knowledge-cli/src/main/kotlin/org/ftckb/cli/DashboardCommand.kt")
-        if not main.is_file():
-            return "unknown"
-        text=main.read_text(encoding="utf-8")
-        if 'if (args.firstOrNull()=="dashboard") return runDashboardCommand(args.drop(1),out)' in text and command.is_file() and 'fun runDashboardCommand(' in command.read_text(encoding="utf-8"):
-            return "passed"
-        return "unknown"
     trusted_source=("source.metadata","source.gitlink","source.pin","source.clean","source.protocol")
-    if all(states[k]=="passed" for k in trusted_source):
-        try:
-            state=dashboard()
-        except (OSError,IntegrationError,ValueError):
-            state="unknown"
-        add("source.dashboard",state,"Static Dashboard support evidence; unknown requires review of the pinned source.",mandatory=False)
-    else:
-        add("source.dashboard","blocked","Verify the pinned clean source before suggesting a Dashboard command.",[k for k in trusted_source if states[k]!="passed"],mandatory=False)
+    add("source.dashboard","not_checked","Optional human Dashboard capability is not inspected by CLI diagnosis.",mandatory=False)
     for code in ("dashboard.connection","kernel.resolve","kernel.check","robot.validation"):
         add(code,"not_checked","This diagnostic does not execute or verify this stage.",mandatory=False)
     if states["config.read"]!="passed":
@@ -276,19 +254,8 @@ def diagnose(project):
         step("initialize","Initialize the verified pinned submodule.",root,["git","submodule","update","--init","--",SOURCE])
     if source and all(states[k]=="passed" for k in trusted_source) and (states["cli.distribution"]!="passed" or states["cli.receipt"]!="passed"):
         step("build","Review the pinned build/toolchain, then build explicitly; doctor has not run it.",source,["gradlew.bat" if os.name=="nt" else "sh"]+([] if os.name=="nt" else ["gradlew"])+[":apps:knowledge-cli:installDist"])
-        step("verify-build","After building, first confirm Dashboard connection, then run the pinned installer/verify acceptance workflow to establish its receipt; do not fabricate a receipt.")
-    if states["source.dashboard"]=="passed" and knowledge_path:
-        argv=dashboard_runtime.recommendation(source/"apps/knowledge-cli/build/install/ftckb",knowledge_path,platform=os.name) if dashboard_runtime is not None else None
-        if argv is not None:
-            step("dashboard","First reuse a matching Dashboard; otherwise use this reviewed external protected helper, then confirm the connected page and audit partition.",root,argv)
-            out["nextSteps"][-1]["env"]=dashboard_runtime.audit_environment(root)
-            out["nextSteps"][-1]["protection"]="supported"
-        else:
-            step("dashboard","Protected Dashboard startup is unavailable: the reviewed helper is missing or this platform is unsupported. Review a POSIX helper or explicitly use the original unprotected CLI; no protected argv is provided.")
-            out["nextSteps"][-1]["protection"]="unavailable"
-    else:
-        step("review-dashboard","Review Dashboard support in the pinned source. If absent, explicitly choose an upgrade; doctor never changes the pin.")
-    step("workflow","After resolving diagnostic issues: confirm Dashboard connection, run pinned resolve, modify code, then run pinned check and report every soft item. Hardware remains separate.")
+        step("verify-build","After building, run the pinned installer/verify CLI acceptance workflow to establish its build receipt; do not fabricate a receipt.")
+    step("workflow","After resolving diagnostic issues: run work resolve, modify code, then work check with the returned receipt and report every soft item. Dashboard is optional for humans; hardware remains separate.")
     out["ok"]=all(states[k]=="passed" for k in required)
     return out
 

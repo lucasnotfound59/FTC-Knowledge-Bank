@@ -279,15 +279,15 @@ def verify_connection(project_path,connection_file):
         check("local.stable","passed" if stable else "failed","Local inputs remained stable." if stable else MESSAGES["local-changed"],None if stable else "local-changed")
     for code in REQUIRED:
         if code not in states: check(code,"blocked","Prerequisite verification did not pass.")
-    check("browser.connection","not_checked","Open the private service link and confirm the browser page is connected as required by AGENTS.")
+    check("browser.connection","not_checked","For human page verification, open the private service link; this API does not observe the browser.")
     check("server.binaryPin","unknown","Authenticated API identity does not prove the service binary pin or build provenance.")
     check("kernel.defaultAudit","not_checked","Python home is an explicit expected root, not proof of an unconfigured kernel JVM user.home.")
     out["ok"]=all(states[code]=="passed" for code in REQUIRED)
     if out["ok"]:
         root=before["context"]["projectRoot"];env={"FTCKB_AUDIT_DIR":before["context"]["expectedAuditRoot"]}
-        out["nextSteps"]=[{"code":"browser-confirm","description":"Confirm the browser page is connected to the selected instance before resolving rules."},
+        out["nextSteps"]=[{"code":"browser-confirm","description":"For human use, confirm the browser page is connected to the selected instance; CLI rule work is independent."},
             {"code":"workflow-env","description":"Apply this explicit audit environment to the following resolve AND the later receipt-returned check argv.","env":env},
-            {"code":"work-resolve","description":"After browser confirmation, use this reviewed wrapper; keep the same explicit audit environment for subsequent checks.",
+            {"code":"work-resolve","description":"CLI rule work may independently use this reviewed wrapper; keep the same explicit audit environment for subsequent checks.",
              "cwd":root,"argv":[sys.executable,str(Path(__file__).with_name("project.py").resolve()),"work","resolve","--project",root],"env":env}]
     else:
         code=first_error or "integration-invalid"

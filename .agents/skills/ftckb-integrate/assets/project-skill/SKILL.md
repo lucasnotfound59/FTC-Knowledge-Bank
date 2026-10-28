@@ -17,15 +17,15 @@ v2 的 `schemaVersion`、`kernelSchemaVersion`、`integrationVersion` 都为 2�
 
 ## 首次接入与验收边界
 
-首次接入可由已审阅的新安装器显式 `--prepare-only` 安装并构建，再按实际返回的 `nextSteps` 连接目标 canonical knowledge 和同一显式审计目录的 Dashboard。`stage:prepared` 与准备摘要不表示安装验收、规则检查或机器人通过；dry-run 不产生可用摘要。旧 pin 不支持 Dashboard 时保留 pin、报告能力未知并明确讨论升级，不猜启动命令。
+首次接入使用已审阅安装器 `--prepare-only`，再按返回 `nextSteps.cwd/argv/env` 做 CLI `--accept --prepared-context-sha256 HASH`。`stage:prepared` 与准备摘要不表示安装验收、代码或机器人通过。默认不查询或启动 Dashboard，不需要连接文件或浏览器声明。
 
-只有实际观察页面已连接后，才向同一已审阅 `verify.py` 提供 `--accept`、真实 `--prepared-context-sha256`、私有 `--connection-file` 与 `--browser-confirmed`。该 flag 是操作者声明；API 匹配也不证明服务 binary pin。accept 不构建，每个内核阶段前后复核准备输入；漂移或审计存储失败时停止后续阶段，保留实际 JSON/exit 与脱敏诊断。普通 TeamCode 修改不会单独使摘要过期；硬违规可表示安装有效但当前 diff 未通过。旧无阶段参数调用保持原行为，不能把旧单步完成当成本次显式连接验收。
+accept 不构建，每个内核阶段前后复核配置/pin/managed/knowledge/CLI/audit准备输入；漂移或审计存储失败停止后续阶段，保留实际 JSON/exit 与脱敏诊断。普通 TeamCode 修改不会单独使摘要过期；硬违规可表示安装有效但当前 diff 未通过。人明确要求附加页面核验时，旧 `--connection-file` 与 `--browser-confirmed` 必须成对提供，失败不能伪装通过。
 
 ## 开始修改前
 
 记录 `git status --short` 和已有 staged/unstaged/untracked 修改，区分用户已有改动与本次变更。直接使用当前分支；不要求新建分支，也不因文件已有改动而一律拒绝协作，但不得覆盖/撤销用户修改。
 
-日常顺序：**doctor → Dashboard 已连接 → work resolve → 修改 → work check --receipt ID**。
+日常顺序：**doctor → work resolve → 修改 → work check --receipt ID**。
 
 先用只读诊断检查实际接入状态（Python 3.10+）：
 
@@ -43,25 +43,17 @@ python3 /path/to/reviewed-FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scri
 
 该外部入口只诊断，不改变目标 pin；经元数据核验后才按建议初始化。缺配置时先明确真实 team/season/profile 并走接入流程；不要用示例默认值。后续 resolve/check 仍使用项目固定源码，升级是独立的显式选择。
 
-然后先复用与配置实际 knowledge 路径和审计目录一致的 Dashboard；需要新实例时执行已审阅新版 doctor/prepare 返回的实际受保护 `nextSteps.cwd/argv/env`。argv 使用当前已审阅 checkout 中 `dashboard_runtime.py` 的绝对入口，传目标固定源码的完整 distribution 与 canonical knowledge；cwd 为项目根，审计使用同一显式绝对目录。旧 pin 不必有 helper，目标二进制和 pin 不变；能力 unknown、缺 helper 或平台不支持时不猜启动命令、不声称受保护。核对 `dashboard=ok`、完整本次链接可访问、页面已连接且规则目录正确。token 链接只私下交给用户，不写仓库/公开日志。旧 pin 无 Dashboard 时报告限制，明确选择升级，不能暗改 pin。doctor 不验证连接，也不代表 CLI 审计已覆盖所有外部操作。详见固定源码的 `docs/dashboard.md`。
+AI 不自动启动、探测、连接、截图或浏览器确认 Dashboard。人需要查看规则、已有审计或人工复核时再打开；CLI 独立写审计。人类启动入口为已审阅 checkout 的 `dashboard_runtime.py` helper，显式传旧 pin 的完整 distribution、实际 knowledge 与同一审计环境，不改 pin。仅 Python 3.10+ POSIX 支持保护入口，细节见 `docs/dashboard.md`。默认 doctor/prepare 的 nextSteps 只引导 CLI；缺可选管理台不要求升级。
 
-新保护入口要求 Python 3.10+ 和 POSIX（macOS/Linux），从构建完成的完整 distribution 私有副本运行，knowledge/audit 不复制。直接 CLI 保持兼容但无此保护；Windows 新入口不支持，doctor 既有必需检查/退出含义不变。正常结束及处理 SIGINT/SIGTERM 后仅清理本次已退出 child 的目录，SIGKILL/断电可能残留，不自动回收用户实例，正常收尾仍保留所需 Dashboard。
+只有人明确请求才运行独立 `project.py dashboard verify --project . --connection-file PRIVATE_JSON`。私有 JSON 仅含真实完整链接的 `url`，不把 token 放 argv/仓库；API 匹配不代替浏览器观察、不证明服务 binary pin，unknown 不当作通过。正常 AI 工作无需这一步。
 
-浏览器确认步骤保留；需要减少复用错库/错审计分区时，可使用只读机器核验：
-
-```bash
-python3 /path/to/reviewed-FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py dashboard verify --project . --connection-file /private/path/dashboard.json
-```
-
-私有JSON只有 `url` 字段，保存本次完整fragment-token链接；POSIX当前用户所有且无组/其他权限，路径不能是symlink，不能把token放argv或仓库。核验只GET显式127.0.0.1服务，不扫描/启动/kill/构建。API匹配不代替浏览器已连接，不证明binary pin；旧API/未知store明确不能通过。成功nextSteps给workflow-env和实际当前wrapper的work resolve；同一显式FTCKB_AUDIT_DIR也须用于随后收据返回的check argv。默认kernel JVM home仍未核验，不能从Python home推断。旧pin缺入口时用外部新wrapper，不改pin。
-
-确认 Dashboard 后运行（同一 Python 环境需要 `jsonschema>=4.18,<5`）：
+使用同一 Python 环境的 `jsonschema>=4.18,<5`，运行：
 
 ```bash
 python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py work resolve --project .
 ```
 
-work 入口检查配置、submodule URL/HEAD/gitlink、固定源码能力声明、托管文件、JSON schema 和退出码；要求已有匹配的 CLI 发行产物和 build receipt，不自动构建或联网。缺少时先显式准备，确认 Dashboard 连接后再验收/resolve。旧无收据入口保留原有构建行为。v2 resolve/check 自动添加重复 `--profile` flags 或 `--generic-profile`，并核对内核 schemaVersion 与配置 kernelSchemaVersion、返回 profiles 与配置规范化结果一致。使用 JDK 21+ 运行，首次构建可能需要联网；不需要模型 API key，也不使用机器人的 Android SDK。Windows 可用 `py -3` 替换 `python3`。
+work 入口检查配置、submodule URL/HEAD/gitlink、固定源码能力声明、托管文件、JSON schema 和退出码；要求已有匹配的 CLI 发行产物和 build receipt，不自动构建或联网。缺少时先显式准备，再做 CLI 验收/resolve。旧无收据入口保留原有构建行为。v2 resolve/check 自动添加重复 `--profile` flags 或 `--generic-profile`，并核对内核 schemaVersion 与配置 kernelSchemaVersion、返回 profiles 与配置规范化结果一致。使用 JDK 21+ 运行，首次构建可能需要联网；不需要模型 API key，也不使用机器人的 Android SDK。Windows 可用 `py -3` 替换 `python3`。
 
 work 输出是独立 `workReceiptSchemaVersion:1` envelope，实际内核原文在 `kernel.output`，其 schemaVersion 仍为配置版本。只依据 `kernel.output.activeRules` 裁决结果工作；`conflicts` 非空、schemaVersion 不支持、脚本报错或退出非 0 时先解决，不继续假装规则已经载入。按规则的实际适用范围编写代码，不强迫所有项目迁移到某个队伍的风格。
 
@@ -72,6 +64,8 @@ work 输出是独立 `workReceiptSchemaVersion:1` envelope，实际内核原文�
 成功 work resolve 返回 UUID 收据和完整 `nextSteps.cwd/argv`，直接使用返回的命令；下方 `RETURNED_UUID` 仅占位，不能照抄或猜测。check 必须显式传该 ID，不自动选择“最近一次”。配置原字节（含格式）、实际 knowledgePath、固定 commit、team/season/profile 或实际 `.yaml/.yml` 输入变化时重新 resolve；包括 Git 忽略的规则。普通机器人代码变更、提交与重复 check 不使收据过期，不设任意时间 TTL。
 
 收据保存在实际 Git 元数据的 `ftckb/receipts/`，不进入工作区 diff；若自定义 gitDir 在工作区内且不位于 `.git` 子树，明确拒绝，不改 ignore 或迁移数据，不消费/改写。mode 省略仍为 normal；test/dev 必须明确传且与 resolve 匹配，不能从收据静默继承。dev check 仍须本次 `--diff FILE`。CLI 的内核输出保留在 envelope，exit1 仍是实际硬违规，exit2 是收据/上下文/接入等错误，exit64 是新入口参数错误；上下文拒绝前若已执行内核，会保留该实际结果，不冒充关联通过。
+
+work 收到内核 stderr 时，在独立 envelope 返回安全分类的 `diagnostics`/`auditStatus`：审计存储失败为 incomplete，输入版本或其它诊断为 unknown，不暴露原始敏感内容；无诊断不添加这些字段，也不证明审计完整。用户摘要必须报告审计不完整/未知及诊断项。work 保留真实 kernel JSON/退出码和既有收据创建/关联语义；收据绑定实际执行不代表独立审计完整。CLI accept 对已报告的审计存储失败仍停止后续验收阶段。
 
 收据只是本地关联证据，不是签名、身份、审批、语义或真机保证；同一用户可改写并重算摘要。前后快照不保证抵御同权限的中途更改再恢复（ABA）。它不猜配或改写 audit events/reviews。旧 `project.py resolve/check` 默认输出/退出码不变，仍可用于兼容，但不能声称带有工作收据。
 

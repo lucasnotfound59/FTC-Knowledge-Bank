@@ -31,7 +31,7 @@ ftckb reject <knowledge-root> --id team-20827.some-topic --approver NAME \
 
 ### 完整候选审阅导出
 
-开始规则工作前，先按[新手入口](getting-started.md)确认实际知识库 Dashboard 已连接，knowledge 路径与审计目录一致。`--details` 为现有 candidates 的独立只读入口：不写规则、approval、锁文件或审计 events/reviews，不调用模型、网络、resolver 或 Standardizer；不验证证据真伪，也不决定某项目的适用性。
+AI 规则工作使用确定性 CLI，不依赖 Dashboard；人需要查看规则或已有审计时再按[新手入口](getting-started.md)打开。`--details` 为现有 candidates 的独立只读入口：不写规则、approval、锁文件或审计 events/reviews，不调用模型、网络、resolver 或 Standardizer；不验证证据真伪，也不决定某项目的适用性。
 
 首个参数是知识根目录；之后 `--details` 恰好一次，`--id RULE_ID` 和 `--json` 各至多一次，顺序任意。`--id` 只在详细模式可用。重复／未知选项、多余位置参数、缺值、空值、非法 ID 或详细模式中混入 `--help` 均为 usage／64。查看帮助用 `ftckb candidates --help`。
 
