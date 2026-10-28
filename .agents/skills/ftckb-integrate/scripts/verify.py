@@ -45,10 +45,10 @@ def main(argv=None):
     else:
         parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project",required=True)
-    parser.add_argument("--accept",action="store_true",help="Accept an explicitly prepared, connected installation without building")
+    parser.add_argument("--accept",action="store_true",help="Accept an explicitly prepared installation through the CLI without building")
     parser.add_argument("--prepared-context-sha256")
-    parser.add_argument("--connection-file")
-    parser.add_argument("--browser-confirmed",action="store_true")
+    parser.add_argument("--connection-file",help="Optional human Dashboard verification; requires --browser-confirmed")
+    parser.add_argument("--browser-confirmed",action="store_true",help="Human declaration after observing the page; requires --connection-file")
     try:
         args=parser.parse_args(argv)
     except Exception:

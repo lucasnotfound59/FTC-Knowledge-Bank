@@ -1,6 +1,6 @@
 # 第一次使用 FTC Knowledge Bank
 
-先选你现在要做的事。只读教程不需要先安装 CLI；准备让 Agent 按规则工作时，再完成 Dashboard 和项目接入。
+先选你现在要做的事。只读教程不需要先安装 CLI；准备让 Agent 按规则工作时，再完成 CLI 项目接入。Dashboard 供人需要时再打开。
 
 | 现在的目标 | 从哪里开始 | 完成时应该看到什么 |
 | --- | --- | --- |
@@ -21,7 +21,7 @@
 
 规则目录里有 approved（已批准）和 candidate（候选）。看见一条规则，不代表它已经对你的项目生效；裁决还会考虑队号、赛季和 profile。不要仅凭文件夹、标题或 ID 推断适用范围。
 
-想在网页中搜索规则时，使用本地 Dashboard。它与机器人的 FTC Dashboard 不同，也与本仓库需要模型 key 的 `serve` 聊天网页不同。按 [README 的启动步骤](../README.md#必做先启动并确认-dashboard) 复用或启动服务；打开终端输出的完整链接，确认页面已连接、知识库路径正确、规则已加载。保留终端运行，后续命令用另一个终端。详细操作见 [Dashboard 指南](dashboard.md)。
+想在网页中搜索规则时，使用本地 Dashboard。它与机器人的 FTC Dashboard 不同，也与本仓库需要模型 key 的 `serve` 聊天网页不同。按 [README 的启动步骤](../README.md#人需要时再打开-dashboard) 复用或启动服务；打开终端输出的完整链接，确认页面已连接、知识库路径正确、规则已加载。保留终端运行，后续命令用另一个终端。详细操作见 [Dashboard 指南](dashboard.md)。
 
 ## 第一次接入
 
@@ -57,9 +57,9 @@
 项目绝对路径：<实际路径>
 真实队号：<队号>；赛季：<YYYY-YYYY>；profile：<明确选择的 profile>
 读取上游 .agents/skills/ftckb-integrate/SKILL.md，选择并固定已审阅的 tag 或完整 commit。
-先 dry-run，再用 --prepare-only 准备；连接目标实际知识库的 Dashboard 并观察页面后，用 --accept 验收。
+先 dry-run，再用 --prepare-only 准备；按返回的完整 CLI 命令，用 --accept 和真实准备摘要验收。
 不要自动 commit/push。
-开始规则或代码工作前，复用或启动实际知识库的 Dashboard，确认页面已连接。
+AI 不自动启动或操作 Dashboard；人需要查看规则或已有审计时再打开。
 ```
 
 需要 Git、Python 3.10+、JDK 21+ 和同一 Python 环境里的 `jsonschema`。依赖准备、手动安装命令及 dry-run 的具体行为见 [项目接入指南](project-integration.md#前提与版本)。接入命令和规则检查在本地执行，不调用大模型；编码 Agent 自己的登录和费用仍由其供应商决定。
@@ -74,30 +74,23 @@ python3 .agents/skills/ftckb-integrate/scripts/integrate.py \
 
 确认预览指向正确项目和版本后，去掉 `--dry-run`，保留 `--prepare-only` 执行相同命令。`generic` 对应 `--generic-profile`，不要写成 `--profile generic`。准备会安装文件并构建独立 CLI，但不执行规则裁决或代码检查。dry-run 只有计划，没有可用于验收的准备摘要。
 
-### 3. 连接目标 Dashboard，再验收
+### 3. 通过 CLI 验收
 
 准备成功应看到 `stage="prepared"`、`ok=true`，保存实际返回的 `preparedContextSha256`。这只是**准备完成，还未验收**。安装应生成项目配置、固定 submodule 和 Agent 指引；检查 `git status` 是否符合预览。`.gitmodules` 和 submodule 指针可能被暂存，但没有自动提交。
 
-按返回的 `nextSteps` 操作：
-
-1. 使用 `workflow-env.env` 中实际的 `FTCKB_AUDIT_DIR`，后续 Dashboard、连接核验、accept 和编码检查保持一致。
-2. 复用与 `context.knowledgePath` 和审计目录一致的 Dashboard；没有实例且 `dashboard` 项已给出启动命令时，按返回的实际 `cwd/argv/env` 启动；若能力为 unknown、没有 argv，先核对固定源码支持或显式升级，不猜启动命令。上游 checkout 的同内容服务不能代替目标项目实际副本。
-3. 打开服务给出的完整链接，亲自确认页面已连接、知识库路径正确、规则已加载。准备命令不会替你打开、确认或关闭服务。
-4. 在仓库外的私有位置，用编辑器创建仅含 `url` 的 JSON，保存本次完整链接。POSIX 上先设置 `umask 077`，文件权限为 `0600` 或更严格；不要把链接贴到命令参数、仓库或报告。具体要求见[连接文件说明](dashboard.md#核验一个已有连接)。
-5. 用准备结果 `accept.entrypoint` 指向的已审阅 `verify.py` 执行验收。以下是模板，四处占位均换成真实值；审计目录使用准备输出的原值：
+按返回的 `nextSteps` 中 `accept.cwd/argv/env` 执行完整 CLI 命令。`workflow-env.env` 给出实际 `FTCKB_AUDIT_DIR`，accept 与后续 resolve/check 使用同一值。下列仅为须替换占位的模板：
 
 ```bash
 FTCKB_AUDIT_DIR="/准备输出的实际审计目录" python3 /实际/已审阅知识库/.agents/skills/ftckb-integrate/scripts/verify.py \
   --project "/实际/FTC项目路径" --accept \
-  --prepared-context-sha256 实际返回的64位摘要 \
-  --connection-file "/实际/私有/dashboard.json" --browser-confirmed
+  --prepared-context-sha256 实际返回的64位摘要
 ```
 
-`--browser-confirmed` 记录操作者已经观察页面的声明，只有实际看见连接后才能填写。accept 会重核准备输入、Dashboard 的实际知识与审计身份，然后执行 validate → resolve → check；它不会构建、重新安装或改 pin。API 核验与浏览器观察分别完成，API 不能证明服务二进制来自指定 commit。
+验收不启动或查询 Dashboard，不需要连接文件或浏览器确认。accept 重核准备输入，再执行 validate → resolve → check；不构建、重新安装或改 pin。默认管理台核验未请求、浏览器未声明、服务 binary pin 未知，不代表这些阶段通过。人想查看规则或已有审计时，再按 [Dashboard 指南](dashboard.md) 显式打开。
 
 读验收结果时，`installationOk=true` 表示接入有效；`projectCheck.ok=false`、退出 1 表示当前 diff 有硬违规，仍需修正。soft 必须逐项核对并报告。准备输出丢失、构建失败或准备输入变化时，先审阅并修复原因，再以同样的明确参数重跑 prepare；不要猜摘要或手改配置来通过验收。
 
-新分阶段参数只交给实际 `--help` 已支持它们的已审阅工具入口；目标旧 pin 不会自动获得新脚本。旧单步安装/verify 仍兼容原自动化，但不会提供首次安装中连接目标 Dashboard 的窗口，新手优先用上述分阶段流程。完整输出与恢复见[分阶段接入](project-integration.md#分阶段准备与验收)。其他队员 fresh clone、旧版本升级或安装中断，按[恢复指南](project-integration.md#fresh-clone升级和失败恢复)处理。
+新分阶段参数只交给实际 `--help` 已支持它们的已审阅工具入口；目标旧 pin 不会自动获得新脚本。旧单步安装/verify 仍兼容原自动化，新手优先用上述可复核准备摘要的分阶段流程。完整输出与恢复见[分阶段接入](project-integration.md#分阶段准备与验收)。其他队员 fresh clone、旧版本升级或安装中断，按[恢复指南](project-integration.md#fresh-clone升级和失败恢复)处理。
 
 ## 每次编码
 
@@ -111,13 +104,7 @@ python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.
 
 doctor 是只读诊断，检查配置、固定版本、源码能力和已有构建状态。按输出的 `checks` 与 `nextSteps` 先处理失败或证据不足的项；它不会替你构建、联网或启动 Dashboard。
 
-### 2. 确认 Dashboard 已连接
-
-复用与项目配置中**实际知识库路径和审计目录一致**的实例。没有实例时，按 [Dashboard 启动指南](dashboard.md#启动与访问) 在对应知识库副本启动；缺失或过期的 CLI 要先显式构建。不能用另一个 checkout 的网页代替项目固定副本的规则。
-
-打开本次完整链接，确认页面已连接、知识库路径正确且规则加载成功。`dashboard=ok` 只说明服务启动，仍需确认页面。已有连接还可做 [只读身份核验](dashboard.md#核验一个已有连接)。完整链接含会话 token，私下保存，不写进仓库；刷新后缺凭据时重开原链接。
-
-### 3. 取得本次规则和工作收据
+### 2. 取得本次规则和工作收据
 
 ```bash
 python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py work resolve --project .
@@ -125,7 +112,7 @@ python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.
 
 成功后，Agent 根据 `kernel.output.activeRules` 工作，并保存返回的收据 ID 和 `nextSteps`。**resolve 决定本次使用哪些规则，还没有检查任何代码改动。** 收据把这次裁决的项目、配置、固定版本和实际规则联系起来，保存在 Git metadata，不进入代码 diff。
 
-### 4. 修改代码，再用同一收据检查
+### 3. 修改代码，再用同一收据检查
 
 完成改动后，运行 resolve 返回的 `nextSteps.cwd/argv` 中的准确命令；通常形如：
 
@@ -133,7 +120,7 @@ python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.
 python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py work check --project . --receipt RETURNED_UUID
 ```
 
-把 `RETURNED_UUID` 换成**本次成功 resolve 返回的 ID**，不要猜 ID 或选“最近的一条”。若连接核验返回了明确的环境变量，resolve 和 check 都使用同一环境。配置、固定版本或实际规则变化后，重新 resolve，再检查当前改动。
+把 `RETURNED_UUID` 换成**本次成功 resolve 返回的 ID**，不要猜 ID 或选“最近的一条”。准备/验收返回明确的审计环境时，resolve 和 check 都使用同一环境。配置、固定版本或实际规则变化后，重新 resolve，再检查当前改动。
 
 默认检查当前暂存、未暂存和未忽略的新文件；开始前先看 `git status`，区分已有改动和本次改动。收据关联成功后，还要读实际 check 结果：
 
@@ -144,7 +131,7 @@ python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.
 | 收据/接入错误、规则冲突或加载失败 | 按错误修复；不能当作代码通过 |
 | 存在 soft，即使退出 0 | 逐项说明适用性、核对证据并报告结论；需要修改就再 check |
 
-给队友或用户交付时，说清本次改了什么、check 结果、每项 soft 的结论，以及实际做过的构建/测试。check 是静态规则检查；机器人项目仍需正常编译，RC/DS 与真机运行另行验证。
+给队友或用户交付时，说清本次改了什么、check 结果、每项 soft 的结论，以及实际做过的构建/测试。work 如返回 diagnostics/auditStatus，必须报告审计不完整或未知；真实内核结果和收据保留，但收据不证明独立审计完整。check 是静态规则检查；机器人项目仍需正常编译，RC/DS 与真机运行另行验证。
 
 日常省略 `--work-mode` 即为 normal。只有用户明确指定本次是 test 或 dev 时才用对应模式；不要为绕过错误自行切换。特殊模式、独立复核声明和收据失效条件见 [完整编码流程](project-integration.md#每次编码与验收)。
 
@@ -159,7 +146,7 @@ python3 tools/FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.
 | doctor 有 failed/blocked/unknown | 阅读对应项和 `nextSteps`；doctor 不会自动修复或执行建议 |
 | CLI 缺失、构建状态不匹配或 Java 错误 | 检查 JDK 21+、缓存/网络及固定副本，按[构建恢复](project-integration.md#fresh-clone升级和失败恢复)显式准备 |
 | Dashboard 页面失联或没有凭据 | 确认原终端仍运行，重开原完整链接；勿用旧缓存页面判定已连接 |
-| Dashboard 显示另一个知识库 | 回到项目配置的实际副本；核对知识库与审计目录，再 resolve |
+| Dashboard 显示另一个知识库 | 回到项目配置的实际副本；核对知识库与审计目录；CLI 编码不依赖页面 |
 | 收据不匹配或失效 | 修好上下文后重新 work resolve，使用新返回的 check 命令 |
 | check 退出 0，但有 soft | 这是待复核提醒，逐项核对并报告；不等于已经完成复核 |
 | build 通过，但机器人行为不对 | 保存 RC/DS 日志与现场条件，单独诊断硬件和运行逻辑 |

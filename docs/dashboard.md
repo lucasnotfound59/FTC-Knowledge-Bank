@@ -1,6 +1,6 @@
 # 本地知识库管理台
 
-第一次使用可先读[新手指南](getting-started.md)。只想浏览教程不必启动服务；开始规则维护、裁决或按知识库编写代码前，必须复用或启动实际知识库的 Dashboard，并确认页面已连接。
+第一次使用可先读[新手指南](getting-started.md)。Dashboard 供人需要时查看规则、已有审计或人工复核。AI 接入和编码直接走 CLI，不依赖启动、连接、截图或浏览器确认，也不自动操作管理台。
 
 `ftckb dashboard` 管理启动时指定的知识库，提供规则编辑、候选审批、裁决解释、调用审计及逐项复核。它不加载模型配置、不要求模型 API key；`ftckb serve` 是另一个带 Ask/Edit 的聊天服务，仍需要配置模型。
 
@@ -22,7 +22,7 @@ python3 .agents/skills/ftckb-integrate/scripts/dashboard_runtime.py \
   --knowledge knowledge --port 8080 --no-browser
 ```
 
-已接入项目优先执行已审阅新版 doctor/prepare 返回的实际 `nextSteps.cwd/argv/env`。它使用当前已审阅 checkout 中 helper 的绝对路径，distribution 与 canonical knowledge 仍来自目标固定源码，审计环境沿用目标的明确绝对目录；旧 pin 不必包含 helper，也不会被升级。能力未知、缺 helper 或平台不支持时不会提供受保护启动 argv，不能猜命令或声称已有保护。Windows 不支持新入口，原 CLI 仍保持兼容；doctor 既有必需检查和退出含义不因此改变。
+在人明确要求打开管理台的接入项目中，用已审阅 checkout 的 `dashboard_runtime.py` helper，显式传目标旧 pin 的完整 distribution 与 canonical knowledge，并设置与 CLI 相同的 `FTCKB_AUDIT_DIR`。旧 pin 不必包含 helper，不升级 pin；默认 doctor/prepare 的 `nextSteps` 只引导 CLI 验收与编码。缺 helper 或平台不支持时不声称受保护。Windows 不支持新保护入口，原 CLI 仍保持兼容。
 
 监听地址固定为 `127.0.0.1`。终端输出 `dashboard=ok` 及含 `#token=` 的本次启动链接；页面读取 token 后从地址栏移除，只保存在当前页面内存中。数据 API 都要求 token，写操作还校验同源请求。若刷新浏览器后提示缺少凭据，重新打开终端输出的完整链接；页面内的刷新按钮会保留凭据。停止终端中的服务可用 `Ctrl+C`。
 
@@ -46,7 +46,7 @@ helper 原样继承子进程 stdout/stderr，自身只向 stderr 报告本次快
 
 ## 核验一个已有连接
 
-项目Agent可选用以下只读入口，减少复用错误知识库或审计分区：
+仅当人明确要求核验既有管理台时，使用以下独立只读入口，减少复用错误知识库或审计分区：
 
 ```bash
 python3 /path/to/reviewed-FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scripts/project.py dashboard verify --project /path/to/FTC-project --connection-file /private/path/dashboard.json
@@ -60,7 +60,7 @@ python3 /path/to/reviewed-FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scri
 
 独立报告`dashboardConnectionSchemaVersion:1`退出0仅表示本次authenticated API的实际库/存储匹配，退出1包括不匹配/不支持/不可达/失效凭据/隐私未知，退出64为参数错误。仍须打开私下完整链接确认页面已连接；API响应不证明页面状态、服务binary pin或构建来源。旧服务缺identity路由时明确unsupported-api，继续保留该服务，由用户显式选择支持的实例/升级或人工核验，不自动重启。
 
-本次expected audit根由非空白FTCKB_AUDIT_DIR选定（相对值按未来kernel cwd即项目根解析，不展开~），否则本工具显式选择Python home下`.ftckb/audit`；不据此声称无env的JVM user.home已核验。匹配后nextSteps提供workflow-env和准确外部wrapper work resolve argv；同一显式FTCKB_AUDIT_DIR也必须用于随后收据返回的check argv，不凭空生成UUID。普通推荐顺序仍是doctor→Dashboard页面已连接→work resolve→修改→work check。
+本次expected audit根由非空白FTCKB_AUDIT_DIR选定（相对值按未来kernel cwd即项目根解析，不展开~），否则本工具显式选择Python home下`.ftckb/audit`；不据此声称无env的JVM user.home已核验。匹配后nextSteps提供workflow-env和准确外部wrapper work resolve argv；同一显式FTCKB_AUDIT_DIR也必须用于随后收据返回的check argv，不凭空生成UUID。正常 AI 顺序是 doctor→work resolve→修改→同一 receipt 的 work check，无需此核验。
 
 本地前后快照能发现观察到的漂移，但不是抵御同权限改回原值（ABA）的事务，也不是身份认证、审批、语义或真机安全保证。
 

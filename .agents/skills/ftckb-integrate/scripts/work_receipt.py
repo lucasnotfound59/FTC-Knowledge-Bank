@@ -12,6 +12,7 @@ import uuid
 
 import project
 from integration_contract import IntegrationError,normalize_profiles,versions
+from installation_workflow import classify_diagnostics
 from project_doctor import ProbeError,git,launcher_path
 
 LIMIT=65536
@@ -286,7 +287,7 @@ def envelope(command):
 MESSAGES={"usage":"Use work resolve --project ROOT, or work check --project ROOT --receipt UUID; dev check also requires --diff FILE.",
           "receipt-invalid":"The receipt is missing, malformed or damaged; resolve again.",
           "context-changed":"Context or actual knowledge inputs changed; resolve again.",
-          "setup-required":"Prepare and review the pinned CLI distribution and build receipt explicitly, then confirm Dashboard connection before work resolve.",
+          "setup-required":"Prepare and review the pinned CLI distribution and build receipt explicitly, then run CLI acceptance and work resolve.",
           "knowledge-unsafe":"Knowledge inputs cannot be completely and safely read; resolve again after repair.",
           "storage-unsafe":"Receipt storage is unsafe or unavailable; no association can be claimed.",
           "integration-invalid":"Project integration or kernel invocation could not be verified; no association can be claimed.",
@@ -329,7 +330,11 @@ def main(argv=None):
                 raise WorkError("context-changed",fields)
         setup_ready(source,config["source"]["commit"])
         diff_hash=sha(Path(args.diff).resolve(strict=True).read_bytes()) if args.diff else None
-        code,payload=project.kernel(source,config,args.command,root,args.diff,mode)
+        def diagnostics(text):
+            if text and text.strip():
+                out["diagnostics"]=classify_diagnostics(text)
+                out["auditStatus"]=out["diagnostics"]["auditStatus"]
+        code,payload=project.kernel(source,config,args.command,root,args.diff,mode,diagnostic_sink=diagnostics)
         out["kernel"]={"exitCode":code,"output":payload}
         try:
             after,_,_=capture(args.project,mode)

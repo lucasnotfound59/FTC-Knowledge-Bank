@@ -141,7 +141,7 @@ ftckb reject knowledge --id team-20827.some-topic --approver NAME \
 - 主机侧负例守卫：topic 与既有规则重复 → 跳过；单点证据 → confidence 降为 low 并标记 `# needs-stronger-evidence`；提示词禁止一次性修补、注释代码、遗留工件与依赖版本。
 - 审批 = 外科式 YAML 编辑（只改目标规则块的 status 并插入 approval 块），先写临时文件、校验通过才替换原文件；失败时原文件不动。
 - 授权：official/shared 规则只能 `overall_software_lead` 审批；team 规则只能该队 `team_software_lead` 审批。
-- 开始规则工作前，先按[新手入口](getting-started.md)确认实际知识库 Dashboard 已连接，knowledge 路径与审计目录一致。`candidates --details` 仅导出候选，不执行 resolve、不批准、不核验证据真伪，也不向审计 events/reviews 写记录。
+- AI 规则工作使用确定性 CLI，不依赖 Dashboard；人需要查看规则或已有审计时再按[新手入口](getting-started.md)打开。`candidates --details` 仅导出候选，不执行 resolve、不批准、不核验证据真伪，也不向审计 events/reviews 写记录。
 - 详细卡片包含完整规则语义字段、声明的 teams/seasons/profiles、evidence、checks、reviewTriggers、checkMode，以及同一次快照的知识根路径、version 和来源文件 path/fileDigest。空 teams/seasons 表示该维度不限制；空 profiles 表示无架构要求，非空 profiles 是全部要求，导出不展开继承或判断项目适用性。checkMode 仅描述该规则若获批并生效后的检查形式。
 - 详细 JSON 使用 `format:"ftckb-candidate-review"`、`formatVersion:1`，独立于 kernel 的 `schemaVersion:2`；只有 `--details --json` 的失败也保证为此 JSON 格式。默认简表 JSON 保持 `schemaVersion:1`，其旧错误路径仍输出文本，不能当成 kernel 契约。
 - 来源只取自同一快照，source 为 null 表示无法安全定位单条来源，仍可查看完整语义；不会猜路径或导出 ruleYaml、YAML 注释与排版。详细模式使用 KnowledgeWorkspace 的路径安全策略，拒绝 symbolic link；旧简表的读取行为不变。最终 UTF-8 stdout（含换行）上限 1 MiB，超限报 output-too-large，可用 --id 缩小范围；不截断卡片，也不声称限制输入大小、内存或时间。

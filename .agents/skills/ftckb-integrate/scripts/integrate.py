@@ -231,7 +231,7 @@ def main(argv=None):
     profiles.add_argument("--profile",action="append",help="Explicit project profile; repeat to select several compatible profiles")
     profiles.add_argument("--generic-profile",action="store_true",help="Explicitly select no project profiles")
     parser.add_argument("--dry-run",action="store_true")
-    parser.add_argument("--prepare-only",action="store_true",help="Install/build only, then connect the actual Dashboard before explicit acceptance")
+    parser.add_argument("--prepare-only",action="store_true",help="Install/build only, then run CLI acceptance with the returned prepared-context hash")
     try:
         args=parser.parse_args(argv)
     except Exception as error:
