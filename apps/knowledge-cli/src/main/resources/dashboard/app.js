@@ -53,8 +53,10 @@
     recent:[],audit:[],auditScope:'knowledge',auditRevision:null,auditCursor:null,
     auditNext:null,auditStack:[],selectedAudit:null,auditLoaded:false,filters:{},
     resolveResult:null,checkResult:null,mutation:null,online:false,pollBusy:false,
+    knowledgeEpoch:0,rulesRequest:0,detailRequest:0,resolveRevision:0,checkRevision:0,resolveRequest:0,checkRequest:0,
     reviews:[],reviewsLoaded:false,reviewFilter:'pending',reviewCursor:null,reviewNext:null,reviewStack:[],selectedReview:null,reviewDetail:null,recheck:null
   };
+  const buttonTasks = new WeakMap();
   let toastTimer;
   function toast(message, error = false) {
     $('toast').textContent = message; $('toast').classList.toggle('error', error); $('toast').hidden = false;
@@ -95,10 +97,15 @@
   }
   async function runButton(button, task) {
     if (button.disabled) return;
-    const original = button.textContent;
+    const original = button.textContent, owner = {};
+    buttonTasks.set(button,owner);
     button.disabled = true; button.textContent = '处理中…';
     try { return await task(); }
-    finally { button.disabled = false; button.textContent = original; }
+    finally {
+      if (buttonTasks.get(button) === owner) {
+        buttonTasks.delete(button); button.disabled = false; button.textContent = original;
+      }
+    }
   }
   function connected(ok, error) {
     state.online = ok;
@@ -207,14 +214,21 @@
       state.summary = summary;
       connected(true); renderOverview();
       const versionChanged = old?.knowledge?.version !== summary.knowledge.version;
+      if (versionChanged) {
+        state.knowledgeEpoch++;
+        if (old && state.resolveResult) markResultStale($('resolve-result'));
+        if (old && state.checkResult) markResultStale($('check-result'));
+        if (state.mutation && state.mutation.baseVersion !== summary.knowledge.version) {
+          invalidatePreview('知识库版本已变化，预览已失效。请读取最新版本，核对草稿后重新预览。');
+          offerMutationRecovery(state.mutation);
+        }
+      }
       const auditChanged = old?.audit?.revision !== summary.audit?.revision;
       if (force || auditChanged) {
         const page = await api('audit?limit=5&scope=knowledge'); state.recent = list(page.items); renderRecent();
       }
       if ((force || auditChanged) && state.view === 'reviews') await loadReviews();
       if ((force || versionChanged || state.rulesVersion !== summary.knowledge.version) && state.view === 'rules') await loadRules(true);
-      if (versionChanged && old && state.resolveResult) markResultStale($('resolve-result'));
-      if (versionChanged && old && state.checkResult) markResultStale($('check-result'));
       const revision = state.auditScope === 'knowledge' ? summary.audit?.revision : summary.unscopedAudit?.revision;
       if (state.auditLoaded && revision !== state.auditRevision) {
         if (!state.auditCursor && state.view === 'audit') await loadAudit();
@@ -223,8 +237,22 @@
     } catch (error) { connected(false,error); }
     finally { state.pollBusy = false; }
   }
-  function markResultStale(node) {
-    if (!node.querySelector('.stale-result')) node.prepend(el('div','notice warning stale-result','知识库版本已变化。下方保留之前的检测结果，请重新执行以使用当前规则。'));
+  function markResultStale(node,message = '知识库版本已变化。下方保留之前的检测结果，请重新执行以使用当前规则。') {
+    const notice = node.querySelector('.stale-result');
+    if (notice) notice.textContent = message;
+    else node.prepend(el('div','notice warning stale-result',message));
+  }
+  function contextChanged() {
+    state.resolveRevision++; state.checkRevision++;
+    if (state.resolveResult) markResultStale($('resolve-result'),'检测参数已修改。下方结果属于之前的参数，请重新执行裁决。');
+    if (state.checkResult) markResultStale($('check-result'),'检测参数已修改。下方结果属于之前的参数，请重新检测补丁。');
+  }
+  function patchChanged() {
+    state.checkRevision++;
+    if (state.checkResult) markResultStale($('check-result'),'补丁或关联条件已修改。下方结果属于之前的输入，请重新检测。');
+  }
+  function currentKnowledgeResponse(epoch,version) {
+    return epoch === state.knowledgeEpoch || version === state.summary?.knowledge?.version;
   }
   const facets = [
     ['status','状态',r => [r.status]],['authority','来源 authority',r => [r.authority]],['policyLevel','策略 policyLevel',r => [r.policyLevel]],
@@ -245,10 +273,16 @@
   }
   async function loadRules(force = false) {
     if (!force && state.rulesVersion && state.rulesVersion === state.summary?.knowledge?.version) { renderRules(); return; }
+    const request = ++state.rulesRequest, epoch = state.knowledgeEpoch;
     const response = await api('rules');
+    if (request !== state.rulesRequest || !currentKnowledgeResponse(epoch,response.version)) return;
     state.rules = list(response.rules); state.rulesVersion = response.version;
     renderFilters(); renderRules();
-    if (state.selectedRule) await loadRuleDetail(state.selectedRule,false);
+    if (state.selectedRule && state.rules.some(rule => rule.id === state.selectedRule)) await loadRuleDetail(state.selectedRule,false);
+    else if (state.selectedRule) {
+      state.selectedRule = null; state.detail = null; state.detailRequest++;
+      empty($('rule-detail')).append(emptyState('原规则已不可用','当前知识库中已无法读取此规则，请查看校验提示或选择其他规则。'));
+    }
   }
   function renderRules() {
     const focusedId = $('rule-list').contains(document.activeElement) ? document.activeElement.dataset.ruleId : null;
@@ -291,8 +325,9 @@
   }
   async function loadRuleDetail(id, scroll) {
     state.selectedRule = id;
+    const request = ++state.detailRequest, epoch = state.knowledgeEpoch;
     const response = await api('rule?id=' + encodeURIComponent(id));
-    if (state.selectedRule !== id) return;
+    if (state.selectedRule !== id || request !== state.detailRequest || !currentKnowledgeResponse(epoch,response.version)) return;
     state.detail = response; renderRules();
     const rule = response.rule, node = empty($('rule-detail'));
     const header = el('div','detail-header');
@@ -408,21 +443,29 @@
   }
   async function resolveContext(event) {
     event.preventDefault();
+    const revision = state.resolveRevision, request = ++state.resolveRequest, epoch = state.knowledgeEpoch;
+    const current = () => revision === state.resolveRevision && request === state.resolveRequest;
     try {
       const context = readContext('resolve');
       await runButton(event.submitter,async () => {
-        const response = await api('resolve',{context}); state.resolveResult = response;
+        const response = await api('resolve',{context});
+        if (!current() || !currentKnowledgeResponse(epoch,response.version)) return;
+        state.resolveResult = response;
         empty($('resolve-result')).append(resolutionPanel(response.resolution,response.version,context)); poll();
       });
-    } catch (error) { empty($('resolve-result')).append(errorNotice(error,'裁决未完成')); }
+    } catch (error) { if (current() && epoch === state.knowledgeEpoch) empty($('resolve-result')).append(errorNotice(error,'裁决未完成')); }
   }
   async function checkPatch(event) {
     event.preventDefault();
+    const revision = state.checkRevision, request = ++state.checkRequest, epoch = state.knowledgeEpoch;
+    const current = () => revision === state.checkRevision && request === state.checkRequest;
     try {
       const context = readContext('resolve');
       await runButton(event.submitter,async () => {
         if (state.recheck && !$('recheck-confirm').checked) throw new Error('请重新提供本次补丁，并勾选确认。历史记录不保存补丁正文。');
-        const response = await api('check',{context,diff:$('manual-diff').value,...(state.recheck ? {predecessorInvocationId:state.recheck} : {})}); state.checkResult = response;
+        const response = await api('check',{context,diff:$('manual-diff').value,...(state.recheck ? {predecessorInvocationId:state.recheck} : {})});
+        if (!current() || !currentKnowledgeResponse(epoch,response.version)) return;
+        state.checkResult = response;
         const node = empty($('check-result')), panel = el('div','result-panel');
         const violations = list(response.violations), soft = list(response.soft);
         append(panel,append(el('div','result-heading'),el('h2','','指定补丁检测结果'),badge(response.passed ? (soft.length ? '无硬拦截 · 仍需复核' : '未发现硬违规') : '硬违规拦截',response.passed ? soft.length ? 'warning' : 'success' : 'danger')));
@@ -433,7 +476,7 @@
         if (response.invocationId) { const link = el('button','text-button','查看这次调用的阶段记录 →'); link.onclick = () => openAudit({invocationId:response.invocationId}); panel.append(link); }
         node.append(panel); poll();
       });
-    } catch (error) { empty($('check-result')).append(errorNotice(error,'补丁检测未完成')); }
+    } catch (error) { if (current() && epoch === state.knowledgeEpoch) empty($('check-result')).append(errorNotice(error,'补丁检测未完成')); }
   }
   async function validateLibrary() {
     await runButton($('validate-library'),async () => {
@@ -448,16 +491,57 @@
     });
   }
   const template = 'schemaVersion: 4\nrules:\n  - id: new.rule-id\n    topic: new-topic\n    title: "填写规则标题"\n    instruction: "填写可执行的规则指令"\n    rationale: "填写规则理由"\n    status: candidate\n    authority: shared\n    policyLevel: shared\n    applicability:\n      teams: []\n      seasons: []\n      profiles: []\n    # 填写可核对的 git 或 web 证据；空 evidence 无法保存。\n    evidence: []\n    checks: []\n';
-  function invalidatePreview() {
+  function invalidatePreview(message) {
     if (!state.mutation) return;
+    state.mutation.revision++;
     state.mutation.preview = null; $('apply-preview').disabled = true;
-    if (!$('mutation-preview').hidden) {
-      empty($('mutation-preview')).append(el('div','notice warning','输入已修改，请重新预览差异与校验。'));
+    if (typeof message === 'string' || !$('mutation-preview').hidden) {
+      $('mutation-preview').hidden = false;
+      empty($('mutation-preview')).append(el('div','notice warning',typeof message === 'string' ? message : '输入已修改，请重新预览差异与校验。'));
     }
+  }
+  function editorChanged() {
+    if (state.mutation) state.mutation.inputRevision++;
+    invalidatePreview();
+  }
+  function offerMutationRecovery(mutation) {
+    if (state.mutation !== mutation || $('editor-error').querySelector('.mutation-reload')) return;
+    const reload = el('button','button mutation-reload','读取最新版本并保留草稿作对照');
+    reload.type = 'button';
+    reload.onclick = async () => {
+      await runButton(reload,async () => {
+        try {
+          const epoch = state.knowledgeEpoch;
+          const current = await api(mutation.action === 'create' ? 'summary' : 'rule?id=' + encodeURIComponent(mutation.ruleId));
+          if (state.mutation !== mutation) return;
+          const version = mutation.action === 'create' ? current.knowledge.version : current.version;
+          if (!currentKnowledgeResponse(epoch,version)) {
+            invalidatePreview('读取期间知识库再次变化，请重试读取最新版本。草稿已保留。');
+            return;
+          }
+          invalidatePreview();
+          mutation.baseVersion = version;
+          const box = empty($('mutation-preview')); box.hidden = false;
+          box.append(el('div','notice warning','已读取最新知识库版本。编辑器保留你的草稿，请核对差异后重新预览完整知识库校验。'));
+          if (mutation.action !== 'create') append(box,el('h3','','最新规则 YAML'),el('pre','raw-data',current.source?.ruleYaml || '源规则不可编辑'));
+          $('editor-base').textContent = 'BASE / ' + mutation.baseVersion;
+          empty($('editor-error'));
+        } catch (error) {
+          if (state.mutation === mutation) toast(error.message,true);
+        }
+      });
+    };
+    $('editor-error').append(reload);
+  }
+  function mutationFailure(mutation,error,prefix) {
+    if (state.mutation !== mutation) return;
+    invalidatePreview();
+    empty($('editor-error')).append(errorNotice(error,prefix));
+    if (error.code === 'stale_preview') offerMutationRecovery(mutation);
   }
   function openEditor(action, detail) {
     const rule = detail?.rule;
-    state.mutation = {action,ruleId:rule?.id || '',baseVersion:detail?.version || state.summary?.knowledge?.version,preview:null};
+    state.mutation = {action,ruleId:rule?.id || '',baseVersion:detail?.version || state.summary?.knowledge?.version,preview:null,revision:0,inputRevision:0,applying:false};
     const approvalAction = ['approve','reject'].includes(action);
     $('editor-title').textContent = {create:'新增候选规则',edit:'编辑规则与适用范围',approve:'批准候选规则',reject:'拒绝候选规则'}[action];
     $('editor-id').value = rule?.id || ''; $('editor-id').readOnly = action !== 'create';
@@ -467,6 +551,8 @@
     $('approver-id').required = approvalAction; $('approver-role').required = approvalAction; $('approver-team').required = false;
     $('preview-with-context').checked = false; $('preview-context').hidden = true;
     empty($('editor-error')); empty($('mutation-preview')); $('mutation-preview').hidden = true;
+    buttonTasks.delete($('preview-button')); buttonTasks.delete($('apply-preview'));
+    $('preview-button').disabled = false; $('preview-button').textContent = '预览差异与校验';
     $('apply-preview').disabled = true;
     $('apply-preview').textContent = {create:'保存候选规则',edit:'保存此预览',approve:'批准此预览',reject:'拒绝此预览'}[action];
     $('editor-instructions').textContent = approvalAction ? '批准或拒绝均要求明确的批准人和角色声明。先查看差异及完整知识库校验，再应用此预览。' : (action === 'create' ? '请填写标题、指令、理由及至少一条真实 git/web 证据；模板中的 evidence 为空，补齐后才能保存。' : '') + 'YAML 为单条规则的完整文档。普通编辑不能改 ID 或直接晋升状态；修改已批准规则的实质内容或归属，会清除旧 approval 并转为候选。文件路径由服务端确定。';
@@ -504,64 +590,54 @@
     }); block.append(columns);
     if (preview.resolution) block.append(resolutionPanel(preview.resolution,preview.baseVersion,context));
     block.append(el('p','preview-info','预览绑定完整知识库版本，10 分钟后失效。外部修改后必须重新预览。'));
-    node.append(block); $('apply-preview').disabled = !preview.canApply;
+    node.append(block); $('apply-preview').disabled = !preview.canApply || !!state.mutation?.applying;
   }
   async function previewMutation(event) {
     event.preventDefault();
     invalidatePreview(); empty($('editor-error'));
     const mutation = state.mutation;
     if (!mutation) return;
+    const revision = mutation.revision, epoch = state.knowledgeEpoch, baseVersion = mutation.baseVersion;
+    const current = () => state.mutation === mutation && mutation.revision === revision && mutation.baseVersion === baseVersion;
     try {
       const context = $('preview-with-context').checked ? readContext('preview') : undefined;
       const request = {action:mutation.action,ruleId:$('editor-id').value.trim(),expectedVersion:mutation.baseVersion,...(context ? {context} : {})};
       if (['create','edit'].includes(mutation.action)) request.ruleYaml = $('editor-yaml').value;
       else request.approver = {id:$('approver-id').value.trim(),role:$('approver-role').value,...($('approver-team').value.trim() ? {team:$('approver-team').value.trim()} : {})};
       await runButton($('preview-button'),async () => {
-        const response = await api('preview',request); mutation.preview = response.preview; renderPreview(response.preview,context);
+        const response = await api('preview',request);
+        if (!current() || !currentKnowledgeResponse(epoch,response.preview.baseVersion)) return;
+        mutation.preview = response.preview; renderPreview(response.preview,context);
       });
-    } catch (error) { $('editor-error').append(errorNotice(error,'预览未完成')); }
+    } catch (error) { if (current()) mutationFailure(mutation,error,'预览未完成'); }
   }
   async function applyMutation() {
     const mutation = state.mutation;
-    if (!mutation?.preview?.canApply) return;
+    if (!mutation?.preview?.canApply || mutation.applying) return;
+    const inputRevision = mutation.inputRevision, preview = mutation.preview;
+    mutation.applying = true;
     await runButton($('apply-preview'),async () => {
       let response;
       try {
-        response = await api('apply',{previewId:mutation.preview.previewId});
+        response = await api('apply',{previewId:preview.previewId});
       } catch (error) {
-        empty($('editor-error')).append(errorNotice(error,'保存未完成'));
-        mutation.preview = null;
-        if (error.code === 'stale_preview') {
-          const reload = el('button','button','读取最新版本并保留草稿作对照');
-          reload.type = 'button';
-          reload.onclick = async () => {
-            await runButton(reload,async () => {
-              try {
-                if (mutation.action === 'create') {
-                  const summary = await api('summary'); mutation.baseVersion = summary.knowledge.version;
-                  empty($('mutation-preview')).append(el('div','notice warning','已读取最新知识库版本。草稿未改变，请重新预览完整知识库校验。'));
-                } else {
-                  const current = await api('rule?id=' + encodeURIComponent(mutation.ruleId));
-                  mutation.baseVersion = current.version;
-                  const box = empty($('mutation-preview')); box.hidden = false;
-                  append(box,el('div','notice warning','知识库已被外部修改。下方展示最新源文件；编辑器保留你的草稿。请合并差异后重新预览。'),el('h3','','最新规则 YAML'),el('pre','raw-data',current.source?.ruleYaml || '源规则不可编辑'));
-                }
-                $('mutation-preview').hidden = false;
-                $('editor-base').textContent = 'BASE / ' + mutation.baseVersion;
-                reload.remove();
-              } catch (refreshError) { toast(refreshError.message,true); }
-            });
-          };
-          $('editor-error').append(reload);
-        }
+        mutationFailure(mutation,error,'保存未完成');
         return;
       }
-      $('editor-dialog').close(); state.mutation = null; state.rulesVersion = null;
+      if (state.mutation === mutation) {
+        if (mutation.inputRevision === inputRevision) { $('editor-dialog').close(); state.mutation = null; }
+        else {
+          invalidatePreview('提交的预览已保存；当前草稿在保存期间有变化，已保留。请读取最新版本后重新预览。');
+          offerMutationRecovery(mutation);
+        }
+      }
+      state.rulesVersion = null;
       toast('规则变更已保存；未自动 commit 或 push。');
-      try { await poll(true); await loadRules(true); await loadRuleDetail(response.ruleId,false); }
+      try { await poll(true); await loadRules(true); if (!state.mutation) await loadRuleDetail(response.ruleId,false); }
       catch (refreshError) { toast('规则已保存，但刷新失败：' + refreshError.message,true); }
     });
-    $('apply-preview').disabled = !state.mutation?.preview?.canApply;
+    mutation.applying = false;
+    if (state.mutation === mutation || !state.mutation) $('apply-preview').disabled = !state.mutation?.preview?.canApply;
   }
   async function loadAudit(reset = false) {
     if (reset) { state.auditCursor = null; state.auditStack = []; }
@@ -827,9 +903,10 @@
       const profiles = list(context.profiles), profile = ['ftclib-command','rookiebot','command-based','simple-opmode'].find(value => profiles.includes(value));
       $('resolve-profile').value = profiles.length ? profile || '' : 'generic'; $('resolve-mode').value = context.workMode || 'normal';
     }
+    contextChanged();
     const notice = empty($('recheck-context')); notice.hidden = false;
     append(notice,el('p','','关联前次调用 ' + item.invocationId + '。历史不保存补丁正文，请重新提供本次补丁，并核对上下文。当前编辑区保留你已填写的内容。'));
-    const cancel = el('button','text-button','取消关联，作为独立补丁检测'); cancel.type = 'button'; cancel.onclick = () => { state.recheck = null; notice.hidden = true; $('recheck-confirm-label').hidden = true; }; notice.append(cancel);
+    const cancel = el('button','text-button','取消关联，作为独立补丁检测'); cancel.type = 'button'; cancel.onclick = () => { state.recheck = null; notice.hidden = true; $('recheck-confirm-label').hidden = true; patchChanged(); }; notice.append(cancel);
     $('recheck-confirm').checked = false; $('recheck-confirm-label').hidden = false; $('manual-diff').focus();
   }
 
@@ -844,14 +921,18 @@
     $('validate-library').onclick = validateLibrary;
     contextForm($('resolve-context'),'resolve'); contextForm($('preview-context'),'preview');
     $('resolve-form').onsubmit = resolveContext; $('check-form').onsubmit = checkPatch;
+    ['input','change'].forEach(type => {
+      $('resolve-context').addEventListener(type,contextChanged);
+      $('check-form').addEventListener(type,patchChanged);
+    });
     $('editor-close').onclick = () => $('editor-dialog').close();
     $('editor-dialog').addEventListener('close',() => { state.mutation = null; });
     $('editor-form').onsubmit = previewMutation;
-    $('editor-form').addEventListener('input',invalidatePreview);
+    $('editor-form').addEventListener('input',editorChanged);
     $('editor-id').addEventListener('input',() => {
       if (state.mutation?.action === 'create') $('editor-yaml').value = $('editor-yaml').value.replace(/^(\s*- id:)\s*.*$/m,(_match,prefix) => prefix + ' ' + JSON.stringify($('editor-id').value.trim()));
     });
-    $('editor-form').addEventListener('change',invalidatePreview);
+    $('editor-form').addEventListener('change',editorChanged);
     $('preview-with-context').onchange = () => { $('preview-context').hidden = !$('preview-with-context').checked; };
     $('apply-preview').onclick = applyMutation;
     $('approver-role').onchange = () => { $('approver-team').required = $('approver-role').value === 'team_software_lead'; };

@@ -28,6 +28,8 @@ python3 .agents/skills/ftckb-integrate/scripts/dashboard_runtime.py \
 
 已有知识库必须可读取。外部修改导致 YAML 无效时，页面显示当前错误，不能把旧快照当作最新有效结果。页面可见时约每两秒检查更新；失联时保留最后数据并标记过期。
 
+规则目录和选中规则的详情随知识版本刷新。编辑器中的未保存草稿会保留；如果此时知识库变化，旧预览立即失效。点击「读取最新版本并保留草稿作对照」，核对最新规则与草稿、合并需要保留的修改，再重新预览和保存。首次预览或保存遇到版本过期时，都提供这个恢复入口。预览等待期间修改输入或关闭编辑器，旧响应不会重新启用保存。
+
 ## 页面打不开，但 API 仍正常
 
 API 健康与页面可用要分别确认。曾实际出现 `/api/dashboard/identity` 和规则接口返回 200，但 `/`、`/app.js`、`/styles.css` 返回 500 的情况；此时不能仅凭身份核验成功宣称 Dashboard 已连接。先查看页面与静态资源响应、浏览器错误及服务终端日志，再确认知识库和审计身份。
@@ -72,11 +74,15 @@ python3 /path/to/reviewed-FTC-Knowledge-Bank/.agents/skills/ftckb-integrate/scri
 4. 保存只替换目标规则所在文件，保留其他规则内容；路径越界、symlink、旧版本预览和校验失败都会阻止保存。修改已批准规则的实质内容或归属会清除旧 approval，并转回 candidate，必须重新批准。
 5. 对候选选择「批准候选」或「拒绝候选」，明确填写批准人 ID、角色和适用队伍，再预览并应用。操作不会自动 commit 或 push。
 
+要修改规则参数，选择规则后点击「编辑 YAML / 适用范围」：`applicability` 控制队伍、赛季和 profile，`checks` 与 `reviewTriggers` 控制检查条件；这些修改同样经过预览、完整知识库校验和保存。目录中的筛选框仅筛选显示，不会修改规则。
+
 角色检查沿用 ApprovalPolicy：official/shared 来源要求 `overall_software_lead`；team 来源要求 `team_software_lead`，且声明队伍必须等于该规则唯一适用队伍。该检查验证提交的角色声明，不验证操作者身份。候选不参与生效裁决。
 
 ## 查看裁决与手动检查补丁
 
 在「归属与裁决」中填写真实 team、season，并显式选择 generic 或命名 profile。generic 表示空 profile 集合；没有完整上下文时，只看规则目录，不推测哪些规则生效。
+
+修改队号、赛季、profile 或工作模式后，已有裁决和补丁检测结果会标记过期；点击「执行裁决」或「检测指定补丁」获得新结果。修改补丁也会使旧补丁检测结果过期。请求等待期间发生输入或规则版本变化，返回结果不能作为当前输入的结论。这里的参数只用于本次手动调用，不会改写已接入项目配置，也不是模型设置或机器人实时调参。
 
 结果由现有 RuleResolver 生成，展示 active、excluded 及原因、overridden 及 winner IDs，以及同主题最高有效层级的冲突。优先级为 `OFFICIAL > GLOBAL > LOCAL > SHARED`；official 由来源取得最高级，冲突不会交给前端或模型猜胜者。
 
@@ -154,5 +160,7 @@ chat 可用 `/work-mode normal|test|dev` 明确选择下一条提交消息的工
 - 当前聚合审计入口是新版 validate/resolve/check、chat/serve 用户请求及模型子调用，以及 dashboard 手动检测和规则事务；不要据此宣称所有其他命令或 Android Studio 插件操作均有同等审计覆盖。
 - Dashboard HTTP API、审计事件与 kernel JSON 是不同契约。管理台新增接口不修改 kernel JSON v2 或项目接入协议 v2，也不代表已经创建 tag、Release 或更新公开文档站。
 - 构建、静态检查、规则校验和浏览器操作均不能替代 Robot Controller、Driver Station 或真机验证。测试结果按实际执行范围报告，不将历史全量测试当作本次新增功能已被验证的证据。
+
+维护前端时可运行 `node --test tests/dashboard/app-state.test.cjs`（Node.js 18+，无第三方依赖）。它执行实际页面脚本与绑定事件，用受控 HTTP 响应覆盖版本变化、草稿保留及迟到响应；不能代替后端规则写入测试和真实浏览器验收。
 
 更多：[`AGENTS.md`](../AGENTS.md)、[机器契约](kernel-contract.md)、[diff 检查](standardizer-check.md)、[聊天 Agent](cli-agent.md)。
