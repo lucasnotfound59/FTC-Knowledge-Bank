@@ -16,7 +16,7 @@ internal object AuditCodec {
     private val commands = setOf("validate", "resolve", "check", "ask", "edit", "undo", "discard", "model", "rule_create", "rule_edit", "rule_approve", "rule_reject")
     private val stages = setOf("parameters", "knowledge_load", "knowledge_validate", "resolve", "diff_read", "standardizer", "path_guard", "branch_guard", "citation_guard", "baseline_guard", "write", "restore", "model")
     private val categories = setOf("hard", "soft", "dev_downgrade", "usage", "load_error", "invalid_knowledge", "conflict", "path_guard", "branch_guard", "citation_guard", "stale_baseline", "stale_knowledge", "model_failure", "storage_error")
-    private val secret = Regex("(?i)(bearer\\s+)[^\\s]+|(?:sk-(?:proj-)?|sk-ant-)[A-Za-z0-9_-]{8,}|((?:api[_-]?key|access[_-]?token|refresh[_-]?token|password|authorization|token)\\s*[:=]\\s*(?:bearer\\s+)?)[^\\s,;]+")
+    private val secret = Regex("(?i)(bearer\\s+)[^\\s]+|(?<![A-Za-z0-9_-])(?:sk-(?:proj-)?|sk-ant-)[A-Za-z0-9_-]{8,}|((?:api[_-]?key|access[_-]?token|refresh[_-]?token|password|authorization|token)\\s*[:=]\\s*(?:bearer\\s+)?)[^\\s,;]+")
     private fun text(value: String, limit: Int = 1024): String = secret.replace(value.take(limit)) {
         if (it.groups[1] != null) "Bearer [REDACTED]" else if (it.groups[2] != null) "${it.groups[2]!!.value}[REDACTED]" else "[REDACTED]"
     }.filter { it == '\n' || it == '\t' || !it.isISOControl() }

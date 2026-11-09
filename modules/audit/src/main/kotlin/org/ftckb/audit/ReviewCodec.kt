@@ -15,7 +15,7 @@ internal object ReviewCodec {
     private val mapper = ObjectMapper().enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
         .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
     private val hash = Regex("[0-9a-f]{64}")
-    private val secret = Regex("(?i)(bearer\\s+)[^\\s]+|(?:sk-(?:proj-)?|sk-ant-)[A-Za-z0-9_-]{8,}|((?:api[_-]?key|access[_-]?token|refresh[_-]?token|password|authorization|token)\\s*[:=]\\s*(?:bearer\\s+)?)[^\\s,;]+")
+    private val secret = Regex("(?i)(bearer\\s+)[^\\s]+|(?<![A-Za-z0-9_-])(?:sk-(?:proj-)?|sk-ant-)[A-Za-z0-9_-]{8,}|((?:api[_-]?key|access[_-]?token|refresh[_-]?token|password|authorization|token)\\s*[:=]\\s*(?:bearer\\s+)?)[^\\s,;]+")
     private val sensitiveKeys = setOf("token", "apikey", "accesstoken", "refreshtoken", "password", "authorization", "secret", "clientsecret")
     fun uuid(value: String) { require(UUID.fromString(value).toString() == value) }
     fun digest(value: String) { require(hash.matches(value)) }

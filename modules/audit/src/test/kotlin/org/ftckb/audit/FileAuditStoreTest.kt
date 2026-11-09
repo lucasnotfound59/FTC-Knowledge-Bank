@@ -124,6 +124,16 @@ class FileAuditStoreTest {
         assertTrue(store.find(s.invocationId)!!.metadata.context!!.profiles!!.all { it.length == 80 })
     }
 
+    @Test fun `rule text containing sk inside a word is persisted intact`() {
+        val store = store(); val s = start()
+        val instruction = "Define and enforce a task-appropriate maximum result age before using Limelight data."
+        val token = listOf("sk", "proj", "abcdefghijklmnop").joinToString("-")
+        store.append(s)
+        store.append(stage(s.invocationId, AuditStageStatus.PASSED).copy(stage = AuditStage("standardizer", AuditStageStatus.PASSED, detail = "leaked $token", hits = listOf(AuditHit("soft", "shared.limelight-enforce-freshness-policy", null, null, null, instruction)))))
+        val text = Files.readString(store.partitionPath.resolve("events.jsonl"))
+        assertTrue(text.contains(instruction)); assertFalse(text.contains("abcdefghijklmnop"))
+    }
+
     @Test fun `write failure and invalid events return false with sanitized diagnostics`() {
         val messages = mutableListOf<String>()
         val base = Files.writeString(temp.resolve("not-directory"), "x")

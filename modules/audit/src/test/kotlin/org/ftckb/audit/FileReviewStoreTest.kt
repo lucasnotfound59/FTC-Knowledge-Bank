@@ -72,6 +72,12 @@ class FileReviewStoreTest {
         assertFalse(Files.readString(s.partitionPath.resolve("reviews.jsonl")).contains("privatevalue"))
         assertEquals(result.record, s.record(i) { false }.record)
     }
+    @Test fun `reasons quoting words that contain sk are not treated as secrets`() {
+        val s = store(); val reason = "Prototype enforces a task-appropriate maximum result age of 100 ms."
+        val result = s.record(input().copy(reason = reason)) { true }
+        assertFalse(result.record.sanitized)
+        assertTrue(Files.readString(s.partitionPath.resolve("reviews.jsonl")).contains(reason))
+    }
     @Test fun `force failure never becomes success merely because a full line is visible`() {
         val s = store(); val i = input(); s.force = { throw java.io.IOException("force failed") }
         problem("storage_unavailable") { s.record(i) { true } }
