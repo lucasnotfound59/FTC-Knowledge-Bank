@@ -154,6 +154,42 @@ class StandardizerTest {
     }
 
     @Test
+    fun `double star globs also match root level files`() {
+        val dashboard=softRule("shared.dashboard-pin").copy(checks=listOf(RuleCheck(
+            RuleCheckKind.REGEX_FORBIDDEN,
+            "com\\.acmerobotics\\.dashboard[^\\n]*(\\+|SNAPSHOT)",
+            "**/*.gradle*",
+            "Pin a stable Dashboard version"
+        )))
+        val floating="    implementation 'com.acmerobotics.dashboard:dashboard:0.4.+'"
+        val outcome=Standardizer.evaluate(listOf(dashboard),listOf(
+            Standardizer.DiffChange("build.dependencies.gradle",listOf(12 to floating)),
+            Standardizer.DiffChange("TeamCode/build.gradle",listOf(30 to floating)),
+            Standardizer.DiffChange("README.md",listOf(1 to floating))
+        ))
+        assertEquals(listOf("TeamCode/build.gradle","build.dependencies.gradle"),outcome.violations.mapNotNull { it.path }.sorted())
+
+        assertEquals(1,Standardizer.evaluate(listOf(forbiddenPathRule("**/secrets.json")),listOf(
+            Standardizer.DiffChange("secrets.json",listOf(1 to "{}"))
+        )).violations.size)
+
+        val trigger=softRule("shared.limelight",listOf(RuleReviewTrigger(listOf("**/*.java"),listOf("\\bLLResult\\b"))))
+        assertEquals(listOf("shared.limelight"),Standardizer.evaluate(listOf(trigger),listOf(
+            Standardizer.DiffChange("Vision.java",listOf(3 to "LLResult result=null;"))
+        )).soft.map { it.first })
+    }
+
+    @Test
+    fun `zero directory variants cover every standalone double star segment`() {
+        assertEquals(listOf("*.gradle*"),RuleGlobs.zeroDirectoryVariants("**/*.gradle*"))
+        assertEquals(listOf("TeamCode/build.gradle"),RuleGlobs.zeroDirectoryVariants("TeamCode/**/build.gradle"))
+        assertEquals(setOf("a/**/c","**/a/c","a/c"),RuleGlobs.zeroDirectoryVariants("**/a/**/c").toSet())
+        assertEquals(emptyList<String>(),RuleGlobs.zeroDirectoryVariants("TeamCode/src/{test,androidTest}/**"))
+        assertEquals(emptyList<String>(),RuleGlobs.zeroDirectoryVariants("{**/x,y}"))
+        assertEquals(null,RuleGlobs.compile("[unclosed"))
+    }
+
+    @Test
     fun `review triggers emit soft only for matching added lines`() {
         val always=softRule("shared.always")
         val triggered=softRule("shared.limelight",listOf(RuleReviewTrigger(

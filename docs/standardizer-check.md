@@ -60,6 +60,7 @@ JSON 契约（沿用 kernel 风格，退出码扩展）：
 
 字段：`kind`、`pattern`（glob 或正则，见下）、`appliesTo`（可选 glob，限定路径）、`note`（人类可读说明）。
 `path-*` 的 pattern 是 glob；`regex-*` 的 pattern 是 Java 正则，`appliesTo` 是路径 glob。
+所有路径 glob（含 `reviewTriggers.paths`）按 globstar 语义匹配：独立的 `**/` 段也可代表零层目录，因此 `**/*.gradle*` 同时命中仓库根目录的 `build.dependencies.gradle` 与 `TeamCode/build.gradle`。花括号内或紧跟其他字符的 `**/` 保持 Java glob 原义；超过 4 个独立 `**/` 段的 glob 不展开。
 
 `path-required` 本身没有“改 X 才触发”的条件字段；它要求本次变化集合包含匹配路径。`regex-required` 在匹配文件的新增行集合中寻找模式，并非 Java 控制流分析。resolve JSON 的 kind 使用下划线形式，check 输出违规种类使用连字符形式。
 

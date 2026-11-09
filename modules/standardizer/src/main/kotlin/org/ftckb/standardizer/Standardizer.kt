@@ -1,6 +1,5 @@
 package org.ftckb.standardizer
 
-import java.nio.file.FileSystems
 import java.io.ByteArrayOutputStream
 import java.io.ByteArrayInputStream
 import java.io.InputStream
@@ -45,9 +44,8 @@ object Standardizer {
     fun evaluate(rules:List<KnowledgeRule>,changes:List<DiffChange>):Outcome {
         val violations=mutableListOf<Violation>()
         val soft=mutableListOf<Pair<String,String>>()
-        val matchers={ glob:String ->
-            runCatching { FileSystems.getDefault().getPathMatcher("glob:$glob") }.getOrNull()
-        }
+        val compiled=HashMap<String,java.nio.file.PathMatcher?>()
+        val matchers:(String)->java.nio.file.PathMatcher?={ glob -> compiled.getOrPut(glob) { RuleGlobs.compile(glob) } }
         rules.forEach { rule ->
             if (rule.checks.isEmpty()) {
                 if (rule.reviewTriggers.isEmpty() || reviewTriggered(rule,changes,matchers)) {
