@@ -55,7 +55,11 @@ object Standardizer {
                 rule.checks.forEach { check -> evaluateCheck(rule.id,check,changes,matchers,violations) }
             }
         }
-        return Outcome(violations,soft.distinctBy { it.first }.sortedBy { it.first })
+        // Checks of one rule may overlap (e.g. "**/*.gradle" and "*.gradle" both match a root-level
+        // file once ** can span zero directories); the same rule/check/pattern/location is one finding,
+        // reported with the first matching check's note in YAML order.
+        val distinctViolations=violations.distinctBy { listOf(it.ruleId,it.check,it.pattern,it.path,it.line) }
+        return Outcome(distinctViolations,soft.distinctBy { it.first }.sortedBy { it.first })
     }
 
     /** DEV work mode: hard findings never disappear. Each one becomes a deterministic soft

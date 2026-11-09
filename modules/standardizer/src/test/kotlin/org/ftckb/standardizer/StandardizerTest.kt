@@ -180,6 +180,26 @@ class StandardizerTest {
     }
 
     @Test
+    fun `overlapping checks of one rule report a root level hit once`() {
+        val pattern="org\\.ftclib\\.ftclib:core:"
+        val rule=softRule("global.solverslib-imports").copy(checks=listOf(
+            RuleCheck(RuleCheckKind.REGEX_FORBIDDEN,pattern,"**/*.gradle{,.kts}","Nested build files"),
+            RuleCheck(RuleCheckKind.REGEX_FORBIDDEN,pattern,"*.gradle{,.kts}","Root build files")
+        ))
+        val line="    implementation 'org.ftclib.ftclib:core:2.1.1'"
+
+        val outcome=Standardizer.evaluate(listOf(rule),listOf(
+            Standardizer.DiffChange("build.dependencies.gradle",listOf(2 to line)),
+            Standardizer.DiffChange("TeamCode/build.gradle",listOf(9 to line))
+        ))
+
+        assertEquals(
+            listOf("TeamCode/build.gradle" to "Nested build files","build.dependencies.gradle" to "Nested build files"),
+            outcome.violations.map { it.path.orEmpty() to it.detail }.sortedBy { it.first }
+        )
+    }
+
+    @Test
     fun `zero directory variants cover every standalone double star segment`() {
         assertEquals(listOf("*.gradle*"),RuleGlobs.zeroDirectoryVariants("**/*.gradle*"))
         assertEquals(listOf("TeamCode/build.gradle"),RuleGlobs.zeroDirectoryVariants("TeamCode/**/build.gradle"))
