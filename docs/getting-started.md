@@ -14,7 +14,7 @@
 你可以直接阅读文件，不必配置模型 API key：
 
 - 第一次配置 FTC 工程：[Android Studio 与 FTC SDK](../knowledge/guides/setup/android-studio-ftc-sdk.md)。
-- 选择命令架构：[Command-Based：FTCLib、类 FTCLib 与自有实现](../knowledge/guides/architecture/command-based.md)。自有 Command／Subsystem／scheduler 选择 `command-based`；使用 FTCLib command 运行时及其 API 选择 `ftclib-command`。专区四条规则已批准；仅对适用的 command-based（含 ftclib-command 继承）项目产生条件式 soft，实际以 resolve/check 为准。
+- 选择命令架构：[Command-Based：SolversLib 与实现比较](../knowledge/guides/architecture/command-based.md)。正式 command-based 代码使用 [SolversLib](../knowledge/guides/setup/solverslib.md)；旧 ftclib-command 名称也包含 command-based，因此遵守同一正式政策。六条新增规则涵盖架构限制和使用规范，实际以 resolve/check 为准。
 - 了解 FTCLib 安装：[FTCLib 教程](../knowledge/guides/setup/ftclib.md)。注意教程中的核验日期；安装库与选择项目架构是两件事，适用规则以本项目的 resolve 结果为准。
 - 看入门机器人示例：[RookieBot 教程](../knowledge/guides/practices/rookiebot-tutorial.md)。
 - 看自动路径与调参：[Pedro Pathing 教程](../knowledge/guides/tools/pedro-pathing.md)。
@@ -39,8 +39,8 @@
 | profile | 何时明确选择 |
 | --- | --- |
 | `generic` | 显式不选择架构专属 profile，仍会裁决其他适用规则 |
-| `command-based` | 明确采用自有或类 FTCLib 的 Command／Subsystem／scheduler 架构 |
-| `ftclib-command` | 实际使用 FTCLib command 运行时及其 API；同时包含 command-based |
+| `command-based` | 明确采用 Command／Subsystem 架构；正式代码使用固定版本 SolversLib |
+| `ftclib-command` | 保留旧配置兼容名称，包含 command-based；正式代码同样要求 SolversLib |
 | `simple-opmode` | 明确采用 simple-opmode 架构 |
 | `rookiebot` | 明确采用 RookieBot 对应架构；同时包含 simple-opmode |
 

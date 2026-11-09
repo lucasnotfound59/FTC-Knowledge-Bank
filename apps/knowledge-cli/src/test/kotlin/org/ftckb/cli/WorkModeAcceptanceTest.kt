@@ -18,7 +18,8 @@ class WorkModeAcceptanceTest {
     private val mapper=JsonMapper.builder().build()
     private val knowledgeRoot=Path.of("..","..","knowledge")
     private val fixtures=Path.of("..","..","fixtures","kernel")
-    private val architectureIds=setOf("global.command-responsibilities","shared.ftclib-command-candidate")
+    private val architectureIds=setOf("global.command-responsibilities","global.solverslib-production-imports",
+        "global.solverslib-production-runtime","shared.ftclib-command-candidate")
 
     private fun run(args:List<String>):Pair<Int,String> {
         val out=ByteArrayOutputStream()
@@ -144,7 +145,7 @@ class WorkModeAcceptanceTest {
     }
 
     @Test
-    fun `resolve test mode excludes only the two architecture mandate rules`() {
+    fun `resolve test mode excludes only architecture mandates and restores the shared runtime choice`() {
         val (normalCode,normalOut)=run(resolveArgs("--json"))
         assertEquals(0,normalCode,normalOut)
         val (testCode,testOut)=run(resolveArgs("--work-mode","test","--json"))
@@ -155,11 +156,11 @@ class WorkModeAcceptanceTest {
 
         assertNull(normal.get("workMode"))
         assertEquals("test",test["workMode"].asText())
-        assertEquals(30,normal["activeRules"].size())
-        assertEquals(28,test["activeRules"].size())
+        assertEquals(38,normal["activeRules"].size())
+        assertEquals(36,test["activeRules"].size())
         val normalIds=normal["activeRules"].map { it["id"].asText() }.toSet()
         val testIds=test["activeRules"].map { it["id"].asText() }.toSet()
-        assertEquals(normalIds-architectureIds,testIds)
+        assertEquals(normalIds-architectureIds+"shared.command-runtime-boundary",testIds)
         val excluded=test["excludedRules"].filter { it["ruleId"].asText() in architectureIds }
         assertEquals(architectureIds.sorted(),excluded.map { it["ruleId"].asText() })
         excluded.forEach { rule ->
@@ -204,6 +205,8 @@ class WorkModeAcceptanceTest {
         assertEquals(
             listOf(
                 "global.command-responsibilities" to listOf("profile","work-mode-test"),
+                "global.solverslib-production-imports" to listOf("profile","work-mode-test"),
+                "global.solverslib-production-runtime" to listOf("profile","work-mode-test"),
                 "shared.ftclib-command-candidate" to listOf("profile","work-mode-test")
             ),
             excluded.map { it["ruleId"].asText() to it["reasons"].map { reason -> reason.asText() } }

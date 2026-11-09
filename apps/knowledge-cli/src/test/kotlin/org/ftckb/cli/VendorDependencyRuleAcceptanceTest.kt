@@ -306,15 +306,15 @@ class VendorDependencyRuleAcceptanceTest {
     @Test
     fun `knowledge totals profile counts and real kernel fixtures stay consistent`() {
         val all=rules()
-        assertEquals(52,all.size)
-        assertEquals(46,all.count { it.status==RuleStatus.APPROVED })
+        assertEquals(58,all.size)
+        assertEquals(52,all.count { it.status==RuleStatus.APPROVED })
         assertEquals(6,all.count { it.status==RuleStatus.CANDIDATE })
 
         val expectedCounts=listOf(
             listOf("--generic-profile") to 26,
-            listOf("--profile","command-based") to 33,
+            listOf("--profile","command-based") to 38,
             listOf("--profile","rookiebot") to 38,
-            listOf("--profile","ftclib-command") to 34
+            listOf("--profile","ftclib-command") to 38
         )
         for ((selection,count) in expectedCounts) {
             val first=resolve(selection,"20827")

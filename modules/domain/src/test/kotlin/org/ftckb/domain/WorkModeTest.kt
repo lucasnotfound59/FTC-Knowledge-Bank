@@ -10,7 +10,8 @@ import kotlin.random.Random
 class WorkModeTest {
     private val evidence=GitRuleEvidence("repo","abcdef1","TeamCode/build.gradle",line=1)
     private val overall=Approval("overall",ApproverRole.OVERALL_SOFTWARE_LEAD,approvedAt=Instant.EPOCH)
-    private val architectureIds=setOf("global.command-responsibilities","shared.ftclib-command-candidate")
+    private val architectureIds=setOf("global.command-responsibilities","global.solverslib-production-imports",
+        "global.solverslib-production-runtime","shared.ftclib-command-candidate")
 
     private fun rule(
         id:String,
@@ -26,6 +27,10 @@ class WorkModeTest {
     )
 
     private val rules=listOf(
+        rule("global.solverslib-production-imports","solverslib-imports",RuleAuthority.SHARED,
+            PolicyLevel.GLOBAL,setOf("command-based")),
+        rule("global.solverslib-production-runtime","solverslib-runtime",RuleAuthority.SHARED,
+            PolicyLevel.GLOBAL,setOf("command-based")),
         rule("global.command-responsibilities","command-responsibilities",RuleAuthority.SHARED,
             PolicyLevel.GLOBAL,setOf("command-based")),
         rule("shared.ftclib-command-candidate","command-framework",RuleAuthority.SHARED,
@@ -56,7 +61,7 @@ class WorkModeTest {
     }
 
     @Test
-    fun `test mode excludes only the two architecture mandate rules`() {
+    fun `test mode excludes only the four architecture mandate rules`() {
         val normal=RuleResolver.resolve(rules,RuleContext("20827","2025-2026",setOf("ftclib-command")))
         val test=RuleResolver.resolve(
             rules,RuleContext("20827","2025-2026",setOf("ftclib-command"),WorkMode.TEST)

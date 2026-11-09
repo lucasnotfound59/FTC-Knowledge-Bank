@@ -187,8 +187,8 @@ class KnowledgeGuideAcceptanceTest {
         assertTrue(loaded.violations.isEmpty(),loaded.violations.joinToString())
         val rookie=loaded.rules.filter { it.id.startsWith("shared.rookiebot-") }
         assertEquals(rookieIds,rookie.map { it.id }.toSet())
-        assertEquals(52,loaded.rules.size)
-        assertEquals(46,loaded.rules.count { it.status==RuleStatus.APPROVED })
+        assertEquals(58,loaded.rules.size)
+        assertEquals(52,loaded.rules.count { it.status==RuleStatus.APPROVED })
         assertEquals(6,loaded.rules.count { it.status==RuleStatus.CANDIDATE })
         rookie.forEach { rule ->
             assertEquals(RuleStatus.APPROVED,rule.status,rule.id)

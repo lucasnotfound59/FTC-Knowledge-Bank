@@ -11,7 +11,9 @@ v2 的 `schemaVersion`、`kernelSchemaVersion`、`integrationVersion` 都为 2�
 
 ## 命令架构指南发现
 
-只有当前用户/配置已明确选择 `command-based` 或 `ftclib-command`，且任务涉及 Command、Subsystem、scheduler 或生命周期职责时，先读取固定知识库副本中的 `tools/FTC-Knowledge-Bank/knowledge/guides/architecture/command-based.md`，再结合本次 resolve 的实际 `activeRules` 工作。自有或 FTCLib 启发的轻量实现使用用户明确选定的 `command-based`，不因此要求安装 FTCLib；明确采用 FTCLib command 运行时才选择 `ftclib-command`。不从类名、现有依赖或指南内容自动更改 profile。
+只有当前用户/配置已明确选择 `command-based` 或 `ftclib-command`，且任务涉及 Command、Subsystem、scheduler 或生命周期职责时，先读取固定知识库副本中的 `tools/FTC-Knowledge-Bank/knowledge/guides/architecture/command-based.md` 和 `knowledge/guides/setup/solverslib.md`，再结合本次 resolve 的实际 `activeRules` 工作。包含 2026-10-29 SolversLib 政策的新知识库要求 command-based 正式代码使用 SolversLib；旧名称 ftclib-command 归一化后也包含 command-based，因此正式代码遵守同一政策，不能当作选择 FTCLib 的豁免。不从类名、现有依赖或指南内容自动更改 profile。generic、simple-opmode、rookiebot 不受新增架构要求。
+
+仅用户明确指定 test 任务时，裁决器排除两个 SolversLib 正式架构限制与原有两个架构 mandate；已使用命令机制的安全规则、tests/utils/JUnit 硬检查继续生效。正式运行时是语义复核要求，不能靠新增 import 或未使用依赖证明合规；逐项报告 soft。旧 pin 若没有这些规则或指南，报告实际能力，不读取浮动源码冒充当前输入，不自动升级。
 
 指南是教学与证据入口，不能把 candidate 或因赛季/profile排除的规则说成已生效；状态和适用范围以当前固定知识、真实上下文的 resolve 为准。旧 pin 若没有该指南，明确报告缺失并遵循显式版本升级流程，不读取浮动 main 冒充当前输入、不自动改 pin。新模板只随未来明确安装/升级生成，不直接覆写已接入机器人项目的 Skill 或绕过 managedFiles hash。
 
@@ -73,7 +75,7 @@ work 收到内核 stderr 时，在独立 envelope 返回安全分类的 `diagnos
 
 `project.py work resolve|check`、旧兼容入口与底层 `ftckb` 支持临时 `--work-mode normal|test|dev`，省略等同 `normal`。模式只对当前任务生效，不写入 `.ftckb/project.yaml`，也不改变固定版本、team、season 或 profiles。**只有用户明确说明当前任务是测试代码或 dev 代码时才选择 test/dev；不得根据文件名、路径、分支、依赖或代码外观推断，也不得自行把默认模式改成 test/dev。** 交付时必须写明所用模式、覆盖的文件范围和被排除的项目改动。
 
-- **test**：用户明确指定当前编写的是测试代码时，测试代码优先实现用户的测试目的，不因正式命令架构而被迫使用 `CommandBase`，也不需要先提交编码 plan。裁决仍通过 `resolve` 取得：`global.command-responsibilities` 与 `shared.ftclib-command-candidate` 进入 `excludedRules`，原因 `work-mode-test`；命令实时输入、安全清理、`global.test-utility-layout` 的 tests/utils 位置与目标 TeamCode 不使用 JUnit 等其余规则和硬检查全部继续生效。测试代码是逐任务的明确指定，不是全局豁免，不能当作绕过其他规则的理由。若工作区同时有非测试改动，`check --work-mode test` **必须**传仅覆盖本次测试代码的 `--diff FILE`；对其余改动另跑 normal 检查并披露两次检查各自的范围，不得用 test 模式放松整个脏工作区。
+- **test**：用户明确指定当前编写的是测试代码时，测试代码优先实现用户的测试目的，不因正式命令架构而被迫使用 `CommandBase`，也不需要先提交编码 plan。裁决仍通过 `resolve` 取得：`global.command-responsibilities`、`shared.ftclib-command-candidate`、`global.solverslib-production-runtime` 与 `global.solverslib-production-imports` 进入 `excludedRules`，原因 `work-mode-test`；命令实时输入、安全清理、`global.test-utility-layout` 的 tests/utils 位置与目标 TeamCode 不使用 JUnit 等其余规则和硬检查全部继续生效。测试代码是逐任务的明确指定，不是全局豁免，不能当作绕过其他规则的理由。若工作区同时有非测试改动，`check --work-mode test` **必须**传仅覆盖本次测试代码的 `--diff FILE`；对其余改动另跑 normal 检查并披露两次检查各自的范围，不得用 test 模式放松整个脏工作区。
 - **dev**：用户明确指定当前部分是 dev 代码（新架构或新 system 的尝试）时，`check` 必须同时提供本次改动的 `--diff FILE`，只评估该补丁；每个 hard 命中都会转成带 ruleId、check、path、line、detail 的 soft 提醒，没有加载/校验/冲突/调用错误时退出码为 0。原有的 soft 保留。必须逐项向用户报告降级提醒，并说明该 diff 覆盖哪些文件、排除了哪些项目改动；用户明确表示可以忽略后才能继续。dev 模式不是“符合正式规则”，也不是机器人验证，不得这样描述。
 
 无效知识、同层级规则冲突、错误 profile、无法解析的补丁仍按退出码 2/64 失败，不因 test/dev 变成通过。

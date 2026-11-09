@@ -1,13 +1,13 @@
-# Command-Based：FTCLib、类 FTCLib 与自有实现指南
+# Command-Based：SolversLib 正式运行时与实现比较
 
-> 核验日期：2026-10-23。本文适用于已经选择命令架构的项目；接口示例用于映射现有代码，不是一套可直接复制的新运行库。四条 `shared.command-*` 专区规则已由本轮真实批准人 lucas／overall_software_lead 批准；当前项目的实际生效结论仍取自 resolve。
+> 更新日期：2026-10-29。command-based 正式代码使用 SolversLib，详见 [SolversLib 指南](../setup/solverslib.md)。本文保留 FTCLib 固定源码与自有实现作为职责教学、历史比较或显式测试任务参考，不能据此在 normal 下选择其他运行时；实际规则以 resolve 为准。
 
 ## 先选对 profile
 
-| 已决定采用的组织方式 | 显式选择 | 是否必须安装 FTCLib |
+| 已决定采用的组织方式 | 显式选择 | 正式代码运行时要求 |
 | --- | --- | --- |
-| 自有 Command／Subsystem／scheduler，包括类 FTCLib 的轻量实现 | `--profile command-based` | 否 |
-| 使用 FTCLib command 运行时及其 API | `--profile ftclib-command` | 是；内核自动包含 command-based |
+| Command／Subsystem 命令架构 | `--profile command-based` | 必须使用固定版本 SolversLib |
+| 已接入项目保留旧 profile 名称 | `--profile ftclib-command` | 包含 command-based；normal 同样要求 SolversLib，不自动改配置 |
 | 直接编写普通 OpMode | `--profile simple-opmode` | 否 |
 | 按既有 RookieBot 教程组织 | `--profile rookiebot` | 否；包含 simple-opmode |
 | 尚未采用命名架构约束 | `--generic-profile` | 不据此判断依赖 |
@@ -32,7 +32,7 @@ apps/knowledge-cli/build/install/ftckb/bin/ftckb check /absolute/path/to/robot -
 | scheduler | 资源互斥、周期执行、冲突政策、default 恢复、生命周期状态 | 依靠类名猜资源或保证硬件天然安全 |
 | OpMode／装配层 | 建立对象、绑定输入、选择调度时机、停止与诊断 | 同时运行两套拥有同一机构的 scheduler |
 
-这些职责不强制包名、singleton、DSL 或 `CommandOpMode` 基类。FTCLib 用户按固定版本 API 集成；自有实现复用队伍已有接口，不需要为“像 FTCLib”添加库依赖。现有更高优先级规则仍以 resolve 为准。
+这些职责本身不规定 DSL 或 OpMode 适配形式；新 global 政策要求正式运行时为 SolversLib。项目可以保留适配层，但不能以自有 scheduler 或 FTCLib 替代它。以下自有实现和 FTCLib 细节只用于比较或显式测试任务，不是正式架构选择建议。
 
 ## 一次完整周期怎么走
 
@@ -128,6 +128,6 @@ for (int i=0;i<rawOutputs.length;i++) {
 - [CommandScheduler.java](https://github.com/FTCLib/FTCLib/blob/98e921bf9eac506c2bbe80a0cddf51ae33f1cbb6/core/src/main/java/com/arcrobotics/ftclib/command/CommandScheduler.java)：`run`、`schedule`、`setDefaultCommand`、`initCommand`、`cancelAll`、`reset`，支持本文对固定实现的有限描述。
 - [CommandOpMode.java](https://github.com/FTCLib/FTCLib/blob/98e921bf9eac506c2bbe80a0cddf51ae33f1cbb6/core/src/main/java/com/arcrobotics/ftclib/command/CommandOpMode.java)：`runOpMode`，支持正常生命周期描述，不支持异常全量 cleanup 保证。
 
-本轮已批准的四条规则是 `shared.command-runtime-boundary`、`shared.command-scheduler-lifecycle`、`shared.command-default-resumption`、`shared.command-scheduler-reentrancy`；批准范围为所有队伍／所有赛季／command-based（包含 ftclib-command 继承），只有条件式 soft，没有新硬检查。每个项目仍须用真实上下文调用 resolve/check。触发限定 TeamCode Java 的相关新增行，部分 scheduler 命名路径按触及触发；无新增行的普通 Java 删除／纯重命名可能不触发，改名后的 scheduler 路径可能触发。关键词和路径有漏报、误报，soft 是复核请求，未命中也不能证明安全。
+四条既有规则是 `shared.command-runtime-boundary`、`shared.command-scheduler-lifecycle`、`shared.command-default-resumption`、`shared.command-scheduler-reentrancy`；均为所有队伍／所有赛季／command-based 的条件式 soft。normal 下 runtime-boundary 被新 global SolversLib 运行时政策覆盖，test 下可重新参与裁决。2026-10-29 另加六条 SolversLib 规则，包括正式代码的 hard 包引用/依赖检查。每个项目仍须用真实上下文调用 resolve/check；关键词和路径有漏报、误报，soft 是复核请求，未命中也不能证明安全。
 
 旧 approved 规则没有因本文改状态或扩展赛季；更强的自有运行时政策经本轮真实审批独立加入，不冒充 vendor 保证。FTCLib 安装步骤见[安装指南](../setup/ftclib.md)；当前 SDK 兼容性和项目维护状态需另行核验。

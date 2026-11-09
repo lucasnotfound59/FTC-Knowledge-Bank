@@ -1,0 +1,140 @@
+# Vendor facts are pinned; requirements beyond them are approved engineering policy.
+schemaVersion: 4
+rules:
+  - id: shared.solverslib-dependencies
+    topic: solverslib-dependencies
+    title: 固定 SolversLib 依赖并核对 Pedro 兼容版本
+    instruction: >-
+      使用或修改 SolversLib 依赖前，核对第一方安装文档、精确版本及对应官方 tag/固定源码；采用 org.solverslib:core 的精确版本与 Dairy releases 仓库，Java/Kotlin 包名前缀是 com.seattlesolvers.solverslib。
+      不使用 +、latest 或未经确认的版本替换；不同时安装 FTCLib 和 SolversLib。已有依赖不得仅为追新而自动升级。
+      只有实际使用才引入 pedroPathing/photon 扩展；Pedro 扩展不代替 Pedro 本身的安装。2026-10-29 官方安装页对应 SolversLib 0.3.6+ 与 Pedro 3.x、0.3.3–0.3.5 与 Pedro 2.x、0.3.2 与 Pedro 1.0.9、0.3.1 与 Pedro 1.0.8；这不是跨版本 API 兼容保证，目标精确版本仍需核对。
+      修改 build.dependencies.gradle 继续执行其第一方证据复核。报告实际 Gradle sync/build 结果，不能把编译成功称为 RC/DS 或真机通过；soft 必须向用户报告。
+    rationale: SolversLib 有独立 Maven 坐标、包名及 Pedro 版本对应关系；固定版本证据防止把 FTCLib 示例、旧 Pedro API 或滚动网页当作目标版本保证。
+    status: approved
+    approval:
+      approver: "lucasnotfound59"
+      role: overall_software_lead
+      approvedAt: 2026-10-29T02:09:04Z
+    authority: shared
+    policyLevel: shared
+    applicability:
+      teams: []
+      seasons: []
+      profiles: [command-based]
+    evidence:
+      - type: web
+        url: "https://docs.seattlesolvers.com/installation"
+        title: "SolversLib Installation"
+        publisher: "Seattle Solvers"
+        accessedAt: 2026-10-29
+        section: "build.gradle; Repositories (required); Pedro Pathing version compatibility"
+        version: "0.3.6"
+      - type: git
+        repository: FTC-23511/SolversLib
+        commit: 93ff730965655b3a55f6648ce5e0f1c0b820206b
+        file: examples/build.gradle.kts
+        symbol: "com.pedropathing:revhub:3.0.0"
+    reviewTriggers:
+      - paths: ['*.gradle', '*.gradle.kts', '**/*.gradle', '**/*.gradle.kts', '**/libs.versions.toml']
+        addedLinePatterns: []
+      - paths: ['TeamCode/src/main/**/*.{java,kt}']
+        addedLinePatterns: ['\bcom\.seattlesolvers\.solverslib\b']
+
+  - id: shared.solverslib-lifecycle
+    topic: solverslib-lifecycle
+    title: 明确 SolversLib 调度周期与停止清理
+    instruction: >-
+      采用 SolversLib 的 OpMode 必须有唯一 scheduler 生命周期 owner，在主循环周期调用一次调度；覆盖 CommandOpMode.run 时调用 super.run 或明确等价集成，不再额外运行第二次 scheduler，不新建调度线程。
+      INIT 只做明确许可的装配/动作，START 后调度运动；核对固定版本的 initialize、initialize_loop、preRun、run、end 顺序以及 STOP during INIT。
+      已核验 0.3.6 tag 源码的 initialize 位于 try 之前，之后才由 finally 调用 end/reset；initialize 抛错不受该 finally 保护，空 end 不取消活动命令，scheduler.reset 仅清 singleton，不能当作 cancelAll 或安全停机。
+      正常结束、中断和异常都需在项目生命周期适配层尝试取消命令、逐项安全输出并保留原故障；cancel/end 抛错时仍尝试其他独立清理，避免旧实例再次驱动机构。安全值按机构评估，不一律置零。这些异常隔离是工程政策，不宣称 vendor 已保证。soft 必须向用户报告。
+    rationale: 固定 SolversLib 源码与 FTCLib 的生命周期并不完全相同；源码中的 finally、reset 和 cancel 回调边界不足以证明硬件已安全停止。
+    status: approved
+    approval:
+      approver: "lucasnotfound59"
+      role: overall_software_lead
+      approvedAt: 2026-10-29T02:09:04Z
+    authority: shared
+    policyLevel: shared
+    applicability:
+      teams: []
+      seasons: []
+      profiles: [command-based]
+    evidence:
+      - type: git
+        repository: FTC-23511/SolversLib
+        commit: 93ff730965655b3a55f6648ce5e0f1c0b820206b
+        file: core/src/main/java/com/seattlesolvers/solverslib/command/CommandOpMode.java
+        symbol: runOpMode
+      - type: git
+        repository: FTC-23511/SolversLib
+        commit: 93ff730965655b3a55f6648ce5e0f1c0b820206b
+        file: core/src/main/java/com/seattlesolvers/solverslib/command/CommandScheduler.java
+        symbol: reset
+    reviewTriggers:
+      - paths: ['TeamCode/src/main/**/*.{java,kt}']
+        addedLinePatterns: ['\b(?:CommandOpMode|CommandScheduler|initialize_loop|preRun|cancelAll)\b', '\b(?:scheduler|commandScheduler)\s*\.\s*(?:run|reset|cancel|disable)\s*\(']
+
+  - id: shared.solverslib-requirements
+    topic: solverslib-requirements
+    title: 声明 SolversLib 资源占用、default 与结束行为
+    instruction: >-
+      已使用 SolversLib 的机构命令必须声明实际控制的全部 Subsystem requirements，包括 InstantCommand/RunCommand 等 lambda 命令，不能仅因有硬件引用就假定 scheduler 知道资源占用。
+      通过 scheduler 调度，不手动调用另一个命令的 initialize/execute/end 绕过资源仲裁；持续输出命令在 end(boolean interrupted) 同时处理正常结束和取消，恢复机构适合的安全输出。
+      default command 声明其注册子系统、保持合理的持续执行语义；连续输入在 execute 时通过 Supplier 读取。固定 0.3.6 源码按注册资源空闲触发 schedule(default)，多资源 default 仍可能抢占其他可中断命令，不假设全资源空闲门控；优先让 default 只占注册资源或显式协调。
+      已使用命令机制的测试任务仍遵守这些安全要求，不因架构豁免放松 requirements 或清理。soft 必须向用户报告。
+    rationale: scheduler 只依据声明的 requirements 仲裁；固定源码支持资源冲突、default 调度与取消调用顺序，但资源声明的完整性和安全输出需要语义复核。
+    status: approved
+    approval:
+      approver: "lucasnotfound59"
+      role: overall_software_lead
+      approvedAt: 2026-10-29T02:09:04Z
+    authority: shared
+    policyLevel: shared
+    applicability:
+      teams: []
+      seasons: []
+      profiles: [command-based]
+    evidence:
+      - type: git
+        repository: FTC-23511/SolversLib
+        commit: 93ff730965655b3a55f6648ce5e0f1c0b820206b
+        file: core/src/main/java/com/seattlesolvers/solverslib/command/CommandScheduler.java
+        symbol: setDefaultCommand
+    reviewTriggers:
+      - paths: ['TeamCode/src/main/**/*.{java,kt}']
+        addedLinePatterns: ['\b(?:CommandBase|InstantCommand|RunCommand|addRequirements|setDefaultCommand|DoubleSupplier)\b', '\bend\s*\(\s*(?:boolean|interrupted\s*:)']
+
+  - id: shared.solverslib-composition
+    topic: solverslib-composition
+    title: 非阻塞执行 SolversLib 命令并正确组合
+    instruction: >-
+      已使用 SolversLib 的 initialize/execute/isFinished/end/periodic 回调保持非阻塞；等待优先用 WaitCommand/WaitUntilCommand 或跨周期状态，不在回调中 Thread.sleep、忙等或循环等待机构到位。WaitCommand(long) 单位是毫秒，目标版本其他 timeout API 的单位须另行核对，传感器等待要有任务适合的超时与失败处置。
+      使用 Sequential/Parallel/Race/Deadline 组合前明确完成、中断和资源语义；同一命令实例不同时复用于多个组合，也不独立 schedule 已属于组合的子命令；并行分支不得占用相同 Subsystem。
+      固定 ParallelCommandGroup 源码检查重复 requirements，但不能发现未声明资源；组合完成或 withTimeout 不自动证明机构已到位或输出已停止，必须结合实际 end/interrupted 和观测结果复核。soft 必须向用户报告。
+    rationale: 固定 WaitCommand 以毫秒计时、逐周期检查完成；ParallelCommandGroup 与 scheduler 拒绝部分非法组合。非阻塞、资源完整性与超时后安全行为仍是本库工程政策。
+    status: approved
+    approval:
+      approver: "lucasnotfound59"
+      role: overall_software_lead
+      approvedAt: 2026-10-29T02:09:04Z
+    authority: shared
+    policyLevel: shared
+    applicability:
+      teams: []
+      seasons: []
+      profiles: [command-based]
+    evidence:
+      - type: git
+        repository: FTC-23511/SolversLib
+        commit: 93ff730965655b3a55f6648ce5e0f1c0b820206b
+        file: core/src/main/java/com/seattlesolvers/solverslib/command/WaitCommand.java
+        symbol: WaitCommand
+      - type: git
+        repository: FTC-23511/SolversLib
+        commit: 93ff730965655b3a55f6648ce5e0f1c0b820206b
+        file: core/src/main/java/com/seattlesolvers/solverslib/command/ParallelCommandGroup.java
+        symbol: addCommands
+    reviewTriggers:
+      - paths: ['TeamCode/src/main/**/*.{java,kt}']
+        addedLinePatterns: ['\b(?:CommandBase|WaitCommand|WaitUntilCommand|SequentialCommandGroup|ParallelCommandGroup|ParallelRaceGroup|ParallelDeadlineGroup|withTimeout)\b', '\bThread\s*\.\s*sleep\s*\(', '\b(?:execute|isFinished|periodic)\s*\(']

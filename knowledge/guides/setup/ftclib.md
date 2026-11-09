@@ -6,7 +6,7 @@
 
 FTCLib 是面向 FTC 的 Java 辅助库，包含 command-based 框架、控制器、硬件封装、驱动底盘与可选视觉模块。本文采用 **core-first（先核心、后视觉）**：先证明 core 能同步、编译和部署，再决定是否承担 vision 的 ABI 与本地库配置。
 
-**如果你只参考 FTCLib 的 Command-Based 思路、运行时是队伍自有实现，不需要按本文安装依赖。** 选择 `command-based` 并阅读[Command-Based／类 FTCLib／自有实现指南](../architecture/command-based.md)。明确使用 FTCLib command API 时选 `ftclib-command`；仅使用其他工具类也不能据此自动推断架构。
+**当前政策范围：本文安装步骤仅用于历史对照、显式测试任务，或未选择 command-based 且确实需要 FTCLib 其他工具的项目。** 包含 2026-10-29 政策的知识库要求 command-based 正式代码使用 [SolversLib](solverslib.md)，不以自有运行时或 FTCLib 替代；旧 ftclib-command 因包含 command-based 也遵守同一要求。仅参考框架思路不需要安装 FTCLib，使用其他工具类也不能据此自动推断或更改架构。旧 pin 仍按实际 resolve 结果工作，不自动升级。
 
 本文假设你已经完成[Android Studio 与 FTC SDK 配置](android-studio-ftc-sdk.md)，并能成功运行：
 
@@ -27,7 +27,7 @@ FTCLib 是面向 FTC 的 Java 辅助库，包含 command-based 框架、控制�
 | `core:2.1.1` | 固定 readme 列出的 core 版本 | 精确加入 `TeamCode/build.gradle` |
 | `vision:2.1.0` | 固定 readme 列出的可选版本 | 只在确实使用 FTCLib vision 时考虑；额外前置条件仍需单独核验 |
 
-版本选择原则：只安装需要的模块并固定精确版本。明确使用 `ftclib-command` 时按实际 resolve 结果应用架构规则；不要把安装 core 等同于必须改用 CommandOpMode。旧 `shared.ftclib-command-candidate` 实际为 approved，但仅适用于 2025-2026／ftclib-command，不覆盖自有运行时或全部未来赛季。
+版本选择原则：只安装需要的模块并固定精确版本，不同时安装 FTCLib 与 SolversLib。旧 `shared.ftclib-command-candidate` 实际为 approved，限定 2025-2026／ftclib-command；新知识库 normal 下它被 global SolversLib 规则覆盖，test 明确排除此架构条目。安装 core 不自动选择 profile，也不自动要求某个 OpMode 基类。
 
 ## 安装 core
 
@@ -149,7 +149,7 @@ android {
 
 - `shared.ftclib-command-candidate`
 
-该规则 status 为 approved，适用 teams=[]、seasons=[2025-2026]、profiles=[ftclib-command]。当前项目是否 active 必须调用 `ftckb resolve --json`；`test` 工作模式明确排除此架构条目。新专区四条 `shared.command-*` 已获本轮真实批准，范围为全队伍／全赛季／command-based，仅条件式 soft，详见[命令指南](../architecture/command-based.md)；旧规则范围没有随之扩大。
+该规则 status 为 approved，适用 teams=[]、seasons=[2025-2026]、profiles=[ftclib-command]。新知识库 normal 下由 `global.solverslib-production-imports` 覆盖，test 明确排除；当前项目结论必须调用 `ftckb resolve --json`。四条既有 `shared.command-*` 仍按实际主题覆盖参与裁决，另有六条 SolversLib 规则，详见[命令指南](../architecture/command-based.md)和 [SolversLib 指南](solverslib.md)；旧规则范围没有随之扩大。
 
 ## 第一方来源与核验边界
 

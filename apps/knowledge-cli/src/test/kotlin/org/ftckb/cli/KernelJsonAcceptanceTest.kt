@@ -320,7 +320,7 @@ class KernelJsonAcceptanceTest {
         assertEquals(2,validate["schemaVersion"].asInt())
         assertEquals("validate",validate["command"].asText())
         assertTrue(validate["ok"].booleanValue())
-        assertEquals(52,validate["ruleCount"].asInt())
+        assertEquals(58,validate["ruleCount"].asInt())
 
         val resolve=mapper.readTree(Files.readString(base.resolve("resolve-ok.json")))
         assertEquals("resolve",resolve["command"].asText())
@@ -370,7 +370,8 @@ class KernelJsonAcceptanceTest {
         assertEquals("test",testMode["workMode"].asText())
         assertEquals(2,testMode["schemaVersion"].asInt())
         assertEquals(
-            listOf("global.command-responsibilities","shared.ftclib-command-candidate"),
+            listOf("global.command-responsibilities","global.solverslib-production-imports",
+                "global.solverslib-production-runtime","shared.ftclib-command-candidate"),
             testMode["excludedRules"].filter {
                 it["reasons"].any { reason -> reason.asText()=="work-mode-test" }
             }.map { it["ruleId"].asText() }

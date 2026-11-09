@@ -1,0 +1,77 @@
+# User-approved scope: docs/superpowers/specs/2026-10-29-solverslib-design.md.
+# This is Knowledge Bank policy, not a FIRST or vendor architecture mandate.
+schemaVersion: 4
+rules:
+  - id: global.solverslib-production-runtime
+    topic: command-runtime-boundary
+    title: 正式 Command-Based 代码必须使用 SolversLib
+    instruction: >-
+      适用范围：已显式选择 command-based（含归一化后包含它的 ftclib-command）的项目，正式代码必须使用固定版本的 SolversLib Command/Subsystem/CommandScheduler 运行时。
+      开工前确认实际依赖、com.seattlesolvers.solverslib 包和唯一 scheduler 的生命周期归属；OpMode 负责装配与输入，Subsystem 封装机构，Command 协调动作。
+      不以自有调度器、FTCLib 或其他命令框架代替正式运行时，不让两套 scheduler 同时拥有同一机构；项目适配层可复用，但不得仅改类名/import 或添加未使用依赖冒充接入。
+      generic、simple-opmode、rookiebot 不因本条改架构；显式 test 任务由裁决器排除此条，不从文件名猜测试身份。旧 ftclib-command 名称保留兼容，normal 下也遵守本条，不自动修改项目配置或升级固定 pin。
+      本条是维护者批准的工程政策，作为无条件 soft 要求 Agent 核对真实使用并向用户报告；不代表内核能从 diff 证明依赖存在或正确调度。
+    rationale: 维护者明确选择仅约束 command-based 正式代码。global 层覆盖旧共享运行时自选指引，避免同时要求使用 SolversLib 又允许正式代码选择自有或 FTCLib 运行时。
+    status: approved
+    approval:
+      approver: "lucasnotfound59"
+      role: overall_software_lead
+      approvedAt: 2026-10-29T02:09:04Z
+    authority: shared
+    policyLevel: global
+    applicability:
+      teams: []
+      seasons: []
+      profiles: [command-based]
+    evidence:
+      - type: web
+        url: "https://docs.seattlesolvers.com/installation"
+        title: "SolversLib Installation"
+        publisher: "Seattle Solvers"
+        accessedAt: 2026-10-29
+        section: "Changing Imports (Only if Migrating from FTCLib)"
+      - type: git
+        repository: FTC-23511/SolversLib
+        commit: 93ff730965655b3a55f6648ce5e0f1c0b820206b
+        file: core/src/main/java/com/seattlesolvers/solverslib/command/CommandOpMode.java
+        symbol: runOpMode
+
+  - id: global.solverslib-production-imports
+    topic: command-framework
+    title: 正式代码不得引入 FTCLib 命令运行时或 core 依赖
+    instruction: >-
+      正式 command-based 代码使用 SolversLib 命令 API，不新增 com.arcrobotics.ftclib.command 引用或 org.ftclib.ftclib:core 依赖。
+      迁移须按固定版本逐项核对依赖、包名与 API，不批量覆盖无关文件。显式 test 架构豁免不允许混装两库；若测试已使用 SolversLib，仍执行其依赖兼容和安全规则。
+      hard 仅检查 diff 中确定的旧命令包引用/依赖文本，不证明存量代码、版本目录/动态拼接依赖、自有 scheduler 或真实运行时符合要求；这些仍按 global.solverslib-production-runtime 语义复核。不要求每个 Java/Kotlin 工具文件都 import SolversLib。
+    rationale: 以 global 层覆盖旧 Use FTCLib Command 主题，硬拦截可确定的正式代码框架引用；完整架构要求由独立 soft 指令负责，避免逐行要求 import 导致误报。
+    status: approved
+    approval:
+      approver: "lucasnotfound59"
+      role: overall_software_lead
+      approvedAt: 2026-10-29T02:09:04Z
+    authority: shared
+    policyLevel: global
+    applicability:
+      teams: []
+      seasons: []
+      profiles: [command-based]
+    evidence:
+      - type: web
+        url: "https://docs.seattlesolvers.com/installation"
+        title: "SolversLib Installation"
+        publisher: "Seattle Solvers"
+        accessedAt: 2026-10-29
+        section: "build.gradle; Changing Imports (Only if Migrating from FTCLib)"
+    checks:
+      - kind: regex-forbidden
+        pattern: '\bcom\s*\.\s*arcrobotics\s*\.\s*ftclib\s*\.\s*command\b'
+        appliesTo: 'TeamCode/src/main/**/*.{java,kt}'
+        note: 正式 Command-Based 代码须使用 com.seattlesolvers.solverslib.command；不得新增 FTCLib 命令包引用。
+      - kind: regex-forbidden
+        pattern: '(?m)^\s*(?:(?:api|implementation|compileOnly|runtimeOnly)\b[^\r\n]*["'']org\.ftclib\.ftclib:core:|(?:api|implementation|compileOnly|runtimeOnly)\b[^\r\n]*group\s*[:=]\s*["'']org\.ftclib\.ftclib["''][^\r\n]*name\s*[:=]\s*["'']core["''])'
+        appliesTo: '**/*.gradle{,.kts}'
+        note: 正式 Command-Based 项目不得新增 FTCLib core 依赖；按官方文档选择固定 SolversLib core 版本。
+      - kind: regex-forbidden
+        pattern: '(?m)^\s*(?:(?:api|implementation|compileOnly|runtimeOnly)\b[^\r\n]*["'']org\.ftclib\.ftclib:core:|(?:api|implementation|compileOnly|runtimeOnly)\b[^\r\n]*group\s*[:=]\s*["'']org\.ftclib\.ftclib["''][^\r\n]*name\s*[:=]\s*["'']core["''])'
+        appliesTo: '*.gradle{,.kts}'
+        note: 根构建依赖也必须遵守正式代码的 SolversLib 选择。

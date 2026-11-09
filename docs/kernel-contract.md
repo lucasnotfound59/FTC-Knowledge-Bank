@@ -13,7 +13,7 @@ cd FTC-Knowledge-Bank
 
 消费方固定审阅过的完整 commit，不跟踪 main。仓库 V0.9.0、CLI 2.1.0、YAML v4、kernel JSON v2、项目接入协议 v2 是独立版本轴。YAML 解码兼容 v1-v3，不代表 kernel v1 消费方兼容 v2。旧机器模式见 [v1 schema](kernel-contract.v1.schema.json)；当前 [v2 schema](kernel-contract.schema.json)。`workMode` 是逐次调用的 ephemeral 参数，不属于项目配置或长期 profile。
 
-知识总数 52（46 已批准 + 6 候选）；validate 包含候选计数，resolve 的 activeRules 不包含候选。
+知识总数 58（52 已批准 + 6 候选）；validate 包含候选计数，resolve 的 activeRules 不包含候选。
 
 ## 2. 命令与显式 profile
 
@@ -32,7 +32,7 @@ ftckb check <repo-root> --knowledge knowledge --team 20827 --season 2025-2026 --
 - 支持 rookiebot、simple-opmode、command-based、ftclib-command；rookiebot 隐含 simple-opmode，ftclib-command 隐含 command-based。simple-opmode 与 command-based 互斥。未知名称或不兼容组合是 invalid-context；缺少选择是 context-required。不从依赖猜架构。
 - validate 只接受知识根目录和可选 --json，不接受 profile 或 --work-mode。
 - `--work-mode normal|test|dev` 是 resolve/check 的逐任务临时参数，省略等同 `normal`；它不写入项目配置、不改变 team/season/profile，也不能从文件名、路径或依赖推断。只有用户明确指定当前任务是测试代码或 dev 代码时才选择 `test`/`dev`。`normal`（含显式传入）的输出、排序和退出码与旧版本逐字节相同。
-- `test` 只把强制正式命令架构的 `global.command-responsibilities` 与 `shared.ftclib-command-candidate` 放入 excludedRules，原因 `work-mode-test`（其他不匹配原因仍一并保留）；命令实时输入、安全清理、`global.test-utility-layout` 的 tests/utils 位置与目标 TeamCode 不使用 JUnit 等其余规则和硬检查全部继续生效。
+- `test` 只把强制正式命令架构的 `global.command-responsibilities`、`shared.ftclib-command-candidate`、`global.solverslib-production-runtime` 与 `global.solverslib-production-imports` 放入 excludedRules，原因 `work-mode-test`（其他不匹配原因仍一并保留）；命令实时输入、安全清理、`global.test-utility-layout` 的 tests/utils 位置与目标 TeamCode 不使用 JUnit 等其余规则和硬检查全部继续生效。
 - `test` 的 CLI 不强制 `--diff`；但默认 check 会扫描整个脏工作区。若其中混有非测试改动，Agent 必须以 `--diff FILE` 限定本次测试代码，并对其余改动另跑 normal 检查；两次范围与排除项均需报告，不能用 test 模式放松正式代码。
 - `check --work-mode dev` 必须同时提供 `--diff FILE`，否则 usage/64；只评估该补丁，每个 hard 命中连 ruleId/check/path/line/detail 一起转为 soft，`violations` 为空且没有加载/校验/冲突/调用错误时退出 0，原有 soft 保留。dev 不把无效知识、同层级冲突、错误 profile 或坏补丁伪装成通过，也不代表符合正式规则或真机验证。
 - check 可选 `--diff FILE`；省略 --knowledge 时使用当前目录的 knowledge。
@@ -62,7 +62,7 @@ official 来源必须用 policyLevel=global，但有效层级是 official，永�
 validate 成功：
 
 ```json
-{"schemaVersion":2,"command":"validate","ok":true,"ruleCount":52,"violations":[]}
+{"schemaVersion":2,"command":"validate","ok":true,"ruleCount":58,"violations":[]}
 ```
 
 resolve（无冲突或有冲突）都有 team、season、normalized profiles、activeRules、excludedRules、overriddenRules、conflicts，不使用 error 字段。
@@ -85,7 +85,7 @@ resolve 冲突时 ok=false、退出 2；仍保留其他主题 activeRules 和排
 
 规则正文可以是中文或英文。evidence 用 type=git 或 web；git 含 repository/commit/file 及可选 symbol/line，web 含 url/title/publisher/accessedAt/section 及可选 version/product/sku。checks 的 kind 在 resolve JSON 使用下划线（path_forbidden 等），YAML 与 check 违规的 check 字段使用连字符（path-forbidden 等）。
 
-检查执行规则是确定的：无 checks、无 `reviewTriggers` 的生效规则始终输出 soft；无 checks、有 `reviewTriggers` 的规则是**条件式 soft**，仅当同一 trigger 的路径和新增行模式匹配时输出 soft；有 checks 的规则保持硬检查。空 `addedLinePatterns` 使 trigger 仅按路径触发；多个 trigger 之间为 OR；单个 trigger 内，路径约束和新增行模式约束必须同时满足。当前 **5 条生效规则带硬检查**。跨赛季 `global.test-utility-layout` 对确定的错误 TeamCode 路径/JUnit 新增返回 violations 与退出码 1：机器人侧 OpMode 的规范路径是 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/`，复用工具的规范路径是 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/`。它不替代完整 Agent instruction 对文件语义及 package 的判断，也不禁止 Knowledge Bank 自身用于验证 Kotlin/CLI 的 JUnit 测试。Limelight validity/freshness 的 trigger 命中不产生 violations，若没有其他硬违规则退出码 0；soft 只表示需人工/模型复核，不是机器证明的违规或真机验证，**Agent 必须向用户报告**它。
+检查执行规则是确定的：无 checks、无 `reviewTriggers` 的生效规则始终输出 soft；无 checks、有 `reviewTriggers` 的规则是**条件式 soft**，仅当同一 trigger 的路径和新增行模式匹配时输出 soft；有 checks 的规则保持硬检查。空 `addedLinePatterns` 使 trigger 仅按路径触发；多个 trigger 之间为 OR；单个 trigger 内，路径约束和新增行模式约束必须同时满足。当前 **6 条生效规则带硬检查**（新增 `global.solverslib-production-imports` 仅作用于 command-based 正式代码；generic 仍为 5 条）。跨赛季 `global.test-utility-layout` 对确定的错误 TeamCode 路径/JUnit 新增返回 violations 与退出码 1：机器人侧 OpMode 的规范路径是 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/`，复用工具的规范路径是 `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/`。它不替代完整 Agent instruction 对文件语义及 package 的判断，也不禁止 Knowledge Bank 自身用于验证 Kotlin/CLI 的 JUnit 测试。Limelight validity/freshness 的 trigger 命中不产生 violations，若没有其他硬违规则退出码 0；soft 只表示需人工/模型复核，不是机器证明的违规或真机验证，**Agent 必须向用户报告**它。
 
 check 完成时含 team、season、profiles、ok、violations、soft：
 

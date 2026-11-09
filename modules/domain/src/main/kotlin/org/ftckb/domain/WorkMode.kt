@@ -20,6 +20,8 @@ enum class WorkMode(val id:String) {
          */
         val ARCHITECTURE_MANDATE_RULE_IDS=setOf(
             "global.command-responsibilities",
+            "global.solverslib-production-runtime",
+            "global.solverslib-production-imports",
             "shared.ftclib-command-candidate"
         )
 

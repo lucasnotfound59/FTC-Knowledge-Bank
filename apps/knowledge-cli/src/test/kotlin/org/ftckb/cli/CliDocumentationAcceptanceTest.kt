@@ -79,10 +79,10 @@ class CliDocumentationAcceptanceTest {
     fun `installation profile counts match both teams current resolution`() {
         val root=Path.of("..","..").normalize()
         val text=Files.readString(root.resolve("docs/handbook/installation.md"))
-        assertTrue(text.contains("52（46 已批准 + 6 候选）"))
-        assertTrue(text.contains("validation=ok rules=52"))
+        assertTrue(text.contains("58（52 已批准 + 6 候选）"))
+        assertTrue(text.contains("validation=ok rules=58"))
         val mapper=ObjectMapper()
-        for ((profile,count) in listOf("generic" to 26,"command-based" to 33,"rookiebot" to 38,"ftclib-command" to 34)) {
+        for ((profile,count) in listOf("generic" to 26,"command-based" to 38,"rookiebot" to 38,"ftclib-command" to 38)) {
             assertTrue(text.contains("| $profile | $count |"),profile)
             val selections=if (profile=="generic") listOf("--generic-profile") else listOf("--profile",profile)
             val activeByTeam=listOf("20827","16093").map { team ->
@@ -104,7 +104,7 @@ class CliDocumentationAcceptanceTest {
     fun `release documents publish all version axes and profile aware governance`() {
         val root=Path.of("..","..").normalize()
         val readme=Files.readString(root.resolve("README.md"))
-        listOf("**版本：V1.5.0**","52（46 已批准 + 6 候选）","CLI 2.1.0","YAML v4","kernel JSON v2","项目接入协议 v2").forEach {
+        listOf("**版本：V1.6.0**","58（52 已批准 + 6 候选）","CLI 2.1.0","YAML v4","kernel JSON v2","项目接入协议 v2").forEach {
             assertTrue(readme.contains(it),it)
         }
         listOf("AGENTS.md","docs/kernel-contract.md","docs/handbook/resolution.md").forEach { file ->
@@ -140,7 +140,7 @@ class CliDocumentationAcceptanceTest {
             Files.readString(root.resolve(file))
         }
         listOf(
-            "条件式 soft","reviewTriggers","退出码 0","退出码 1","Agent 必须向用户报告","5 条生效规则带硬检查",
+            "条件式 soft","reviewTriggers","退出码 0","退出码 1","Agent 必须向用户报告","6 条生效规则带硬检查",
             "global.test-utility-layout",
             "global.vendor-documented-build-dependencies",
             "build.dependencies.gradle",
