@@ -83,7 +83,7 @@ AI 使用确定性 CLI 完成接入和编码检查，不自动操作 Dashboard�
 
 已实现规则裁决、diff 检查、项目级接入、候选提取与审批、Ask/Edit、本地聊天网页、独立知识库管理台及 Android Studio 插件。Run 模式、官方文档联网检索和 Control Hub 自动部署尚未实现。静态检查不替代真机验证。
 
-当前规则总数为 52（46 已批准 + 6 候选）。裁决器、CLI、运行时和固定版本接入均传递显式 profile；20827／16093 的 8 条规则已迁移到 global，保留 2025-2026 赛季与 2 条 candidate，并增加 3 条 command-based 规则。`global.test-utility-layout` 与 `global.vendor-documented-build-dependencies` 是独立的跨赛季 global 规则。相同赛季和 profile 下两队当前 active IDs 相同；这不是忽略队号的理由。
+当前规则总数为 65（46 已批准 + 19 候选）。裁决器、CLI、运行时和固定版本接入均传递显式 profile；20827／16093 的 8 条规则已迁移到 global，保留 2025-2026 赛季与 2 条 candidate，并增加 3 条 command-based 规则。`global.test-utility-layout` 与 `global.vendor-documented-build-dependencies` 是独立的跨赛季 global 规则。新增 [20827 BIOBUZZ 的 13 条队伍候选规则](knowledge/teams/20827/README.md)，限定 2026-2027 赛季，尚未批准，不进入 activeRules。相同赛季和 profile 下两队当前 active IDs 相同；这不是忽略队号的理由，候选批准后应重新核对。
 
 版本轴分别是：仓库 V0.9.0、CLI 2.1.0、YAML v4、kernel JSON v2、项目接入协议 v2。来源 `authority` 与策略 `policyLevel` 分离，有效优先级为 `OFFICIAL > GLOBAL > LOCAL > SHARED`。候选不生效；同主题最高有效层级的多规则冲突必须先由维护者解决。
 

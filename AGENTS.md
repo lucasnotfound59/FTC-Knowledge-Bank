@@ -102,8 +102,8 @@ ftckb check <repo-root> --knowledge knowledge --team 20827 --season 2025-2026 --
 - `chat` / `eval` / `serve` / `dashboard` / `extract` / `candidates` / `approve` 是给人用的交互模式；机器契约只用 validate/resolve/check。Dashboard HTTP API 与审计事件使用独立版本，不能当作 kernel JSON v2。
 - 契约破坏性变更必须提升 `schemaVersion`；消费方看到 `schemaVersion!=2` 应停止并报错。
 - `resolve`/`check` 的 `--work-mode normal|test|dev` 是逐任务临时参数（省略即 normal，默认 JSON/退出码字节兼容，不写入项目配置）：只有用户明确说明当前是测试代码或 dev 代码才选 `test`/`dev`，不按文件名、路径或依赖推断。`test` 仅把 `global.command-responsibilities` 与 `shared.ftclib-command-candidate` 放入 excludedRules（原因 `work-mode-test`），命令安全与 `global.test-utility-layout`/JUnit 硬检查继续拦截；用户指定的测试代码优先实现测试目的，不需要先提交编码 plan。`dev` 的 `check` 必须同时给 `--diff FILE`，把每个 hard 命中转成带 ruleId/check/path/line/detail 的 soft 并退 0，原有 soft 保留，Agent 必须逐项报告；无效知识、同层级冲突、错误 profile、坏补丁仍是错误，不伪装成通过。显式 test/dev JSON 增加 `workMode` 字段。
-- 文档中的规则数/测试数快照随改动同步更新：当前 52 条规则（46 已批准 + 6 候选）；测试数字必须随实际验收更新，历史测试不视为当前通过；平台范围见 README。
-- 当前相同赛季/profile 下 20827 与 16093 active IDs 相同；8 条原队伍规则已移到 global，保留 2025-2026 赛季，2 条 candidate 不转正。仍必须传真实队号。
+- 文档中的规则数/测试数快照随改动同步更新：当前 65 条规则（46 已批准 + 19 候选）；测试数字必须随实际验收更新，历史测试不视为当前通过；平台范围见 README。
+- 当前相同赛季/profile 下 20827 与 16093 active IDs 相同；8 条原队伍规则已移到 global，保留 2025-2026 赛季，2 条 candidate 不转正。新增 `knowledge/teams/20827/biobuzz-2026-2027.yaml` 的 13 条 BIOBUZZ 队伍候选限定 2026-2027，未批准前不进入 activeRules；批准后须重新核对队伍差异。仍必须传真实队号。
 - 机器可消费工件：`docs/kernel-contract.schema.json`（JSON Schema）与 `fixtures/kernel/*.json`（真实输出示例：validate-ok / resolve-ok / resolve-conflict / resolve-test / check-pass / check-hard / check-dev / error-usage / error-invalid-knowledge）可直接用来对拍你的解析器。
 
 ## 目录速览

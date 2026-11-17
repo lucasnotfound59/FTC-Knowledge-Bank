@@ -1,0 +1,476 @@
+# 20827 BIOBUZZ 本地候选；未经审批，不参与 active resolve。
+# 证据固定源码 commit；不复制硬件数值作为规范。
+schemaVersion: 4
+rules:
+  - id: team-20827.biobuzz-source-layout
+    topic: biobuzz-source-layout
+    title: "按队内职责组织 TeamCode"
+    instruction: >-
+      20827 的 BIOBUZZ 项目将比赛入口放入 teleops/、自动程序与共享点位放入 autos/、机构封装和 GamepadConfig 放入 subsystems/、独立命令放入 commands/、Pedro 配置与调参注册放入 pedro/。诊断 OpMode 放入 tests/，可复用工具放入 utils/；诊断入口可直接使用 LinearOpMode，不强制使用比赛命令架构。新增功能优先扩展现有基类与接口。
+    rationale: >-
+      目录体现当前队伍的职责划分；测试和工具布局继续遵守全局规则，避免新生另建平行入口和重复基类。
+    status: candidate
+    authority: team
+    policyLevel: local
+    applicability:
+      teams: ["20827"]
+      seasons: ["2026-2027"]
+      profiles: [command-based]
+    evidence:
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/readme.md"
+        line: 7
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/teleops/BaseDriveTeleOp.java"
+        symbol: "BaseDriveTeleOp"
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/ServoZeroTest.java"
+        symbol: "ServoZeroTest"
+    reviewTriggers:
+      - paths: ["TeamCode/src/main/java/org/firstinspires/ftc/teamcode/**/*.java"]
+        addedLinePatterns: []
+
+  - id: team-20827.biobuzz-solverslib-hardware-ownership
+    topic: biobuzz-solverslib-hardware-ownership
+    title: "使用现有 SolversLib 运行时并明确硬件归属"
+    instruction: >-
+      比赛命令架构复用项目已选定版本的 SolversLib CommandOpMode、CommandBase 和 SubsystemBase，保持现有包名 com.seattlesolvers.solverslib；不因 FTCLib 教程另建或混入第二套 scheduler。Shooter、Intake、Gate 等机构在各自 subsystem 构造时从 HardwareMap 获取并配置设备，连续控制放入 periodic()；OpMode 负责装配、输入和行为决策。PedroDriveTeleOp 直接持有原始 Follower 是本队现有的明确例外；不要强制另建 Hardwares 总容器。方向、模式和零功率行为按机构需要配置，不照抄其他机器人的参数。
+    rationale: >-
+      当前队伍使用 SolversLib，机构自主管理设备；需要传承实际运行时和所有权边界，而不是上一赛季的硬件容器实现。
+    status: candidate
+    authority: team
+    policyLevel: local
+    applicability:
+      teams: ["20827"]
+      seasons: ["2026-2027"]
+      profiles: [command-based]
+    evidence:
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/Shooter.java"
+        symbol: "Shooter"
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/Intake.java"
+        symbol: "Intake"
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/teleops/BaseDriveTeleOp.java"
+        symbol: "initialize"
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/teleops/PedroDriveTeleOp.java"
+        symbol: "initializeDrive"
+    reviewTriggers:
+      - paths: ["TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/*.java", "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/commands/*.java", "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/teleops/*.java", "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/autos/*.java"]
+        addedLinePatterns: []
+
+  - id: team-20827.biobuzz-drivetrain-stages
+    topic: biobuzz-drivetrain-stages
+    title: "按调试阶段选择直接驱动或 Pedro 底盘"
+    instruction: >-
+      Pedro 跟随器尚未调好时，保留并优先使用 Drive + DriveCommand 的直接驱动方案；机器人中心构造不需要 Localizer，场地中心控制可使用独立 Localizer，但仍需定位器标定与参考姿态。Pedro 调参并验证后，再使用一个 Follower 同时负责手动驾驶、路径和定位：自动程序使用 PathFollower，当前两个 TeleOp 入口使用 PedroDriveTeleOp。不要在同一 OpMode 同时构造 Drive/独立 Localizer 和 Follower/PathFollower，以免重复拥有硬件。现有两个 TeleOp 都属于 Pedro 阶段；前期直接驱动需另建明确入口，不能声称已有可选入口。
+    rationale: >-
+      两套底盘实现对应不同调试阶段，不能误删前期方案，也不能让同一组电机和定位器被两套实现同时控制。
+    status: candidate
+    authority: team
+    policyLevel: local
+    applicability:
+      teams: ["20827"]
+      seasons: ["2026-2027"]
+      profiles: [command-based]
+    evidence:
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/commands/DriveCommand.java"
+        symbol: "DriveCommand"
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/PathFollower.java"
+        symbol: "PathFollower"
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/Localizer.java"
+        symbol: "Localizer"
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/readme.md"
+        line: 25
+    reviewTriggers:
+      - paths: ["TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/*.java", "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/commands/*.java", "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/teleops/*.java", "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/autos/*.java"]
+        addedLinePatterns: []
+
+  - id: team-20827.biobuzz-follower-update-owner
+    topic: biobuzz-follower-update-owner
+    title: "每个 Follower 明确唯一周期更新者"
+    instruction: >-
+      自动程序由 PathFollower.periodic() 经 scheduler 更新 Follower；PedroDriveTeleOp 在 beforeDriveRun() 中显式更新原始 Follower，并在 INIT 只更新 localizer。保持同一实例每个运行循环只有一个更新者，不要同时添加手动 follower.update() 和 subsystem periodic 更新；扩展基类时保留原有更新顺序。
+    rationale: >-
+      自动与 TeleOp 的不同封装是已确认的生命周期选择，重复更新会改变控制循环的时序。
+    status: candidate
+    authority: team
+    policyLevel: local
+    applicability:
+      teams: ["20827"]
+      seasons: ["2026-2027"]
+      profiles: [command-based]
+    evidence:
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/PathFollower.java"
+        symbol: "periodic"
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/teleops/PedroDriveTeleOp.java"
+        symbol: "beforeDriveRun"
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/teleops/PedroDriveTeleOp.java"
+        symbol: "updateDriveInitialization"
+    reviewTriggers:
+      - paths: ["TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/PathFollower.java", "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/teleops/*.java", "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/autos/*.java"]
+        addedLinePatterns: []
+
+  - id: team-20827.biobuzz-field-points
+    topic: biobuzz-field-points
+    title: "统一场地单位，默认旋转生成蓝方并允许单点精调"
+    instruction: >-
+      BIOBUZZ 场地坐标采用 Alliance 中记录的队内坐标系：距离 inches，Pose 航向 radians 且逆时针为正；Points.Point 的 headingDeg 与接受 headingDegrees 的辅助入口使用 degrees。优先编辑 Points.Red，用绕场地中心 180 度旋转派生 Points.Blue；若蓝方某一点需独立精调，可将该派生项改为存储蓝方场地坐标的 Point/PoseSource，其他点继续派生。redPose/bluePose 使用相应阵营的场地值；pose(x,y,headingDegrees) 仍可用于刻意按 BLUE 创作后依 alliance 转换的流程。一次坐标只转换一次；不得对已派生的 BLUE 值再次旋转，不把本赛季对称性或场地尺寸当成未来赛季事实。
+    rationale: >-
+      默认共享红方点位减少双边漂移，同时保留实地差异所需的单点独立调整；两种创作入口必须明确单位和转换次数。
+    status: candidate
+    authority: team
+    policyLevel: local
+    applicability:
+      teams: ["20827"]
+      seasons: ["2026-2027"]
+      profiles: []
+    evidence:
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/autos/Points.java"
+        symbol: "Points"
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/autos/BaseAuto.java"
+        symbol: "bluePose"
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/autos/BaseAuto.java"
+        symbol: "pose"
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/Alliance.java"
+        symbol: "Alliance"
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/readme.md"
+        line: 94
+    reviewTriggers:
+      - paths: ["TeamCode/src/main/java/org/firstinspires/ftc/teamcode/autos/*.java", "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/teleops/*.java", "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/utils/Alliance.java"]
+        addedLinePatterns: []
+
+  - id: team-20827.biobuzz-point-read-timing
+    topic: biobuzz-point-read-timing
+    title: "明确点位调参的读取时机"
+    instruction: >-
+      共享场地点位集中在 Points，自动程序在 INIT 的 buildRoutine() 中解析点位并创建路径，调参后重新 INIT；TeleOp 发起新的射击点路径时再读取目标。蓝方派生 source 通过 Supplier 读取当前红方 Point，避免过早捕获旧对象而忽略 Panels 替换。调参项注明单位、读取时机和重启后的保存方式；需要持久保留时将值写回源码。
+    rationale: >-
+      点位数值可变不意味着已经构建的路径会实时重建；明确读取时机才能让调参结果可预测。
+    status: candidate
+    authority: team
+    policyLevel: local
+    applicability:
+      teams: ["20827"]
+      seasons: ["2026-2027"]
+      profiles: []
+    evidence:
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/autos/Points.java"
+        symbol: "blue"
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/autos/BaseAuto.java"
+        symbol: "initialize"
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/teleops/PedroDriveTeleOp.java"
+        symbol: "shootingTarget"
+    reviewTriggers:
+      - paths: ["TeamCode/src/main/java/org/firstinspires/ftc/teamcode/autos/*.java", "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/teleops/*.java"]
+        addedLinePatterns: []
+
+  - id: team-20827.biobuzz-mechanism-tuning
+    topic: biobuzz-mechanism-tuning
+    title: "机构共享参数归属 subsystem"
+    instruction: >-
+      采集、持球慢速和射击送料分别使用 Intake.INTAKE_POWER、Intake.INTAKE_SLOW_POWER、Intake.SHOOT_INTAKE_POWER；自动持球使用 intakeSlow()，不要在 BlueShoot1Auto 等单条路线中另建相同用途的功率参数。其他机构的共享调参也留在所属 subsystem；路线特有等待、射击时长、停车预留放在该路线类。Panels 可调项使用大写语义名称的 public static 字段，固定常量使用 final，并说明单位与范围。复用参数归属和接口，不把参考机器人的具体数值当作新机器人的已验证值。
+    rationale: >-
+      同一机构行为使用一个参数来源，避免不同 OpMode 在维护或调参后出现非预期差异。
+    status: candidate
+    authority: team
+    policyLevel: local
+    applicability:
+      teams: ["20827"]
+      seasons: ["2026-2027"]
+      profiles: [command-based]
+    evidence:
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/Intake.java"
+        symbol: "runIntakeSlow"
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/autos/BaseAuto.java"
+        symbol: "intakeSlow"
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/autos/BlueShoot1Auto.java"
+        symbol: "buildRoutine"
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/Shooter.java"
+        symbol: "SHOOT_VELOCITY"
+    reviewTriggers:
+      - paths: ["TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/*.java", "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/autos/*.java", "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/teleops/*.java"]
+        addedLinePatterns: []
+
+  - id: team-20827.biobuzz-shoot-feed-gating
+    topic: biobuzz-shoot-feed-gating
+    title: "沿用就绪门控与停止清理的射击语义"
+    instruction: >-
+      扩展现有射击功能时，沿用 Shooter.canOpenGate() 作为开门和射击送料的统一就绪条件。TeleOp 的 RT 请求射击，仅就绪时开 Gate 并运行射击送料，未就绪则关门停送料；RB 仅预旋。自动 shoot(feedSeconds) 先等待就绪，再开始固定送料窗口，窗口内失速时暂停送料但不延长窗口；结束或中断停止 intake 和 shooter 并关闭 gate。自动的就绪等待由停车预留/end guard 提供外层截止，不额外偷偷加入强制送料超时。此规则只描述本机参考行为，不能据此声称就绪阈值已真机验证。
+    rationale: >-
+      自动与遥控的同一动作应有一致的机构决策语义，避免新功能绕过现有门控。
+    status: candidate
+    authority: team
+    policyLevel: local
+    applicability:
+      teams: ["20827"]
+      seasons: ["2026-2027"]
+      profiles: [command-based]
+    evidence:
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/teleops/BaseDriveTeleOp.java"
+        symbol: "run"
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/autos/BaseAuto.java"
+        symbol: "shoot"
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/Shooter.java"
+        symbol: "canOpenGate"
+    reviewTriggers:
+      - paths: ["TeamCode/src/main/java/org/firstinspires/ftc/teamcode/autos/*.java", "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/teleops/*.java", "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/Shooter.java", "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/Intake.java", "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/Gate.java"]
+        addedLinePatterns: []
+
+  - id: team-20827.biobuzz-autonomous-composition
+    topic: biobuzz-autonomous-composition
+    title: "使用 BaseAuto 的生命周期与命令组合"
+    instruction: >-
+      新增比赛自动程序继承 BaseAuto，构造时声明 Alliance，实现 startPose() 和 buildRoutine()；先取得语义化 Pose，再建立命名 Path，最后组合 Command。优先使用 line/curve/follow、spinUp/shoot、intakeOn/intakeSlow/intakeOff、settleAt 等已有辅助接口；复杂航向可直接使用 Paths/Interpolator。保留 INIT 装配、START 调度、end guard 和 STOP 清理边界；评分循环可用 untilSecondsLeft 为最终停车预留时间。逐个核对命令 requirements、结束/中断与机构停止，不将继承基类或编译成功当作异常路径或真机安全保证。自动命名采用当前 <Red|Blue><Routine>Auto 形式，不照搬旧赛季路径名称。
+    rationale: >-
+      沿用共同生命周期和行为词汇能降低路线扩展的理解成本；复杂路径仍需表达真实航向需求。
+    status: candidate
+    authority: team
+    policyLevel: local
+    applicability:
+      teams: ["20827"]
+      seasons: ["2026-2027"]
+      profiles: [command-based]
+    evidence:
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/autos/BaseAuto.java"
+        symbol: "BaseAuto"
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/autos/BlueFullAuto.java"
+        symbol: "buildRoutine"
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/autos/RedLeastAuto.java"
+        symbol: "buildRoutine"
+    reviewTriggers:
+      - paths: ["TeamCode/src/main/java/org/firstinspires/ftc/teamcode/autos/*.java"]
+        addedLinePatterns: []
+
+  - id: team-20827.biobuzz-live-controls
+    topic: biobuzz-live-controls
+    title: "集中控制映射并区分按住与按下沿"
+    instruction: >-
+      比赛手柄映射集中在 GamepadConfig，调用时读取当前 gamepad 状态。连续驾驶 command 使用 DoubleSupplier 等实时输入，不能在构造时冻结摇杆数值；toggle 和启动路径在调用层检测按下沿，初始化时处理遗留按键。Pedro 手动输入为前进、左移、逆时针正方向，直接 Drive 使用右移和顺时针正方向；在适配边界明确转换。Field-Centric 的 AUTO handoff 驾驶员参考方向、独立启动参考方向与 robot-centric 切换沿用现有基类约定，不能把两套正负号直接混用。
+    rationale: >-
+      集中映射和明确坐标适配既让操控保持一致，也避免切换底盘阶段后方向反转。
+    status: candidate
+    authority: team
+    policyLevel: local
+    applicability:
+      teams: ["20827"]
+      seasons: ["2026-2027"]
+      profiles: [command-based]
+    evidence:
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/GamepadConfig.java"
+        symbol: "GamepadConfig"
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/commands/DriveCommand.java"
+        symbol: "execute"
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/teleops/PedroDriveTeleOp.java"
+        symbol: "beforeDriveRun"
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/teleops/FieldCentricDrive.java"
+        symbol: "driveManually"
+    reviewTriggers:
+      - paths: ["TeamCode/src/main/java/org/firstinspires/ftc/teamcode/commands/*.java", "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/teleops/*.java", "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/GamepadConfig.java"]
+        addedLinePatterns: []
+
+  - id: team-20827.biobuzz-java-naming
+    topic: biobuzz-java-naming
+    title: "使用完整语义 API 名称并允许 hMap"
+    instruction: >-
+      队内 Java 类使用 PascalCase，方法和普通字段使用 lowerCamelCase，硬件配置名表达机构语义。新建或修改队内功率和速度 API 使用完整 Power、Velocity，例如 getPower/getLeftPower/getCommandedVelocity；射速配置使用 SHOOT_VELOCITY，并注明 ticks/s。HardwareMap 参数 hMap 和 hardwareMap 均可，不为统一展开 hMap 而重命名。新的阵营参数优先使用 Alliance。厂商 API 和原样引入的第三方源码保持其原有命名。
+    rationale: >-
+      完整的机构 API 词汇有利于新生阅读；hMap 在参数类型与上下文中已足够清晰，不需机械禁止所有缩写。
+    status: candidate
+    authority: team
+    policyLevel: local
+    applicability:
+      teams: ["20827"]
+      seasons: ["2026-2027"]
+      profiles: []
+    evidence:
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/Intake.java"
+        symbol: "getPower"
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/Shooter.java"
+        symbol: "getCommandedVelocity"
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/readme.md"
+        line: 31
+    reviewTriggers:
+      - paths: ["TeamCode/src/main/java/org/firstinspires/ftc/teamcode/**/*.java"]
+        addedLinePatterns: []
+
+  - id: team-20827.biobuzz-java-formatting
+    topic: biobuzz-java-formatting
+    title: "统一队内 Java 排版并排除官方副本"
+    instruction: >-
+      队内 Java 使用四空格缩进、运算符两侧空格、左大括号同行；每个条件分支使用大括号，getter 与其他方法使用多行方法体，每个字段单独声明。imports 按现有第三方、队内/注解、java 分组。tests/ 诊断代码与比赛代码采用相同排版。pedro/procedures/ 的官方原样副本不应用队内格式改写；本规则是风格审阅约定，不声称正则或当前机器检查已完整验证格式。
+    rationale: >-
+      统一的可读性约定便于新生对照范例；保留 vendor 文件原貌使后续比对升级可追溯。
+    status: candidate
+    authority: team
+    policyLevel: local
+    applicability:
+      teams: ["20827"]
+      seasons: ["2026-2027"]
+      profiles: []
+    evidence:
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/tests/OctoQuadTest.java"
+        symbol: "OctoQuadTest"
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/Intake.java"
+        symbol: "Intake"
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/readme.md"
+        line: 31
+    reviewTriggers:
+      - paths: ["TeamCode/src/main/java/org/firstinspires/ftc/teamcode/**/*.java"]
+        addedLinePatterns: []
+
+  - id: team-20827.biobuzz-vendor-tuning-provenance
+    topic: biobuzz-vendor-tuning-provenance
+    title: "保留 Pedro 调参副本来源，按流程更新配置"
+    instruction: >-
+      pedro/procedures/ 视为 Tuning 文档所记录固定 Quickstart commit 的官方原样副本，通过重新复制上游更新，不混入队内功能和命名排版修改。Tuning 负责注册所需 procedure，Constants 负责本机配置与工厂；电机名称和方向继续引用 Drive 的共享定义。按 Mecanum、OctoQuad、Odometry Test、Foresight、Hold/Line/Curve 的顺序调试，将输出写入对应配置并验证。已有数值、构建成功或原样副本标记不能证明该机器人已完成标定；不要直接继承参考机器人的调参结果。
+    rationale: >-
+      官方来源与本机配置分离，既保留工具升级的证据，也避免把模板数值和本机实测混为一谈。
+    status: candidate
+    authority: team
+    policyLevel: local
+    applicability:
+      teams: ["20827"]
+      seasons: ["2026-2027"]
+      profiles: []
+    evidence:
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/pedro/Tuning.java"
+        symbol: "Tuning"
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/pedro/Constants.java"
+        symbol: "Constants"
+      - type: git
+        repository: lucasnotfound59/FTC20827-BioBuzz
+        commit: "092afccf13bbe97c13b6f0d90ab59e6a27f8fbfd"
+        file: "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/readme.md"
+        line: 104
+    reviewTriggers:
+      - paths: ["TeamCode/src/main/java/org/firstinspires/ftc/teamcode/pedro/**/*.java", "TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/Drive.java"]
+        addedLinePatterns: []
+
